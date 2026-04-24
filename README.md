@@ -79,7 +79,7 @@ Week 1 implementation starts after the plan is signed off.
 
 ## License
 
-TBD. Apache-2.0 if the open-source distribution path is taken. See [PLAN.md §10](PLAN.md).
+[Apache License 2.0](LICENSE). Copyright 2026 Tangerine Intelligence Inc.
 
 ## Owner
 
