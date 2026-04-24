@@ -1,0 +1,9 @@
+faster-whisper>=1.0.3
+soundcard>=0.4.3
+soxr>=0.3.7
+numpy>=1.24
+
+# NVIDIA CUDA 12 runtime libs (pip-installed, no system CUDA needed)
+nvidia-cublas-cu12
+nvidia-cudnn-cu12
+nvidia-cuda-nvrtc-cu12

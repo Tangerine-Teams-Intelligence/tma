@@ -1,0 +1,37 @@
+# Runtime meeting artifacts (should not be committed)
+transcript.md
+summary.md
+advice.md
+*.wav
+*.mp3
+*.m4a
+recordings/
+
+# Smoke test artifacts
+smoke.log
+smoke.err
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+.env
+*.egg-info/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# macOS
+.DS_Store
