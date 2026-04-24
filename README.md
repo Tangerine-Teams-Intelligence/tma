@@ -1,119 +1,86 @@
-# Meeting Live
+# Tangerine Meeting Assistant
 
-Realtime dual-stream transcription + Claude live observer for Discord meetings.
+> Your meeting → your team's AI context, automatically.
 
-- **Mic** (you) + **WASAPI loopback** (everything Discord plays) → faster-whisper large-v3 on GPU → `transcript.md`
-- A separate Claude Code session in this directory polls the transcript, flags inconsistencies against Tangerine ground truth, and writes `summary.md` at the end.
+Every other meeting tool produces notes for humans. We produce **context for AI agents**. When your team meets, decisions and facts flow directly into your Claude Code `CLAUDE.md`, your `knowledge/` repo, your `session-state.md` — not into a Notion page nobody reads.
 
-No API cost. Claude session uses your existing Claude Code subscription.
-
----
-
-## First-time setup (~5 min)
-
-```powershell
-cd "C:\Users\daizhe zo\Desktop\meeting-live"
-pip install -r requirements.txt
-python list_devices.py
-```
-
-**Check the output:**
-- `CUDA devices: 1` → GPU path will work (large-v3 float16)
-- `WASAPI default mic` → your actual mic
-- `WASAPI default output` → the output device Discord plays to (usually your headphones)
-
-If CUDA check fails: make sure `nvidia-smi` works, then `pip install nvidia-cublas-cu12 nvidia-cudnn-cu12`.
-
-**First run of `transcribe.py` downloads the model (~3 GB) to `~/.cache/huggingface/`. Do this before meeting, not during.**
+**Status**: v1 in development. See [PLAN.md](PLAN.md) for the full spec and roadmap.
 
 ---
 
-## Meeting start (2 commands, 2 terminals)
+## The problem
 
-### Terminal 1 — transcription
-```powershell
-cd "C:\Users\daizhe zo\Desktop\meeting-live"
-python transcribe.py
-```
-Wait for `Listening on Mic + Discord loopback.` Leave it running, minimize.
+Your team just had a 45-minute meeting. Three people argued through a decision, agreed on an action plan, and identified two new constraints. Now the CEO opens his Claude Code session to act on it — and has to re-explain everything from memory. Information loss at every step:
 
-### Terminal 2 — Claude observer
-```powershell
-cd "C:\Users\daizhe zo\Desktop\meeting-live"
-claude
-```
-Claude auto-reads `CLAUDE.md` (the session prompt in this directory). Then type:
-```
-/loop 每 60s 读 transcript.md 最后 2 分钟，挑盲点和矛盾，3 条以内
-```
-Put Terminal 2 on your side monitor. Glance at it during the meeting.
+- Human memory → voice → AI: lossy
+- AI summary → human → AI: double-lossy
+- Next week the team forgets who decided what, why
 
----
+We fix this by treating your team's AI memory as the real destination, not the recap email.
 
-## During the meeting (in Terminal 2)
-
-- Just talk. Observations auto-appear every ~60s.
-- `现在说说` → immediate observation (skip wait)
-- `/loop stop` → pause the loop
-
-## Meeting end
-
-In Terminal 2:
-```
-写总结
-```
-Claude reads the full transcript, writes `summary.md` with decisions + action items + open questions. Then `Ctrl+C` in Terminal 1.
-
----
-
-## Files created
-
-| File | Purpose |
-|---|---|
-| `transcript.md` | Full raw transcript, timestamped, speaker-labeled (`DZ` / `CTO`) |
-| `summary.md`    | Post-meeting summary written by Claude |
-| `advice.md`     | (optional) Claude's live observation history |
-
----
-
-## Known constraints / gotchas
-
-- **Loopback captures ALL system audio.** Close YouTube / Spotify / anything else making sound during the meeting.
-- **Every voice on Discord gets tagged `CTO`.** For a 2-person call this is fine. For group calls you'd need Discord's per-user audio (not supported here).
-- **Stereo Mix** (if enabled in Windows) will double-up audio. Disable it: Sound settings → Recording → Stereo Mix → Disable.
-- **Model first download** is ~3 GB. Happens on first `transcribe.py` run. Do it ahead of time.
-
-## Override device choice
-
-If auto-detect picks the wrong device:
-```powershell
-$env:MIC_DEV=5      # from list_devices.py output
-$env:LOOP_DEV=12
-python transcribe.py
-```
-
-Other env overrides:
-- `CHUNK_SECONDS=8` — processing window (default 10)
-- `MODEL=medium` — smaller / faster model
-
----
-
-## Architecture
+## How it works
 
 ```
-Discord app audio ─┐
-                   ├─► sounddevice (WASAPI loopback)  ─┐
-Mic input          ┘                                    │
-                                                        ▼
-                                            soxr resample → 16kHz mono
-                                                        ▼
-                                 faster-whisper large-v3 (GPU, float16)
-                                                        ▼
-                                           transcript.md (append-only)
-                                                        ▼
-                              [new Claude Code terminal, /loop 60s]
-                                                        ▼
-                                       live observations in terminal
-                                                        ▼
-                                         "写总结" → summary.md
+  Pre-meeting             Meeting                 Post-meeting
+  ───────────             ───────                 ────────────
+  tmi prep                tmi start                tmi wrap
+  │                       │                        │
+  Each member             Discord bot joins        Observer synthesizes
+  captures intent         voice channel,           transcript + intents
+  (structured prompt)     streams to Whisper       + ground truth
+  │                       │                        │
+  intents/*.md            transcript.md            summary.md +
+                                                   knowledge-diff.md
+                                                   │
+                                                   tmi review → tmi apply
+                                                   │
+                                                   Target repo's
+                                                   CLAUDE.md / knowledge/
+                                                   gets updated
 ```
+
+Three moments where we differ from Granola / Otter / Zoom AI Companion:
+
+1. **Before**: we capture each member's intent privately and structurally, so the post-meeting synthesis can reason about *who wanted what and whether they got it*.
+2. **During**: the AI observer is **silent by default**. It's not a note-taker, not a cheerleader. It flags only contradictions with your ground truth or agenda drift.
+3. **After**: the output isn't a summary page — it's a **diff against your team's AI memory**, reviewed like a code PR, committed into your repos.
+
+## v1 Scope
+
+| | v1 | Later |
+|---|---|---|
+| Input | Discord voice | Zoom, Lark, Meet, Teams |
+| Output | Claude Code (CLAUDE.md, knowledge/, session-state.md) | Cursor, Aider, Notion, Linear |
+| UI | CLI | Web UI (v2), desktop app (v2.5) |
+| Users | Tangerine team (3 people) | Open-source / paid (v3+) |
+
+See [PLAN.md](PLAN.md) for the full roadmap, architecture, data model, and milestone breakdown.
+
+## Why this isn't Granola / Otter
+
+| | Tangerine Meeting Assistant | Granola / Otter / Zoom |
+|---|---|---|
+| Primary consumer | AI agent in a different session | Human reading later |
+| Output format | Diff against knowledge files | Notes page |
+| Pre-meeting | Structured intent capture per member | Nothing |
+| During | Silent observer, flags only | Live note-taker |
+| Moat | Opinionated output adapters per AI tool | Prettier summary |
+
+They're not competitors — they're complements. You can run Granola for human-readable meeting notes and TMA for AI-readable context. They target different people.
+
+## Getting started
+
+v1 is not yet installable. This repo currently contains:
+
+- [PLAN.md](PLAN.md) — the complete v1 spec (read this first)
+- [legacy/](legacy/) — the original WASAPI-based proof of concept (deprecated, preserved for reference)
+
+Week 1 implementation starts after the plan is signed off.
+
+## License
+
+TBD. Apache-2.0 if the open-source distribution path is taken. See [PLAN.md §10](PLAN.md).
+
+## Owner
+
+Daizhe Zou — Tangerine Intelligence CEO
