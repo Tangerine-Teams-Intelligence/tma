@@ -71,6 +71,11 @@ try {
   # in the bot). PyInstaller can't discover these because `tmi.transcribe`
   # imports `faster_whisper` lazily inside a function, and CTranslate2 has
   # platform-specific .pyd modules that need explicit collection.
+  # faster-whisper transitively imports numpy, av (PyAV), onnxruntime (for the
+  # Silero VAD), and tqdm. PyInstaller's hooks miss numpy 2.x's _core C exts
+  # without --collect-all, and the av wheel ships its own ffmpeg DLLs that
+  # have to be collected as binaries. huggingface_hub needs its package
+  # metadata so importlib.metadata calls don't crash inside the frozen exe.
   $pyiArgs = @(
     "--noconfirm",
     "--clean",
@@ -83,6 +88,16 @@ try {
     "--collect-all", "ctranslate2",
     "--collect-all", "tokenizers",
     "--collect-all", "huggingface_hub",
+    "--collect-all", "numpy",
+    "--collect-all", "av",
+    "--collect-all", "onnxruntime",
+    "--collect-all", "tqdm",
+    "--copy-metadata", "huggingface_hub",
+    "--copy-metadata", "faster_whisper",
+    "--copy-metadata", "tokenizers",
+    "--copy-metadata", "ctranslate2",
+    "--copy-metadata", "numpy",
+    "--copy-metadata", "tqdm",
     "--hidden-import", "tmi.transcribe",
     "--hidden-import", "tmi.model_download",
     "--distpath", $DistDir,
