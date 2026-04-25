@@ -548,6 +548,42 @@ def wrap(
     except (ValueError, NotImplementedError):
         block_count = None
 
+    # Memory layer: write the unified meeting file + any extracted decisions
+    # under <target_repo>/memory/. Best-effort — failures here log but do not
+    # break wrap.
+    memory_paths: list[Path] = []
+    try:
+        from .memory import write_decisions, write_meeting_file
+        from .transcript import read_all as read_transcript_all_for_memory
+
+        memory_root = cfg.memory_root_path(m.target_adapter)
+        transcript_text = read_transcript_all_for_memory(mdir)
+
+        # Strip frontmatter from the summary for the embedded body
+        summary_body = result.summary_markdown
+        if summary_body.startswith("---\n"):
+            end = summary_body.find("\n---\n", 4)
+            if end != -1:
+                summary_body = summary_body[end + 5 :].lstrip("\n")
+
+        decision_writes = write_decisions(memory_root, m, result.summary_markdown)
+        decision_links = [(slug.replace("-", " "), slug) for slug, _ in decision_writes]
+        meeting_path = write_meeting_file(
+            memory_root,
+            m,
+            transcript_text,
+            summary_body=summary_body,
+            decision_links=decision_links or None,
+        )
+        memory_paths.append(meeting_path)
+        memory_paths.extend(p for _, p in decision_writes)
+        console.print(
+            f"[green]memory[/] meeting={meeting_path.name} "
+            f"decisions={len(decision_writes)} root={memory_root}"
+        )
+    except (OSError, ValueError) as e:
+        err.print(f"[yellow]memory write skipped: {e}[/]")
+
     status = load_status(mdir)
     status.wrap.completed_at = datetime.fromisoformat(now_iso())
     status.wrap.diff_block_count = block_count
