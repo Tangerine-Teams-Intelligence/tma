@@ -1,0 +1,108 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================
+   Tangerine Intelligence — Design Tokens
+   These variables are LOCKED. T2 depends on the names below.
+   ============================================================ */
+:root {
+  --ti-orange-500: #CC5500;
+  --ti-orange-600: #B84900;
+  --ti-orange-700: #A03F00;
+  --ti-orange-50: #FFF4EA;
+  --ti-navy-900: #1A1A2E;
+  --ti-navy-700: #2A2A4E;
+  --ti-paper-50: #FFFBF5;
+  --ti-paper-100: #FAF6EE;
+  --ti-paper-200: #F0EAE0;
+  --ti-ink-900: #1C1917;
+  --ti-ink-700: #44403C;
+  --ti-ink-500: #78716C;
+  --ti-ink-300: #A8A29E;
+  --ti-border-faint: #E7E5E4;
+  --ti-border-default: #D6D3D1;
+
+  --ti-font-sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --ti-font-mono: "JetBrains Mono", Consolas, "SF Mono", monospace;
+  --ti-font-display: "EB Garamond", "Charter", Georgia, serif;
+
+  --ti-radius: 8px;
+  --ti-dur-fast: 150ms;
+  --ti-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* shadcn-style aliases on top of our tokens */
+  --background: var(--ti-paper-100);
+  --foreground: var(--ti-ink-900);
+  --primary: var(--ti-orange-500);
+  --primary-foreground: #ffffff;
+  --border: var(--ti-border-default);
+  --ring: var(--ti-orange-500);
+}
+
+[data-theme="dark"] {
+  --ti-paper-50: #14141C;
+  --ti-paper-100: #1A1A2E;
+  --ti-paper-200: #25253A;
+  --ti-ink-900: #FAF6EE;
+  --ti-ink-700: #C4C0B5;
+  --ti-ink-500: #8A8A95;
+  --ti-ink-300: #4A4A5E;
+  --ti-border-faint: #2A2A3A;
+  --ti-border-default: #353545;
+
+  --background: var(--ti-paper-100);
+  --foreground: var(--ti-ink-900);
+  --border: var(--ti-border-default);
+}
+
+* {
+  border-color: var(--border);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: var(--ti-font-sans);
+  font-feature-settings: "cv11", "ss01";
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Section labels — caps + tracking, mirrors tangerine-learn */
+.ti-section-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ti-ink-500);
+}
+
+/* Live pulse dot used by LV-0 + state pills */
+.ti-live-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #2D8659;
+  animation: ti-live-pulse 2s ease-in-out infinite;
+}
+
+@keyframes ti-live-pulse {
+  0%, 100% { transform: scale(0.9); opacity: 0.85; }
+  50%      { transform: scale(1.1); opacity: 1; }
+}
+
+/* Disable text selection on chrome elements; keep it on content */
+.ti-no-select {
+  -webkit-user-select: none;
+  user-select: none;
+}

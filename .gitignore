@@ -39,6 +39,15 @@ node_modules/
 bot/dist/
 bot/node_modules/
 
+# Tauri / desktop app build artifacts
+app/dist/
+app/src-tauri/target/
+app/src-tauri/gen/
+app/playwright-report/
+app/test-results/
+app/resources/python/
+app/resources/bot/
+
 # IDE
 .vscode/
 .idea/

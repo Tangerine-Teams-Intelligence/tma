@@ -8,6 +8,13 @@ A 45-minute meeting produces three decisions, two new facts, one action plan. Th
 
 ---
 
+## Two ways to use TMA
+
+- **Desktop app (recommended)**: Download Tangerine AI Teams Setup → install → setup wizard. (v1.5.0-beta coming)
+- **CLI**: `pip install tangerine-meeting-assistant` + `npm install` for the bot. See [SETUP.md](SETUP.md).
+
+---
+
 ## 60-second demo
 
 ```

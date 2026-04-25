@@ -157,4 +157,72 @@ def review_loop(
     )
 
 
-__all__ = ["review_loop", "ReviewOutcome"]
+def apply_decisions_dict(
+    meeting_dir: Path,
+    blocks,  # list[DiffBlock]
+    decisions: dict,
+) -> ReviewOutcome:
+    """Persist a batch of decisions from a JSON payload.
+
+    Used by `tmi review --json --apply-decisions <path>` (the desktop app
+    contract). Mirrors `review_loop` semantics: edits imply approve-with-edits;
+    skipped blocks are left pending. Status is read-modify-written.
+
+    Args:
+        decisions: ``{"approved": [1,3], "rejected": [2], "edited": {"4": "body"}}``.
+                   Edited keys may be int or str. Both list orderings are accepted.
+
+    Raises:
+        ValueError: if a referenced block id is not present in `blocks`.
+    """
+    block_ids = {b.id for b in blocks}
+
+    approved_in = list(decisions.get("approved", []) or [])
+    rejected_in = list(decisions.get("rejected", []) or [])
+    edited_in_raw = decisions.get("edited", {}) or {}
+    edited_in: dict[int, str] = {}
+    for k, v in edited_in_raw.items():
+        try:
+            bid = int(k)
+        except (TypeError, ValueError) as e:
+            raise ValueError(f"edited key {k!r} not an integer") from e
+        edited_in[bid] = str(v)
+
+    referenced = set(approved_in) | set(rejected_in) | set(edited_in.keys())
+    unknown = referenced - block_ids
+    if unknown:
+        raise ValueError(f"decisions reference unknown block ids: {sorted(unknown)}")
+
+    # An edited block is implicitly approved (matches interactive behavior).
+    approved_set = set(approved_in) | set(edited_in.keys())
+    rejected_set = set(rejected_in)
+    overlap = approved_set & rejected_set
+    if overlap:
+        raise ValueError(f"block ids both approved and rejected: {sorted(overlap)}")
+
+    # Merge with any prior decisions persisted in status.yaml (idempotent).
+    status = load_status(meeting_dir)
+    approved_set |= set(status.review.approved_block_ids)
+    rejected_set |= set(status.review.rejected_block_ids)
+    # Re-resolve overlap after merge (caller may have flipped a decision).
+    rejected_set -= approved_set
+
+    edited_ids = sorted(set(status.review.edited_block_ids) | set(edited_in.keys()))
+
+    status.review.approved_block_ids = sorted(approved_set)
+    status.review.rejected_block_ids = sorted(rejected_set)
+    status.review.edited_block_ids = edited_ids
+    save_status(meeting_dir, status)
+
+    skipped = sorted(block_ids - approved_set - rejected_set)
+
+    return ReviewOutcome(
+        approved=sorted(approved_set),
+        rejected=sorted(rejected_set),
+        edited=edited_in,
+        skipped=skipped,
+        quit_early=False,
+    )
+
+
+__all__ = ["review_loop", "ReviewOutcome", "apply_decisions_dict"]

@@ -1,0 +1,50 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Tangerine AI Teams",
+  "version": "1.5.0-beta.0",
+  "identifier": "ai.tangerineintelligence.meeting",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "devUrl": "http://localhost:1420",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Tangerine AI Teams",
+        "width": 1280,
+        "height": 840,
+        "minWidth": 1200,
+        "minHeight": 800,
+        "resizable": true,
+        "fullscreen": false,
+        "decorations": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/icon.png",
+      "icons/icon.ico"
+    ],
+    "category": "Productivity",
+    "shortDescription": "Your meeting becomes your team's AI context.",
+    "longDescription": "Tangerine AI Teams captures team voice meetings via Discord, transcribes via Whisper, and writes structured decisions back into your Claude Code project.",
+    "windows": {
+      "certificateThumbprint": null,
+      "digestAlgorithm": "sha256",
+      "timestampUrl": "",
+      "wix": null,
+      "nsis": {
+        "installMode": "perUser",
+        "displayLanguageSelector": false
+      }
+    }
+  }
+}

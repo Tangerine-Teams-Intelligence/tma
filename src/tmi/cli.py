@@ -588,6 +588,17 @@ def review(
     auto_approve_all: bool = typer.Option(
         False, "--auto-approve-all", help="Test hook (spec §12.5 step 7)."
     ),
+    json_out: bool = typer.Option(
+        False,
+        "--json",
+        help="Emit blocks as JSON to stdout (skip TUI). For app/agent consumers.",
+    ),
+    apply_decisions: Optional[Path] = typer.Option(
+        None,
+        "--apply-decisions",
+        help="With --json: read decisions from this JSON file and persist them. "
+        "Shape: {approved: [int], rejected: [int], edited: {id: 'body'}}.",
+    ),
     config: Optional[Path] = typer.Option(None, "--config"),
 ) -> None:
     cfg, _ = _resolve_config(config)
@@ -606,7 +617,7 @@ def review(
         raise typer.Exit(1)
 
     from .adapters.claude_code import ClaudeCodeAdapter
-    from .review import review_loop
+    from .review import apply_decisions_dict, review_loop
 
     adapter_cfg = cfg.adapter_by_name(m.target_adapter)
     adapter = ClaudeCodeAdapter(
@@ -623,6 +634,75 @@ def review(
     except ValueError as e:
         err.print(f"[red]knowledge-diff.md parse failed: {e}[/]")
         raise typer.Exit(1)
+
+    # JSON branch: machine-readable. Used by the desktop app (RV-0).
+    if json_out:
+        if apply_decisions is not None:
+            try:
+                with open(apply_decisions, encoding="utf-8") as fp:
+                    decisions = json.load(fp)
+            except (OSError, json.JSONDecodeError) as e:
+                err.print(f"[red]could not read --apply-decisions file: {e}[/]")
+                raise typer.Exit(1)
+            outcome = apply_decisions_dict(mdir, diff.blocks, decisions)
+            # Write any edits back into knowledge-diff.md (same logic as
+            # interactive path below).
+            if outcome.edited:
+                new_blocks = []
+                for b in diff.blocks:
+                    if b.id in outcome.edited:
+                        b = b.model_copy(update={"body": outcome.edited[b.id]})
+                    new_blocks.append(b)
+                from .adapters.diff_parser import serialize_diff
+
+                new_text = serialize_diff(diff.model_copy(update={"blocks": new_blocks}))
+                atomic_write_text(diff_path, new_text)
+            # Reload status; promote to reviewed if all decided.
+            status = load_status(mdir)
+            decided = set(outcome.approved) | set(outcome.rejected)
+            all_ids = {b.id for b in diff.blocks}
+            if decided >= all_ids:
+                try:
+                    transition(status, "reviewed")
+                    save_status(mdir, status)
+                except ValueError:
+                    pass
+
+        # Emit JSON snapshot
+        status = load_status(mdir)
+        approved = set(status.review.approved_block_ids)
+        rejected = set(status.review.rejected_block_ids)
+        edited = set(status.review.edited_block_ids)
+
+        def _block_status(bid: int) -> str:
+            if bid in edited:
+                return "edited"
+            if bid in approved:
+                return "approved"
+            if bid in rejected:
+                return "rejected"
+            return "pending"
+
+        payload = {
+            "meeting_id": mid,
+            "state": status.state,
+            "blocks": [
+                {
+                    "id": b.id,
+                    "target_file": b.target_file,
+                    "action": b.action,
+                    "insert_anchor": b.insert_anchor,
+                    "reason": b.reason,
+                    "transcript_refs": b.transcript_refs,
+                    "body": b.body,
+                    "status": _block_status(b.id),
+                }
+                for b in diff.blocks
+            ],
+        }
+        sys.stdout.write(json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
+        sys.stdout.flush()
+        raise typer.Exit(0)
 
     outcome = review_loop(mdir, diff.blocks, auto_approve_all=auto_approve_all)
 
@@ -652,11 +732,9 @@ def review(
             if b.id in outcome.edited:
                 b = b.model_copy(update={"body": outcome.edited[b.id]})
             new_blocks.append(b)
-        from .adapters.claude_code import write_diff_markdown
+        from .adapters.diff_parser import serialize_diff
 
-        new_text = write_diff_markdown(diff.model_copy(update={"blocks": new_blocks}))
-        from .utils import atomic_write_text
-
+        new_text = serialize_diff(diff.model_copy(update={"blocks": new_blocks}))
         atomic_write_text(diff_path, new_text)
         console.print(f"[green]rewrote knowledge-diff.md with {len(outcome.edited)} edit(s)[/]")
 

@@ -1,0 +1,117 @@
+# Tangerine AI Teams — Desktop App
+
+Tauri 2.x desktop shell for the Tangerine Meeting Assistant CLI. Wraps the
+Python `tmi` CLI and Node Discord bot in a native Windows app with a setup
+wizard. Spec lives in `../APP-INTERFACES.md`.
+
+## Status
+
+- T1 (this PR) — shell + setup wizard SW-0..SW-5 + theming + Zustand store + Vitest/Playwright scaffold
+- T2 — meetings list, detail, live, review, apply, settings (placeholders here)
+- T3 — Rust IPC commands (in `src-tauri/src/commands/*.rs`; partially landed)
+
+## Prerequisites
+
+- Node 20.x
+- Rust 1.78+ (with `rustup default stable`)
+- Windows 11 (primary target). macOS / Linux dev builds work but unsigned.
+- WebView2 Runtime (preinstalled on Win11; auto-installed on Win10 by Tauri).
+
+## First-time setup
+
+```bash
+cd app
+npm install
+```
+
+The Rust crate fetches its own dependencies on first `tauri dev` build.
+
+## Run dev mode
+
+```bash
+npm run tauri:dev
+```
+
+This launches the native app window with the React UI hot-reloading from
+`http://localhost:1420`. The setup wizard appears on first launch (or any time
+`~/.tmi/config.yaml` is missing). On subsequent launches, the home page
+renders.
+
+## Web-only iteration (no Rust rebuild)
+
+```bash
+npm run dev
+```
+
+Opens the React UI in your browser at `http://localhost:1420`. Tauri commands
+fall back to mock implementations (see `src/lib/tauri.ts`), so the wizard
+walks end-to-end without a working Rust backend. Useful for UI polish and
+component-level testing.
+
+## Tests
+
+```bash
+npm test          # vitest unit tests (store, discord helpers, token regex)
+npm run test:e2e  # playwright smoke (scaffold; T2 fills the real flows)
+npm run lint      # tsc --noEmit
+```
+
+## Build production installer
+
+```bash
+npm run tauri:build
+```
+
+Produces `src-tauri/target/release/bundle/nsis/Tangerine AI Teams Setup.exe`.
+T4 owns final installer polish + Python/Node bundling.
+
+## Directory map
+
+```
+app/
+├── src/
+│   ├── App.tsx              top-level router; gates on config presence
+│   ├── components/
+│   │   ├── ui/              shadcn-style primitives (button, input, card, ...)
+│   │   ├── layout/          AppShell + Sidebar
+│   │   └── wizard/          SW0..SW5 + WizardShell
+│   ├── routes/              setup.tsx, home.tsx
+│   ├── pages/               placeholder pages owned by T2
+│   └── lib/
+│       ├── tauri.ts         typed `invoke()` wrappers + mocks
+│       ├── store.ts         Zustand slices: ui, wizard, config
+│       ├── discord.ts       SW-1.3 polling constants + token helpers
+│       └── utils.ts
+├── src-tauri/
+│   ├── src/
+│   │   ├── main.rs          T1 — window glue, shell-only commands
+│   │   ├── lib.rs           T1 — link surface for tests + binary
+│   │   └── commands/        T3 — IPC commands (parallel work)
+│   ├── tauri.conf.json      product metadata, NSIS config
+│   ├── Cargo.toml           Rust deps (T3-managed)
+│   └── icons/               placeholder; T4 replaces with brand assets
+├── tests/                   vitest setup + unit tests
+└── e2e/                     playwright scaffold
+```
+
+## Cross-team contracts owned here
+
+CSS variables (locked — see `src/index.css`):
+- `--ti-orange-{50,500,600,700}`, `--ti-navy-{700,900}`, `--ti-paper-{50,100,200}`,
+  `--ti-ink-{300,500,700,900}`, `--ti-border-{faint,default}`,
+  `--ti-font-{sans,mono,display}`, `--ti-radius`, `--ti-dur-fast`, `--ti-ease-out`.
+
+Zustand slice names (locked — see `src/lib/store.ts`):
+- `useStore.getState().ui.{theme, sidebarCollapsed, toasts, ...}`
+- `useStore.getState().wizard.{step, collected, next, back, setField, reset}`
+- `useStore.getState().config.{yaml, loaded, setYaml, markLoaded}`
+
+Tauri command names (per APP-INTERFACES.md §4 — T3 owns implementations):
+- Process: `run_tmi`, `run_tmi_send_stdin`, `run_tmi_kill`, `start_bot`, `stop_bot`, `bot_status`
+- FS: `read_meeting`, `read_meeting_file`, `list_meetings`, `tail_file`, `untail_file`, `watch_meeting`, `unwatch_meeting`
+- Config: `get_config`, `set_config`, `get_secret`, `set_secret`
+- System: `open_external`, `open_in_editor`, `show_in_folder`, `system_notify`, `export_debug_bundle`, `check_updates`
+- Wizard: `detect_claude_cli`, `validate_target_repo`, `validate_whisper_key`, `poll_discord_bot_presence`
+
+`src/lib/tauri.ts` exports a typed wrapper for every name above. T2 should
+import from there rather than calling `invoke()` directly.
