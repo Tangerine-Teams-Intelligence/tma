@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Discussions
+    url: https://github.com/Tangerine-Intelligence/tangerine-meeting-live/discussions
+    about: Open-ended questions, ideas, show & tell.
+  - name: Spec questions (INTERFACES.md)
+    url: https://github.com/Tangerine-Intelligence/tangerine-meeting-live/discussions/categories/spec
+    about: Anything about the cross-component contract.

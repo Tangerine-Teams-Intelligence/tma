@@ -2,85 +2,114 @@
 
 > Your meeting → your team's AI context, automatically.
 
-Every other meeting tool produces notes for humans. We produce **context for AI agents**. When your team meets, decisions and facts flow directly into your Claude Code `CLAUDE.md`, your `knowledge/` repo, your `session-state.md` — not into a Notion page nobody reads.
+A 45-minute meeting produces three decisions, two new facts, one action plan. Then the CEO opens Claude Code and re-types it all from memory. TMA closes that loop: decisions land in `CLAUDE.md`, `knowledge/`, `session-state.md` as a reviewed diff, not a Notion page.
 
-**Status**: v1 in development. See [PLAN.md](PLAN.md) for the full spec and roadmap.
+**Status**: v1, Apache-2.0. See [PLAN.md](PLAN.md) for roadmap, [INTERFACES.md](INTERFACES.md) for the full spec, [SETUP.md](SETUP.md) to install.
 
 ---
 
-## The problem
-
-Your team just had a 45-minute meeting. Three people argued through a decision, agreed on an action plan, and identified two new constraints. Now the CEO opens his Claude Code session to act on it — and has to re-explain everything from memory. Information loss at every step:
-
-- Human memory → voice → AI: lossy
-- AI summary → human → AI: double-lossy
-- Next week the team forgets who decided what, why
-
-We fix this by treating your team's AI memory as the real destination, not the recap email.
-
-## How it works
+## 60-second demo
 
 ```
-  Pre-meeting             Meeting                 Post-meeting
-  ───────────             ───────                 ────────────
-  tmi prep                tmi start                tmi wrap
-  │                       │                        │
-  Each member             Discord bot joins        Observer synthesizes
-  captures intent         voice channel,           transcript + intents
-  (structured prompt)     streams to Whisper       + ground truth
-  │                       │                        │
-  intents/*.md            transcript.md            summary.md +
-                                                   knowledge-diff.md
-                                                   │
-                                                   tmi review → tmi apply
-                                                   │
-                                                   Target repo's
-                                                   CLAUDE.md / knowledge/
-                                                   gets updated
+$ tmi new "David sync"
+/Users/dz/tangerine-meetings/meetings/2026-04-24-david-sync
+
+$ tmi prep
+intent locked for daizhe -> intents/daizhe.md
+
+$ tmi start
+Status  live · meeting=2026-04-24-david-sync
+Tail    tail -f .../transcript.md
+Flags   tail -f .../observations.md
+Stop    tmi wrap 2026-04-24-david-sync
+
+# [meeting happens in Discord. bot transcribes. observer flags drift silently.]
+
+$ tmi wrap
+wrapped  summary=summary.md diff_blocks=4
+
+$ tmi review
+Block 1/4  ·  knowledge/session-state.md  ·  append
+Reason: v1 scope decision
+Refs: L47, L52, L58
+────────────────────────────────────────────
++ ### 2026-04-24 — David sync
++ - v1 scope 锁定为 Discord + Claude Code
+────────────────────────────────────────────
+[a]pprove  [r]eject  [e]dit  [s]kip  [q]uit
+> a
+...
+all blocks decided -> state=reviewed
+
+$ tmi apply
+applied 3 file(s) commit=4617800
+Reminder: cd "<target_repo>" && git push
 ```
 
-Three moments where we differ from Granola / Otter / Zoom AI Companion:
+---
 
-1. **Before**: we capture each member's intent privately and structurally, so the post-meeting synthesis can reason about *who wanted what and whether they got it*.
-2. **During**: the AI observer is **silent by default**. It's not a note-taker, not a cheerleader. It flags only contradictions with your ground truth or agenda drift.
-3. **After**: the output isn't a summary page — it's a **diff against your team's AI memory**, reviewed like a code PR, committed into your repos.
+## How it differs
 
-## v1 Scope
-
-| | v1 | Later |
+| | TMA | Granola / Otter / Zoom AI |
 |---|---|---|
-| Input | Discord voice | Zoom, Lark, Meet, Teams |
-| Output | Claude Code (CLAUDE.md, knowledge/, session-state.md) | Cursor, Aider, Notion, Linear |
-| UI | CLI | Web UI (v2), desktop app (v2.5) |
-| Users | Tangerine team (3 people) | Open-source / paid (v3+) |
+| Primary consumer | AI agent in your next session | Human reading later |
+| Output | Diff against your knowledge files | Notes page |
+| Pre-meeting | Structured per-member intent capture | Nothing |
 
-See [PLAN.md](PLAN.md) for the full roadmap, architecture, data model, and milestone breakdown.
+Not a competitor to Granola — different customer. Run both if you want human notes AND AI context.
 
-## Why this isn't Granola / Otter
+## Three differentiators
 
-| | Tangerine Meeting Assistant | Granola / Otter / Zoom |
-|---|---|---|
-| Primary consumer | AI agent in a different session | Human reading later |
-| Output format | Diff against knowledge files | Notes page |
-| Pre-meeting | Structured intent capture per member | Nothing |
-| During | Silent observer, flags only | Live note-taker |
-| Moat | Opinionated output adapters per AI tool | Prettier summary |
+1. **Vendor-less output.** No hosted dashboard. Output is a git commit to *your* repo. You own the bytes.
+2. **Consumer inversion.** Summary is for the LLM you'll talk to tomorrow, not the teammate who missed the call.
+3. **Output as diff.** Every change is a reviewable block with transcript line references. No "trust the AI" — approve/reject per block.
 
-They're not competitors — they're complements. You can run Granola for human-readable meeting notes and TMA for AI-readable context. They target different people.
+## Quick start
 
-## Getting started
+Assumes SETUP.md is done (Discord bot created, API keys set, deps installed).
 
-v1 is not yet installable. This repo currently contains:
+```bash
+tmi init                               # one-time, writes ~/.tmi/config.yaml
+tmi new "weekly standup"               # creates meeting dir
+tmi prep                               # each member, separately
+tmi start                              # joins Discord voice
+# ... meeting happens ...
+tmi wrap && tmi review && tmi apply    # synthesize, approve, commit
+```
 
-- [PLAN.md](PLAN.md) — the complete v1 spec (read this first)
-- [legacy/](legacy/) — the original WASAPI-based proof of concept (deprecated, preserved for reference)
+See [SETUP.md](SETUP.md) for the full walkthrough (Discord bot creation, API keys, first meeting). ~15 minutes from zero.
 
-Week 1 implementation starts after the plan is signed off.
+## Architecture
+
+Three components, file-based IPC, no server.
+
+```
+tmi (Python CLI) ──► meetings/<id>/ ◄── bot (Node, Discord + Whisper)
+       │
+       ├──spawns──► observer (claude CLI subprocess)
+       │
+       └──applies──► target_repo/CLAUDE.md, knowledge/, session-state.md
+```
+
+- **CLI**: Python 3.11 + Typer. Meeting lifecycle, review, apply.
+- **Bot**: Node 20 + discord.js v14. Voice capture, Whisper streaming, transcript writes.
+- **Observer**: `claude` CLI headless. Prep / observe / wrap via JSON envelopes.
+- **Adapter**: pure Python. Reads target repo, parses diff, applies blocks, commits.
+
+Git is the database. Every artifact is a markdown or YAML file in a repo you control.
+
+## Docs
+
+- [SETUP.md](SETUP.md) — install + first meeting in <15 min
+- [PLAN.md](PLAN.md) — product spec + 4-week v1 roadmap
+- [INTERFACES.md](INTERFACES.md) — locked cross-component contract
+- [CONTRIBUTING.md](CONTRIBUTING.md) — dev setup, commit format, PR process
+- [SECURITY.md](SECURITY.md) — responsible disclosure
 
 ## License
 
-[Apache License 2.0](LICENSE). Copyright 2026 Tangerine Intelligence Inc.
+[Apache-2.0](LICENSE). Copyright 2026 Tangerine Intelligence Inc.
 
 ## Owner
 
-Daizhe Zou — Tangerine Intelligence CEO
+Daizhe Zou — daizhe@berkeley.edu. Side project. Best-effort response on issues.

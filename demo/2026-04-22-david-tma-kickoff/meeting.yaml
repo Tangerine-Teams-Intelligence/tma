@@ -1,0 +1,17 @@
+schema_version: 1
+id: 2026-04-22-david-tma-kickoff
+title: David sync — TMA kickoff
+scheduled_at: 2026-04-22T19:00:00+08:00
+participants:
+  - alias: daizhe
+    display_name: Daizhe Zou
+    discord_id: "1145000000000000001"
+  - alias: hongyu
+    display_name: Hongyu Xu
+    discord_id: "1145000000000000002"
+  - alias: advisor
+    display_name: Advisor
+    discord_id: "1145000000000000003"
+target_adapter: tangerine-main
+created_at: 2026-04-22T18:30:00+08:00
+created_by: daizhe

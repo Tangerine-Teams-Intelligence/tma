@@ -1,0 +1,49 @@
+schema_version: 1
+state: merged
+state_updated_at: '2026-04-22T19:14:32+08:00'
+state_history:
+  - state: created
+    at: '2026-04-22T18:30:00+08:00'
+  - state: prepped
+    at: '2026-04-22T18:51:14+08:00'
+  - state: live
+    at: '2026-04-22T19:00:54+08:00'
+  - state: ended
+    at: '2026-04-22T19:07:18+08:00'
+  - state: wrapped
+    at: '2026-04-22T19:08:14+08:00'
+  - state: reviewed
+    at: '2026-04-22T19:11:02+08:00'
+  - state: merged
+    at: '2026-04-22T19:14:32+08:00'
+intents:
+  daizhe:
+    ready: true
+    locked_at: '2026-04-22T18:51:14+08:00'
+  hongyu:
+    ready: true
+    locked_at: '2026-04-22T18:58:40+08:00'
+  advisor:
+    ready: true
+    locked_at: '2026-04-22T18:59:50+08:00'
+bot:
+  pid: null
+  started_at: '2026-04-22T19:00:54+08:00'
+  voice_channel_id: '1145000111111111111'
+  reconnect_count: 0
+  lines_written: 24
+observer:
+  pid: null
+  mode: ended
+  last_poll_at: '2026-04-22T19:07:00+08:00'
+wrap:
+  completed_at: '2026-04-22T19:08:14+08:00'
+  diff_block_count: 4
+review:
+  approved_block_ids: [1, 2, 3, 4]
+  rejected_block_ids: []
+  edited_block_ids: []
+apply:
+  target_repo: '../target-knowledge-repo-snapshot/'
+  commit_sha: '4617800abc1234567890abcdef0123456789abcd'
+  applied_at: '2026-04-22T19:14:32+08:00'
