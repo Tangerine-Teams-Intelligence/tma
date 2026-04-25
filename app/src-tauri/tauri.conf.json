@@ -46,12 +46,10 @@
       "timestampUrl": "",
       "wix": null,
       "nsis": {
-        "installerIcon": "icons/icon.ico",
         "installMode": "currentUser",
         "languages": ["English", "SimpChinese"],
         "displayLanguageSelector": false,
-        "startMenuFolder": "Tangerine",
-        "shortcutName": "Tangerine AI Teams"
+        "startMenuFolder": "Tangerine"
       }
     }
   }
