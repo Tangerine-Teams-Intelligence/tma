@@ -1,50 +1,57 @@
+import { useEffect } from "react";
 import { Outlet } from "react-router-dom";
-import { Moon, Sun, PanelLeft } from "lucide-react";
 import { Sidebar } from "./Sidebar";
-import { Button } from "@/components/ui/button";
+import { CommandPalette } from "@/components/CommandPalette";
 import { useStore } from "@/lib/store";
 
+/**
+ * Always-visible shell. Sidebar on the left, main pane scrolls. The Cmd+K
+ * palette is mounted globally so it works from any route.
+ */
 export function AppShell() {
-  const theme = useStore((s) => s.ui.theme);
-  const toggleTheme = useStore((s) => s.ui.toggleTheme);
-  const toggleSidebar = useStore((s) => s.ui.toggleSidebar);
   const toasts = useStore((s) => s.ui.toasts);
   const dismissToast = useStore((s) => s.ui.dismissToast);
+  const paletteOpen = useStore((s) => s.ui.paletteOpen);
+  const togglePalette = useStore((s) => s.ui.togglePalette);
+  const setPalette = useStore((s) => s.ui.setPalette);
+  const localOnly = useStore((s) => s.ui.localOnly);
+
+  // Cmd+K / Ctrl+K → toggle palette.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const isCmdK = (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k";
+      if (isCmdK) {
+        e.preventDefault();
+        togglePalette();
+      }
+      if (e.key === "Escape" && paletteOpen) {
+        setPalette(false);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [togglePalette, setPalette, paletteOpen]);
 
   return (
     <div className="flex h-full w-full">
       <Sidebar />
 
-      <div className="flex flex-1 flex-col">
-        <header className="ti-no-select flex h-14 items-center justify-between border-b border-[var(--ti-border-faint)] bg-[var(--ti-paper-100)] px-4">
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="icon" onClick={toggleSidebar} aria-label="Toggle sidebar">
-              <PanelLeft size={18} />
-            </Button>
-            <span className="text-sm text-[var(--ti-ink-500)]">Tangerine AI Teams</span>
+      <div className="flex min-w-0 flex-1 flex-col">
+        {localOnly && (
+          <div className="ti-no-select flex h-7 items-center justify-center border-b border-[var(--ti-orange-500)]/30 bg-[var(--ti-orange-50)] px-4 text-[11px] font-medium text-[var(--ti-orange-700)]">
+            Local only mode — sign in to sync across devices.
           </div>
-
-          <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={toggleTheme}
-              aria-label="Toggle theme"
-              title={theme === "light" ? "Switch to dark" : "Switch to light"}
-            >
-              {theme === "light" ? <Moon size={18} /> : <Sun size={18} />}
-            </Button>
-          </div>
-        </header>
-
+        )}
         <main className="flex-1 overflow-auto">
           <Outlet />
         </main>
       </div>
 
+      <CommandPalette open={paletteOpen} onClose={() => setPalette(false)} />
+
       {/* Toast layer */}
       {toasts.length > 0 && (
-        <div className="pointer-events-none fixed bottom-4 right-4 flex flex-col gap-2">
+        <div className="pointer-events-none fixed bottom-4 right-4 z-50 flex flex-col gap-2">
           {toasts.map((t) => (
             <div
               key={t.id}
