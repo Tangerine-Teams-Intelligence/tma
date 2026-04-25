@@ -43,30 +43,21 @@ if [[ -f "$PY_OUT/tmi-frozen" ]]; then
   mv "$PY_OUT/tmi-frozen" "$PY_OUT/python"
 fi
 
-# 2. Frozen bot via pkg.
+# 2. Bot directory bundle (Path D — pkg dropped, runs on user Node 20+).
 BOT_OUT="$APP_DIR/resources/bot"
 rm -rf "$BOT_OUT"
 mkdir -p "$BOT_OUT"
 
-if ! command -v pkg >/dev/null 2>&1; then
-  echo "pkg missing — npm install -g pkg" >&2
-  exit 1
-fi
-
 pushd "$BOT_DIR" >/dev/null
-[[ -d node_modules ]] || npm install
+[[ -d node_modules ]] || npm ci
 npm run build
+cp -R "$BOT_DIR/dist" "$BOT_OUT/dist"
 
-case "$OSTYPE" in
-  darwin*) PKG_TARGET="node20-macos-x64" ; OUTBIN="$BOT_OUT/tangerine-meeting-bot" ;;
-  linux*)  PKG_TARGET="node20-linux-x64" ; OUTBIN="$BOT_OUT/tangerine-meeting-bot" ;;
-  *)       PKG_TARGET="node20-win-x64"   ; OUTBIN="$BOT_OUT/tangerine-meeting-bot.exe" ;;
-esac
-
-pkg "$BOT_DIR/dist/index.js" \
-  --targets "$PKG_TARGET" \
-  --output "$OUTBIN" \
-  --compress GZip
+# Reinstall production-only for a smaller bundle, copy node_modules, restore.
+npm ci --omit=dev
+cp -R "$BOT_DIR/node_modules" "$BOT_OUT/node_modules"
+cp "$BOT_DIR/package.json" "$BOT_OUT/package.json"
+npm ci
 popd >/dev/null
 
 # 3. Tauri.

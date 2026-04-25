@@ -1,20 +1,32 @@
-# Integration test: frozen Discord bot binary launches and responds to --help.
+# Integration test: bot directory bundle is well-formed and `node dist/index.js`
+# launches successfully. (Path D — pkg replaced with directory bundle, bot runs
+# on user-supplied Node 20+; see scripts/build_bot.ps1.)
 
 $ErrorActionPreference = "Stop"
 $RepoRoot = (Resolve-Path "$PSScriptRoot\..\..\..").Path
-$Exe = Join-Path $RepoRoot "app\resources\bot\tangerine-meeting-bot.exe"
+$BotDir   = Join-Path $RepoRoot "app\resources\bot"
+$Entry    = Join-Path $BotDir "dist\index.js"
+$NodeMods = Join-Path $BotDir "node_modules"
+$PkgJson  = Join-Path $BotDir "package.json"
 
-if (-not (Test-Path $Exe)) {
-  Write-Error "Frozen bot missing at $Exe — run scripts\build_bot.ps1 first."
+foreach ($p in @($Entry, $NodeMods, $PkgJson)) {
+  if (-not (Test-Path $p)) {
+    Write-Error "Bot bundle missing required path: $p — run scripts\build_bot.ps1 first."
+    exit 1
+  }
+}
+
+if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
+  Write-Error "node not found on PATH (Path D requires Node 20+)."
   exit 1
 }
 
-$out = & $Exe --help 2>&1
+$out = & node $Entry --help 2>&1
 $exit = $LASTEXITCODE
 Write-Host "Exit: $exit"
 Write-Host ($out | Out-String)
 
-# pkg-bundled CLIs commonly exit 0 or 1 on --help depending on argv parser.
+# Bot CLIs commonly exit 0 or 1 on --help depending on argv parser.
 if ($exit -gt 1) {
   Write-Error "Bot --help returned unexpected exit: $exit"
   exit $exit

@@ -1,132 +1,94 @@
-# Build the frozen Discord bot single-file executable.
-# Output: app\resources\bot\tangerine-meeting-bot.exe  (via `pkg`)
+# build_bot.ps1 — Path D: directory bundle, no pkg.
 #
-# Same non-ASCII-path mitigation as build_python.ps1: pkg writes its temp
-# snapshot under %LOCALAPPDATA%\pkg-cache, which is fine, but the input
-# project path can confuse pkg's path-string handling on Windows. We resolve
-# the bot project through a short symlink in $env:TEMP if the repo path
-# contains characters outside [A-Za-z0-9_\-]. That's belt-and-braces; remove
-# once pkg ships a fix.
-#
-# Requires: Node 20+, npm, pkg (`npm install -g pkg`).
+# pkg@5.8.1 is unmaintained (since 2023-08) and does not support Node 20+. We
+# instead ship the compiled bot as a Tauri resource directory:
+#   resources/bot/dist/index.js
+#   resources/bot/node_modules/...
+#   resources/bot/package.json
+# At runtime, the Rust runner spawns `node dist/index.js` from this dir, using
+# the user's existing Node 20+ on PATH (same prerequisite model as the user's
+# existing Claude Code subscription — we don't bundle either).
 
 $ErrorActionPreference = "Stop"
-$RepoRoot = (Resolve-Path "$PSScriptRoot\..\..").Path
-$AppDir   = Join-Path $RepoRoot "app"
-$BotDir   = Join-Path $RepoRoot "bot"
-$OutDir   = Join-Path $AppDir "resources\bot"
-$OutExe   = Join-Path $OutDir "tangerine-meeting-bot.exe"
 
-Write-Host "===== build_bot.ps1 ====="
-Write-Host "Repo root : $RepoRoot"
-Write-Host "Bot dir   : $BotDir"
-Write-Host "Out exe   : $OutExe"
+$RepoRoot        = (Resolve-Path "$PSScriptRoot\..\..").Path
+$BotDir          = Join-Path $RepoRoot "bot"
+$BotResourceDir  = Join-Path $RepoRoot "app\resources\bot"
 
-# 1. Preflight.
+Write-Host "===== build_bot.ps1 (Path D - directory bundle) ====="
+Write-Host "Repo root  : $RepoRoot"
+Write-Host "Bot dir    : $BotDir"
+Write-Host "Out dir    : $BotResourceDir"
+
+# 1. Preflight
 if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
-  Write-Error "node not found on PATH"
-  exit 1
+    throw "node not found on PATH"
 }
-# `Get-Command pkg` misses .cmd shims under %APPDATA%\npm in PS 5.1, so probe
-# explicit candidates first.
-$pkgCmd = $null
-$candidates = @(
-  (Get-Command pkg.cmd -ErrorAction SilentlyContinue),
-  (Get-Command pkg     -ErrorAction SilentlyContinue)
-)
-foreach ($c in $candidates) {
-  if ($c) { $pkgCmd = $c; break }
-}
-if (-not $pkgCmd) {
-  $explicit = Join-Path $env:APPDATA "npm\pkg.cmd"
-  if (Test-Path $explicit) { $pkgCmd = @{ Source = $explicit } }
-}
-if (-not $pkgCmd) {
-  Write-Error "pkg not found. Install with: npm install -g pkg"
-  exit 1
+if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
+    throw "npm not found on PATH"
 }
 
-# 2. Compile TypeScript first (pkg consumes JS).
+# 2. TypeScript build (assumes deps already installed in CI; install if not)
 Push-Location $BotDir
 try {
-  if (-not (Test-Path "node_modules")) {
-    Write-Host "Installing bot dependencies..."
-    npm install
-    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-  }
-  Write-Host "Building TypeScript..."
-  npm run build
-  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    if (-not (Test-Path "node_modules")) {
+        Write-Host "Installing bot dependencies (initial)..."
+        npm ci
+        if ($LASTEXITCODE -ne 0) { throw "npm ci failed" }
+    }
+    Write-Host "Building TypeScript..."
+    npm run build
+    if ($LASTEXITCODE -ne 0) { throw "npm run build failed" }
 }
 finally {
-  Pop-Location
+    Pop-Location
 }
 
-# 3. Optional: re-mount via short symlink if path contains spaces or non-ASCII.
-$needsLink = $BotDir -match '[^A-Za-z0-9_\-\\:]'
-$EffectiveBotDir = $BotDir
-if ($needsLink) {
-  $LinkRoot = Join-Path $env:TEMP "tmi-bot-link"
-  Remove-Item -Recurse -Force $LinkRoot -ErrorAction SilentlyContinue | Out-Null
-  Write-Host "Path contains non-ASCII or space; staging via $LinkRoot"
-  # Use a directory junction (works without admin).
-  cmd.exe /c "mklink /J `"$LinkRoot`" `"$BotDir`"" | Out-Null
-  if ($LASTEXITCODE -ne 0) {
-    Write-Warning "mklink failed; falling back to robocopy stage."
-    New-Item -ItemType Directory -Path $LinkRoot | Out-Null
-    # Direct & invocation (Start-Process drops quoting around spaces — see
-    # build_python.ps1 for the full bug story).
-    & robocopy.exe $BotDir $LinkRoot /E /XD node_modules /NFL /NDL /NJH /NJS /NP | Out-Null
-    & robocopy.exe (Join-Path $BotDir "node_modules") (Join-Path $LinkRoot "node_modules") /E /NFL /NDL /NJH /NJS /NP | Out-Null
-  }
-  $EffectiveBotDir = $LinkRoot
+# 3. Clean + recreate output dir
+if (Test-Path $BotResourceDir) {
+    Remove-Item $BotResourceDir -Recurse -Force
 }
+New-Item -ItemType Directory -Path $BotResourceDir -Force | Out-Null
 
-# 4. Run pkg.
-if (Test-Path $OutDir) { Remove-Item -Recurse -Force $OutDir }
-New-Item -ItemType Directory -Path $OutDir | Out-Null
+# 4. Copy compiled JS
+Copy-Item -Path "$BotDir\dist" -Destination "$BotResourceDir\dist" -Recurse -Force
 
-Push-Location $EffectiveBotDir
+# 5. Reinstall as production-only to keep bundle smaller, then copy node_modules
+Push-Location $BotDir
 try {
-  $entry = Join-Path $EffectiveBotDir "dist\index.js"
-  if (-not (Test-Path $entry)) {
-    Write-Error "Bot entry missing: $entry  (did `npm run build` succeed?)"
-    exit 2
-  }
-  $pkgArgs = @(
-    $entry,
-    "--targets", "node20-win-x64",
-    "--output", $OutExe,
-    "--compress", "GZip"
-  )
-  Write-Host "Running: pkg $($pkgArgs -join ' ')"
-  & $pkgCmd.Source @pkgArgs
-  if ($LASTEXITCODE -ne 0) {
-    Write-Error "pkg failed with $LASTEXITCODE"
-    exit $LASTEXITCODE
-  }
+    Write-Host "Installing production-only deps for bundle..."
+    npm ci --omit=dev
+    if ($LASTEXITCODE -ne 0) { throw "npm ci --omit=dev failed" }
 }
 finally {
-  Pop-Location
+    Pop-Location
 }
 
-if (-not (Test-Path $OutExe)) {
-  Write-Error "Expected bot exe missing at $OutExe"
-  exit 3
+Copy-Item -Path "$BotDir\node_modules" -Destination "$BotResourceDir\node_modules" -Recurse -Force
+
+# 6. Copy package.json so Node can resolve modules at runtime
+Copy-Item -Path "$BotDir\package.json" -Destination "$BotResourceDir\package.json" -Force
+
+# 7. Restore dev deps for any subsequent CI steps (vitest, etc.)
+Push-Location $BotDir
+try {
+    Write-Host "Restoring full deps (dev included) for downstream CI steps..."
+    npm ci
+    if ($LASTEXITCODE -ne 0) { throw "npm ci (restore dev deps) failed" }
+}
+finally {
+    Pop-Location
 }
 
-# 5. Smoke test.
-Write-Host "Smoke testing $OutExe ..."
-$smokeOutput = & $OutExe "--help" 2>&1
-$exit = $LASTEXITCODE
-if ($exit -ne 0 -and $exit -ne 1) {
-  # Many CLIs return non-zero on --help; only flag if it crashed hard.
-  Write-Warning "Smoke test unusual exit: $exit"
-  Write-Warning ($smokeOutput | Out-String)
-} else {
-  Write-Host "Smoke test OK (exit $exit)."
-}
+# 8. Verify bundle
+$entryPath = Join-Path $BotResourceDir "dist\index.js"
+if (-not (Test-Path $entryPath)) { throw "Missing entry: $entryPath" }
+$nmPath = Join-Path $BotResourceDir "node_modules"
+if (-not (Test-Path $nmPath)) { throw "Missing node_modules: $nmPath" }
+$pkgPath = Join-Path $BotResourceDir "package.json"
+if (-not (Test-Path $pkgPath)) { throw "Missing package.json: $pkgPath" }
 
-$sizeMB = [math]::Round((Get-Item $OutExe).Length / 1MB, 1)
-Write-Host "Bot bundle size: $sizeMB MB"
+$bundleSize = (Get-ChildItem $BotResourceDir -Recurse -File | Measure-Object -Property Length -Sum).Sum
+Write-Host ("Bundle size: {0} MB" -f ([math]::Round($bundleSize / 1MB, 2)))
+Write-Host "Bot bundle ready (directory-mode, requires user Node 20+ at runtime)"
 Write-Host "===== build_bot.ps1 done ====="

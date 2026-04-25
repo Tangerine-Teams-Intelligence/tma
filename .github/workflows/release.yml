@@ -72,11 +72,7 @@ jobs:
           npm ci
           npm run build
 
-      - name: Install pkg globally
-        shell: pwsh
-        run: npm install -g pkg
-
-      - name: Build frozen bot (pkg)
+      - name: Build bot bundle (directory-mode)
         shell: pwsh
         working-directory: app/scripts
         run: |
@@ -85,8 +81,16 @@ jobs:
       - name: Verify bot bundle
         shell: pwsh
         run: |
-          if (-not (Test-Path "app/resources/bot/tangerine-meeting-bot.exe")) {
-            Write-Error "Bot bundle missing"
+          if (-not (Test-Path "app/resources/bot/dist/index.js")) {
+            Write-Error "Bot bundle missing: dist/index.js"
+            exit 1
+          }
+          if (-not (Test-Path "app/resources/bot/node_modules")) {
+            Write-Error "Bot bundle missing: node_modules"
+            exit 1
+          }
+          if (-not (Test-Path "app/resources/bot/package.json")) {
+            Write-Error "Bot bundle missing: package.json"
             exit 1
           }
           Get-ChildItem app/resources/bot

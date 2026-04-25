@@ -24,6 +24,10 @@ export interface WizardData {
   whisperKey?: string;
   claudeCliPath?: string;
   claudeCliVersion?: string;
+  /** Path D — Node 20+ runtime is a prerequisite (we don't bundle it). */
+  nodeAvailable?: boolean;
+  nodeVersion?: string;
+  nodePath?: string;
   targetRepo?: string;
   team?: TeamMember[];
   meetingsRepo?: string;

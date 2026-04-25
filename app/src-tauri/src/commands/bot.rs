@@ -15,6 +15,32 @@ use tauri::{AppHandle, Runtime, State};
 use super::runner::{self, KillSignal};
 use super::{AppError, AppState};
 
+/// Resolve `node` on the user's PATH. Returns a clear error if missing — the
+/// wizard's preflight (SW3) is supposed to catch this earlier, so by the time
+/// we get here it should always succeed.
+fn resolve_node_on_path() -> Result<PathBuf, AppError> {
+    let path_var = std::env::var_os("PATH").ok_or_else(|| {
+        AppError::external("node_missing", "PATH environment variable not set")
+    })?;
+    let exts: Vec<&str> = if cfg!(windows) {
+        vec!["", ".exe", ".cmd", ".bat"]
+    } else {
+        vec![""]
+    };
+    for dir in std::env::split_paths(&path_var) {
+        for ext in &exts {
+            let p = dir.join(format!("node{}", ext));
+            if p.is_file() {
+                return Ok(p);
+            }
+        }
+    }
+    Err(AppError::external(
+        "node_missing",
+        "Node.js 20+ not found on PATH. Install from https://nodejs.org/ then restart the app.",
+    ))
+}
+
 /// Map `meeting_id` → in-flight bot run.
 pub type BotTable = HashMap<String, BotEntry>;
 
@@ -48,11 +74,16 @@ pub async fn start_bot<R: Runtime>(
         return Err(AppError::config(
             "bot_not_bundled",
             format!(
-                "frozen bot missing at {:?} — run scripts/build_bot.ps1 then rebuild the app",
-                state.paths.bot_exe
+                "bot bundle missing at {:?} — run scripts/build_bot.ps1 then rebuild the app",
+                state.paths.bot_dir
             ),
         ));
     }
+
+    // Path D: spawn via user's Node 20+ runtime. We do not bundle Node;
+    // SW3 detects it during setup, mirroring the existing "user has their
+    // own Claude Code subscription" prerequisite model.
+    let node_exe = resolve_node_on_path()?;
 
     let meeting_dir = state
         .paths
@@ -66,7 +97,17 @@ pub async fn start_bot<R: Runtime>(
         ));
     }
 
+    let bot_entry_str = state
+        .paths
+        .bot_entry
+        .to_str()
+        .ok_or_else(|| AppError::internal("non_utf8_path", format!("{:?}", state.paths.bot_entry)))?
+        .to_string();
+
+    // First arg = bot entry script; remainder = bot CLI args. Spawn cwd is
+    // the bot bundle dir so Node can resolve `node_modules/` relative imports.
     let mut cli_args: Vec<String> = vec![
+        bot_entry_str,
         "--meeting-id".into(),
         args.meeting_id.clone(),
         "--meeting-dir".into(),
@@ -82,9 +123,9 @@ pub async fn start_bot<R: Runtime>(
 
     let run_id = runner::spawn_streamed(
         app,
-        &state.paths.bot_exe,
+        &node_exe,
         &cli_args,
-        Some(&meeting_dir),
+        Some(&state.paths.bot_dir),
         &env_overrides,
         "bot",
         state.runs.clone(),

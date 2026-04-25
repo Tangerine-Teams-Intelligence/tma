@@ -79,6 +79,29 @@ export async function detectClaudeCli(): Promise<ClaudeDetectResult> {
   }));
 }
 
+export interface NodeRuntimeResult {
+  found: boolean;
+  path: string | null;
+  version: string | null;
+  major: number | null;
+  meets_min: boolean;
+}
+
+/**
+ * Path D — pkg-based Node bundling was dropped because pkg@5.8.1 does not
+ * support Node 20+. We require the user to have Node 20+ on PATH, same model
+ * as their Claude Code subscription. SW3 surfaces this as a prerequisite check.
+ */
+export async function detectNodeRuntime(): Promise<NodeRuntimeResult> {
+  return safeInvoke("detect_node_runtime", undefined, () => ({
+    found: true,
+    path: "C:\\Program Files\\nodejs\\node.exe",
+    version: "v20.11.1 (mock)",
+    major: 20,
+    meets_min: true,
+  }));
+}
+
 export interface RepoValidationResult {
   ok: boolean;
   has_claude_md: boolean;

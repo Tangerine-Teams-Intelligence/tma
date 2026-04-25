@@ -26,9 +26,14 @@ pub struct AppPaths {
     /// Frozen Python interpreter inside the bundle:
     /// `<resource_dir>/resources/python/python.exe` on Windows.
     pub python_exe: PathBuf,
-    /// Frozen Node bot binary:
-    /// `<resource_dir>/resources/bot/tangerine-meeting-bot.exe` on Windows.
-    pub bot_exe: PathBuf,
+    /// Bot bundle directory: `<resource_dir>/resources/bot/`.
+    /// Contains `dist/`, `node_modules/`, and `package.json`. The bot is
+    /// launched via the user's Node 20+ on PATH (Path D — pkg dropped because
+    /// it does not support Node 20+; user-Node mirrors our existing
+    /// "user provides their own Claude Code subscription" model).
+    pub bot_dir: PathBuf,
+    /// Bot entry point: `<bot_dir>/dist/index.js`. Spawn via `node <entry>`.
+    pub bot_entry: PathBuf,
 }
 
 impl AppPaths {
@@ -62,18 +67,16 @@ impl AppPaths {
         }
 
         // Bundled runtime locations. PyInstaller --onedir output is copied
-        // into resources/python at build time; pkg output into resources/bot.
-        let (python_exe, bot_exe) = if cfg!(windows) {
-            (
-                resource_dir.join("resources/python/python.exe"),
-                resource_dir.join("resources/bot/tangerine-meeting-bot.exe"),
-            )
+        // into resources/python at build time; bot is shipped as a directory
+        // bundle (dist + node_modules + package.json) under resources/bot/,
+        // launched via the user's Node 20+ on PATH.
+        let python_exe = if cfg!(windows) {
+            resource_dir.join("resources/python/python.exe")
         } else {
-            (
-                resource_dir.join("resources/python/bin/python"),
-                resource_dir.join("resources/bot/tangerine-meeting-bot"),
-            )
+            resource_dir.join("resources/python/bin/python")
         };
+        let bot_dir = resource_dir.join("resources/bot");
+        let bot_entry = bot_dir.join("dist").join("index.js");
 
         Ok(Self {
             config_path,
@@ -82,7 +85,8 @@ impl AppPaths {
             logs_dir,
             meetings_repo,
             python_exe,
-            bot_exe,
+            bot_dir,
+            bot_entry,
         })
     }
 
@@ -92,7 +96,9 @@ impl AppPaths {
         self.python_exe.is_file()
     }
     pub fn bot_present(&self) -> bool {
-        self.bot_exe.is_file()
+        self.bot_entry.is_file()
+            && self.bot_dir.join("node_modules").is_dir()
+            && self.bot_dir.join("package.json").is_file()
     }
 
     /// Convert a path to a UTF-8 str for subprocess args. Returns an error

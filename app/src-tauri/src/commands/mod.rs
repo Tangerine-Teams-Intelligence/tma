@@ -122,6 +122,7 @@ macro_rules! tmi_invoke_handler {
             $crate::commands::update::check_updates,
             // wizard helpers
             $crate::commands::external::detect_claude_cli,
+            $crate::commands::external::detect_node_runtime,
             $crate::commands::external::validate_target_repo,
             $crate::commands::discord::poll_discord_bot_presence,
             $crate::commands::discord::validate_discord_bot_token,

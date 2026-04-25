@@ -13,13 +13,15 @@ Install these first. Versions matter.
 | Tool | Version | Check |
 |---|---|---|
 | Python | 3.11+ | `python --version` |
-| Node.js | 20 LTS+ | `node --version` |
+| **Node.js** | **20 LTS+ (required for Discord bot subprocess)** | `node --version` |
 | git | any recent | `git --version` |
 | Claude Code | subscription + `claude` CLI in PATH | `claude --version` |
 | OpenAI API key | access to `whisper-1` | see §3 |
 | Discord account | with permission to add a bot to your team's server | — |
 
 The `claude` CLI is what powers the observer (prep / observe / wrap modes). TMA spawns it as a subprocess — no API key for Claude.
+
+Node 20+ is required at runtime: we ship the Discord bot as a JavaScript directory bundle and spawn it via your local Node, not via a bundled runtime. Same prerequisite model as Claude Code — we use what you already have, never our own cloud. If you don't have Node, install the LTS from <https://nodejs.org/> and restart the app.
 
 ---
 

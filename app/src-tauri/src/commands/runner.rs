@@ -108,7 +108,7 @@ pub async fn spawn_streamed<R: Runtime>(
         return Err(AppError::config(
             "frozen_binary_missing",
             format!(
-                "expected bundled binary at {:?} — run scripts/build_python.ps1 or scripts/build_bot.ps1 first",
+                "expected executable at {:?} — for Python, run scripts/build_python.ps1; for the Discord bot, ensure Node 20+ is on PATH and scripts/build_bot.ps1 has been run",
                 program
             ),
         ));

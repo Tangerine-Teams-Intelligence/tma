@@ -165,6 +165,62 @@ pub async fn detect_claude_cli() -> Result<ClaudeCliResult, AppError> {
     })
 }
 
+#[derive(Debug, Serialize)]
+pub struct NodeRuntimeResult {
+    pub found: bool,
+    pub path: Option<PathBuf>,
+    pub version: Option<String>,
+    /// Major version parsed from `node --version` (e.g. 20). None if parse fails.
+    pub major: Option<u32>,
+    /// True iff `major >= 20`. The Discord bot bundle requires Node 20+.
+    pub meets_min: bool,
+}
+
+/// Path D — pkg dropped, bot runs on user's Node 20+. SW3 calls this to verify
+/// Node is on PATH before completing the wizard.
+#[tauri::command]
+pub async fn detect_node_runtime() -> Result<NodeRuntimeResult, AppError> {
+    let path = match which_first(&["node"]) {
+        Some(p) => p,
+        None => {
+            return Ok(NodeRuntimeResult {
+                found: false,
+                path: None,
+                version: None,
+                major: None,
+                meets_min: false,
+            });
+        }
+    };
+    let (status, stdout, _) = run_oneshot(&path, &["--version"], None).await?;
+    if !status.success() {
+        return Ok(NodeRuntimeResult {
+            found: true,
+            path: Some(path),
+            version: None,
+            major: None,
+            meets_min: false,
+        });
+    }
+    // `node --version` -> "v20.11.1\n"
+    let version = stdout.lines().next().map(|s| s.trim().to_string());
+    let major = version.as_deref().and_then(parse_node_major);
+    let meets_min = major.map(|m| m >= 20).unwrap_or(false);
+    Ok(NodeRuntimeResult {
+        found: true,
+        path: Some(path),
+        version,
+        major,
+        meets_min,
+    })
+}
+
+fn parse_node_major(v: &str) -> Option<u32> {
+    let v = v.trim().trim_start_matches('v');
+    let major = v.split('.').next()?;
+    major.parse::<u32>().ok()
+}
+
 #[derive(Debug, Deserialize)]
 pub struct ValidateRepoArgs {
     pub path: PathBuf,
