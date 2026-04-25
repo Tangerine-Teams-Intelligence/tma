@@ -149,6 +149,33 @@ class Config(BaseModel):
     def logfile_path(self) -> Path:
         return Path(self.logging.file).expanduser()
 
+    def memory_root_path(self, adapter_name: str | None = None) -> Path:
+        """Resolve the memory layer root: ``<target_repo>/memory`` per the
+        memory-layer spec.
+
+        Resolution order:
+          1. If ``adapter_name`` is given and resolves: use that adapter's
+             ``target_repo``.
+          2. Else if exactly one ``output_adapters`` entry exists: use its
+             ``target_repo``.
+          3. Else default to ``~/.tangerine-memory``.
+
+        Returns the *root* directory (containing ``meetings/``, ``decisions/``,
+        etc.). Caller is responsible for creating subdirectories.
+        """
+        target_repo: Path | None = None
+        if adapter_name is not None:
+            try:
+                target_repo = Path(self.adapter_by_name(adapter_name).target_repo)
+            except KeyError:
+                target_repo = None
+        if target_repo is None and len(self.output_adapters) == 1:
+            target_repo = Path(self.output_adapters[0].target_repo)
+
+        if target_repo is None:
+            return (Path.home() / ".tangerine-memory").expanduser()
+        return target_repo.expanduser() / "memory"
+
 
 # ----------------------------------------------------------------------
 # I/O
