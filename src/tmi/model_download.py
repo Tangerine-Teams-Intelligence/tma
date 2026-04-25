@@ -29,10 +29,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import sys
 import threading
 import time
+import warnings
 from pathlib import Path
 from typing import Optional
 
@@ -77,6 +79,16 @@ def download_model(model: str, dest_root: Path) -> Path:
     target = (dest_root / f"faster-whisper-{model}-int8").resolve()
     target.mkdir(parents=True, exist_ok=True)
 
+    # Silence huggingface_hub's tqdm bars + the "unauthenticated requests"
+    # banner. They write to stdout and break the JSON-line contract that the
+    # Tauri side relies on. Must be set BEFORE importing the library so the
+    # env-driven logger config picks them up.
+    os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+    os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
+    os.environ.setdefault("HF_HUB_DISABLE_IMPLICIT_TOKEN", "1")
+    warnings.filterwarnings("ignore", category=UserWarning, module="huggingface_hub")
+    logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
+
     _emit({"event": "start", "model": model, "dest": str(target)})
 
     try:
@@ -112,10 +124,13 @@ def download_model(model: str, dest_root: Path) -> Path:
     poller = threading.Thread(target=poll, daemon=True)
     poller.start()
     try:
+        # `local_dir_use_symlinks` was removed in huggingface_hub >=0.23 —
+        # passing it now triggers a UserWarning that pollutes our JSON-line
+        # stdout. Default behaviour (no symlinks, real files in local_dir)
+        # already matches what we want.
         snapshot_download(
             repo_id=repo_id,
             local_dir=str(target),
-            local_dir_use_symlinks=False,
             allow_patterns=[
                 "config.json",
                 "tokenizer.json",
