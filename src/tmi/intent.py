@@ -6,13 +6,12 @@ Spec: INTERFACES.md §2.2.
 from __future__ import annotations
 
 import re
-import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, Field, ValidationError, field_validator
+from pydantic import BaseModel, ValidationError, field_validator
 
 from .config import ALIAS_RE
 from .utils import atomic_write_text

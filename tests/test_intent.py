@@ -13,7 +13,6 @@ from tmi.intent import (
     validate_intent_text,
     write_intent,
 )
-from tmi.utils import now_iso
 
 VALID_INTENT = """\
 ---

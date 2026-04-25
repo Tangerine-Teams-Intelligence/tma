@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import re
 from datetime import datetime, timezone
-from typing import Iterable
 
 from .types import DiffAction, DiffBlock, KnowledgeDiff
 

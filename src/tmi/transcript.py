@@ -5,7 +5,6 @@ Spec: INTERFACES.md §2.3.
 
 from __future__ import annotations
 
-import os
 from datetime import datetime, timedelta
 from pathlib import Path
 

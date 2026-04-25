@@ -18,7 +18,6 @@ from rich.panel import Panel
 from rich.text import Text
 
 from .state import load_status, save_status
-from .utils import atomic_write_text
 
 console = Console()
 

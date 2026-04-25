@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import json
 import sys
-import time
 from datetime import datetime, timezone, timedelta
 
 # Force UTF-8 on std streams so middot (·) and Chinese survive on Windows.

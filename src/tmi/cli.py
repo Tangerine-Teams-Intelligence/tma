@@ -25,11 +25,8 @@ from . import __version__
 from .config import (
     DEFAULT_CONFIG_PATH,
     Config,
-    OutputAdapter,
-    TeamMember,
     load_config,
     render_default_template,
-    save_config,
 )
 from .meeting import (
     create_meeting,
@@ -39,14 +36,12 @@ from .meeting import (
     meeting_dir,
 )
 from .state import (
-    Status,
-    add_error,
     load_status,
     save_status,
     transition,
     update_intent,
 )
-from .utils import atomic_write_text, meeting_lock, now_dt, now_iso, setup_logging
+from .utils import atomic_write_text, meeting_lock, now_iso, setup_logging
 
 console = Console()
 err = Console(stderr=True)
@@ -309,7 +304,7 @@ def start(
     cfg, cfg_path = _resolve_config(config)
     mid = _resolve_meeting_id(cfg, meeting_id)
     mdir = meeting_dir(cfg, mid)
-    m = load_meeting(mdir)
+    load_meeting(mdir)
     status = load_status(mdir)
 
     if status.state not in {"created", "prepped"}:

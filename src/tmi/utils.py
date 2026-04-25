@@ -7,7 +7,6 @@ import os
 import re
 import sys
 import tempfile
-import time
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -15,7 +14,7 @@ from typing import Iterator
 
 # Asia/Shanghai is +08:00 fixed offset (no DST). Use a fixed tzinfo so we don't
 # depend on the OS tz database (which is patchy on Windows without tzdata).
-from datetime import timedelta, tzinfo
+from datetime import timedelta
 
 SHANGHAI = timezone(timedelta(hours=8), name="Asia/Shanghai")
 

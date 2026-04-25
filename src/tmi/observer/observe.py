@@ -7,7 +7,6 @@ timeouts; three consecutive failures -> mark errors[] but keep running.
 
 from __future__ import annotations
 
-import json
 import logging
 import threading
 import time
@@ -181,7 +180,6 @@ def run_observe(
 
 def _read_until_block(proc, timeout: float) -> dict[str, Any] | None:
     """Read subprocess stdout until we see a complete fenced JSON block or timeout."""
-    import subprocess as _sp
 
     assert proc.stdout is not None
     deadline = time.monotonic() + timeout

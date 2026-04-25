@@ -9,13 +9,9 @@ Owns its own loop — does not share with observe/wrap.
 
 from __future__ import annotations
 
-import json
-import select
 import subprocess
 import sys
 import threading
-import time
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 

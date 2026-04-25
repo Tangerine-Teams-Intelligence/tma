@@ -90,7 +90,7 @@ def test_read_ground_truth_handles_missing_files(tmp_path: Path) -> None:
 def test_generate_diff_raises_not_implemented(tmp_path: Path) -> None:
     target = _fresh_target_repo(tmp_path)
     a = _make_adapter(target)
-    from tmi.adapters.types import Intent, Summary, Transcript
+    from tmi.adapters.types import Summary, Transcript
 
     with pytest.raises(NotImplementedError):
         a.generate_diff(
