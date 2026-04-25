@@ -4,6 +4,24 @@ All notable changes to Tangerine AI Teams are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project tries to
 follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.1-beta] — 2026-04-25
+
+Build re-tag for the local-Whisper + super-app shell pipeline. No new features
+beyond what was queued for 1.5.0-beta; this version exists to retrigger the
+release workflow after a toolchain pin (Rust 1.89.0) was added to fix a
+`keyboard-types 0.7` serde-derive break on rustc 1.90+.
+
+### Changed
+- Rust toolchain pinned to 1.89.0 via `app/src-tauri/rust-toolchain.toml`. CI
+  workflow updated to honor the pin (`dtolnay/rust-toolchain@stable` does not).
+- Local Whisper (`faster-whisper`) replaces the OpenAI Whisper API. Model
+  download UX wired into the super-app skill drawer; OpenAI is now optional.
+- Setup wizard removed in favor of a super-app shell (auth → dashboard →
+  skills). T3 commands handler + `AppState` now wired into the Tauri builder.
+- Frozen Python entry dispatches via `runpy -m <module>` so PyInstaller
+  `--onedir` covers `faster-whisper` transitive deps. `huggingface_hub` stdout
+  pollution silenced in `model_download`.
+
 ## [1.5.0-beta] — 2026-04-24
 
 First public Windows beta. Single-skill release: Tangerine Meeting (Discord →

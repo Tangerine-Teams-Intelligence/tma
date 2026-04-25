@@ -66,7 +66,7 @@ export function Sidebar() {
 
       <div className="border-t border-[var(--ti-border-faint)] p-3">
         <p className={cn("text-[10px] text-[var(--ti-ink-500)]", collapsed && "hidden")}>
-          v1.5.0-beta
+          v1.5.1-beta
         </p>
       </div>
     </aside>
