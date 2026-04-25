@@ -26,10 +26,18 @@ use tangerine_meeting_lib::commands;
 use tangerine_meeting_lib::tmi_invoke_handler;
 
 fn main() {
-    // Single-instance + window-state plugins are NOT enabled in v1.5.0-beta.0
-    // (they require feature flags on the tauri crate that T3 owns dependency
-    // management for). T3 will add them as part of the §8 startup work.
+    // Single-instance plugin: when a second `tangerine-meeting.exe` is launched
+    // the callback fires in the already-running process; we focus the existing
+    // window instead of letting Tauri spawn a duplicate. The closure receives
+    // the second instance's argv + cwd; we ignore both for now (no deep links).
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            if let Some(win) = app.get_webview_window("main") {
+                let _ = win.unminimize();
+                let _ = win.show();
+                let _ = win.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
