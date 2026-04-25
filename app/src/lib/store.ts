@@ -70,10 +70,17 @@ export interface MeetingConfig {
 interface UiSlice {
   theme: "light" | "dark";
   sidebarCollapsed: boolean;
+  /** Cmd+K command palette visibility. */
+  paletteOpen: boolean;
+  /** True when user chose "Skip — local only mode" on auth. */
+  localOnly: boolean;
   toasts: { id: string; kind: "info" | "success" | "error"; text: string }[];
   setTheme: (t: "light" | "dark") => void;
   toggleTheme: () => void;
   toggleSidebar: () => void;
+  setPalette: (open: boolean) => void;
+  togglePalette: () => void;
+  setLocalOnly: (v: boolean) => void;
   pushToast: (kind: "info" | "success" | "error", text: string) => void;
   dismissToast: (id: string) => void;
 }
@@ -111,9 +118,8 @@ interface Store {
 
 // ---------- store ----------
 
-/** A skill is "installed" when its required config fields are filled. */
-export function isSkillInstalled(id: SkillId, m: MeetingConfig): boolean {
-  if (id !== "meeting") return false;
+/** Meeting tool is "configured" when every required field is filled. */
+export function isMeetingConfigured(m: MeetingConfig): boolean {
   const teamOk = !!m.team && m.team.length > 0 && m.team.every((t) => t.alias && t.displayName);
   const transcriptionOk =
     m.whisperMode === "local" ||
@@ -121,8 +127,20 @@ export function isSkillInstalled(id: SkillId, m: MeetingConfig): boolean {
   return !!m.discordToken && !!m.guildId && transcriptionOk && !!m.claudeCliPath && teamOk;
 }
 
+/**
+ * Legacy alias kept for components that haven't been renamed yet. Internally
+ * just delegates to `isMeetingConfigured` for the meeting id.
+ *
+ * @deprecated use `isMeetingConfigured` instead.
+ */
+export function isSkillInstalled(id: SkillId, m: MeetingConfig): boolean {
+  if (id !== "meeting") return false;
+  return isMeetingConfigured(m);
+}
+
+/** @deprecated use `isMeetingConfigured` instead. */
 export function listInstalledSkills(m: MeetingConfig): SkillId[] {
-  return (["meeting"] as SkillId[]).filter((id) => isSkillInstalled(id, m));
+  return isMeetingConfigured(m) ? (["meeting"] as SkillId[]) : [];
 }
 
 export const useStore = create<Store>()(
@@ -131,6 +149,8 @@ export const useStore = create<Store>()(
       ui: {
         theme: "light",
         sidebarCollapsed: false,
+        paletteOpen: false,
+        localOnly: false,
         toasts: [],
         setTheme: (t) => {
           set((s) => ({ ui: { ...s.ui, theme: t } }));
@@ -144,6 +164,12 @@ export const useStore = create<Store>()(
         },
         toggleSidebar: () =>
           set((s) => ({ ui: { ...s.ui, sidebarCollapsed: !s.ui.sidebarCollapsed } })),
+        setPalette: (open) =>
+          set((s) => ({ ui: { ...s.ui, paletteOpen: open } })),
+        togglePalette: () =>
+          set((s) => ({ ui: { ...s.ui, paletteOpen: !s.ui.paletteOpen } })),
+        setLocalOnly: (v) =>
+          set((s) => ({ ui: { ...s.ui, localOnly: v } })),
         pushToast: (kind, text) =>
           set((s) => ({
             ui: {
