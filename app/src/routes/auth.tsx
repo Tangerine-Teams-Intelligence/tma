@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { signIn, signUp } from "@/lib/auth";
 import { isStubMode } from "@/lib/supabase";
+import { useStore } from "@/lib/store";
 
 type Mode = "signin" | "signup";
 
@@ -17,6 +18,7 @@ export default function AuthRoute() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
+  const setLocalOnly = useStore((s) => s.ui.setLocalOnly);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -29,10 +31,20 @@ export default function AuthRoute() {
         setError(r.error ?? "Something went wrong.");
         return;
       }
-      navigate("/dashboard", { replace: true });
+      setLocalOnly(false);
+      navigate("/home", { replace: true });
     } finally {
       setBusy(false);
     }
+  }
+
+  function skipToLocal() {
+    setLocalOnly(true);
+    // Stub-mode auth lets us drop a local synthetic session so the route
+    // guard in App.tsx lets us through. Email is just a label.
+    void signIn("local@tangerine.local", "localmode").then(() => {
+      navigate("/home", { replace: true });
+    });
   }
 
   return (
@@ -50,12 +62,11 @@ export default function AuthRoute() {
         </div>
 
         <h1 className="font-display text-3xl tracking-tight text-[var(--ti-ink-900)]">
-          {mode === "signin" ? "Sign in" : "Create your account"}
+          Your team's AI desktop
         </h1>
         <p className="mt-2 text-sm text-[var(--ti-ink-700)]">
-          {mode === "signin"
-            ? "Welcome back."
-            : "One account per operator. Skills are added inside the app."}
+          10 tools, one login, one subscription. Meetings, wiki, tracking, reviews — all in
+          one place.
         </p>
 
         {isStubMode && (
@@ -113,6 +124,19 @@ export default function AuthRoute() {
               "Create account"
             )}
           </Button>
+
+          <Button
+            type="button"
+            variant="outline"
+            disabled={busy}
+            className="w-full"
+            onClick={skipToLocal}
+          >
+            Skip — local only mode
+          </Button>
+          <p className="text-center text-[11px] text-[var(--ti-ink-500)]">
+            No cloud sync, nothing leaves this machine.
+          </p>
         </form>
 
         <div className="mt-6 text-center text-xs text-[var(--ti-ink-500)]">
