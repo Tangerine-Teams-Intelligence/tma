@@ -28,7 +28,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["nsis"],
     "icon": [
       "icons/icon.png",
       "icons/icon.ico"
@@ -36,14 +36,22 @@
     "category": "Productivity",
     "shortDescription": "Your meeting becomes your team's AI context.",
     "longDescription": "Tangerine AI Teams captures team voice meetings via Discord, transcribes via Whisper, and writes structured decisions back into your Claude Code project.",
+    "resources": [
+      "../resources/python/**/*",
+      "../resources/bot/**/*"
+    ],
     "windows": {
       "certificateThumbprint": null,
       "digestAlgorithm": "sha256",
       "timestampUrl": "",
       "wix": null,
       "nsis": {
-        "installMode": "perUser",
-        "displayLanguageSelector": false
+        "installerIcon": "icons/icon.ico",
+        "installMode": "currentUser",
+        "languages": ["English", "SimpChinese"],
+        "displayLanguageSelector": false,
+        "startMenuFolder": "Tangerine",
+        "shortcutName": "Tangerine AI Teams"
       }
     }
   }

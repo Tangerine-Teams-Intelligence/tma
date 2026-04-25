@@ -2,15 +2,18 @@
 
 > Your meeting → your team's AI context, automatically.
 
+[![Latest Release](https://img.shields.io/github/v/release/Tangerine-Intelligence/tangerine-meeting-live?include_prereleases)](https://github.com/Tangerine-Intelligence/tangerine-meeting-live/releases/latest)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+
 A 45-minute meeting produces three decisions, two new facts, one action plan. Then the CEO opens Claude Code and re-types it all from memory. TMA closes that loop: decisions land in `CLAUDE.md`, `knowledge/`, `session-state.md` as a reviewed diff, not a Notion page.
 
-**Status**: v1, Apache-2.0. See [PLAN.md](PLAN.md) for roadmap, [INTERFACES.md](INTERFACES.md) for the full spec, [SETUP.md](SETUP.md) to install.
+**Status**: v1.5.0-beta, Apache-2.0. See [PLAN.md](PLAN.md) for roadmap, [INTERFACES.md](INTERFACES.md) for the full spec, [SETUP.md](SETUP.md) to install.
 
 ---
 
 ## Two ways to use TMA
 
-- **Desktop app (recommended)**: Download Tangerine AI Teams Setup → install → setup wizard. (v1.5.0-beta coming)
+- **Desktop app (recommended)**: [Download Tangerine AI Teams Setup for Windows](https://github.com/Tangerine-Intelligence/tangerine-meeting-live/releases/latest) → install → setup wizard.
 - **CLI**: `pip install tangerine-meeting-assistant` + `npm install` for the bot. See [SETUP.md](SETUP.md).
 
 ---
