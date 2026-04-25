@@ -88,11 +88,11 @@ With Developer Mode on, right-click each user in your server → **Copy User ID*
 
 ## 3. Whisper transcription
 
-The default path is **local Whisper**: when you install the Meeting skill, the Transcription section downloads `faster-whisper-small-int8` (~244 MB) into `%LocalAppData%\TangerineMeeting\models\faster-whisper-small-int8\` on first run. Audio never leaves your machine and there's no per-minute cost.
+The default path is **local Whisper**: when you set up the Meeting tool, the Transcription section downloads `faster-whisper-small-int8` (~244 MB) into `%LocalAppData%\TangerineMeeting\models\faster-whisper-small-int8\` on first run. Audio never leaves your machine and there's no per-minute cost.
 
 ### 3.1 (Optional) OpenAI Whisper fallback
 
-If you want max accuracy or have a weak CPU, the Transcription section of the Meeting skill config has an "OpenAI Whisper (cloud)" radio that accepts an OpenAI API key.
+If you want max accuracy or have a weak CPU, the Transcription section of the Meeting tool setup has an "OpenAI Whisper (cloud)" radio that accepts an OpenAI API key.
 
 1. https://platform.openai.com/api-keys → **Create new secret key**. Scope to "All" or minimum `audio.transcriptions:write`.
 2. Copy the key. It is saved as `OPENAI_API_KEY` once you click Save.
