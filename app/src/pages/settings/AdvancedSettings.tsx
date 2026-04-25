@@ -52,7 +52,7 @@ export function AdvancedSettings(_props: Props) {
       <section>
         <h3 className="font-display text-lg">About</h3>
         <p className="mt-1 text-sm text-[var(--ti-ink-700)]">
-          Tangerine AI Teams v1.5.1-beta · build {new Date().toISOString().slice(0, 10)}
+          Tangerine AI Teams v1.5.2-beta · build {new Date().toISOString().slice(0, 10)}
         </p>
         <p className="mt-1 text-xs text-[var(--ti-ink-500)]">
           Auto-update infrastructure ships, but the manifest endpoint is empty
