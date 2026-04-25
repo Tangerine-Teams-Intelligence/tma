@@ -144,13 +144,20 @@ export default function MeetingSkillRoute() {
     try {
       const handle = await downloadWhisperModel("small", (evt) => {
         if (evt.event === "progress") setDownloadBytes(evt.downloaded);
-        if (evt.event === "error") setDownloadError(evt.message);
+        if (evt.event === "error") {
+          setDownloadError(evt.message);
+          pushToast("error", `Whisper download failed: ${evt.message}`);
+        }
       });
       downloadUnsub.current = handle.unsubscribe;
       const final = await handle.completion;
       setModelStatus(final);
     } catch (e) {
-      setDownloadError((e as Error).message);
+      const msg = (e as Error).message ?? String(e);
+      // eslint-disable-next-line no-console
+      console.error("[meeting] handleDownloadModel:", e);
+      setDownloadError(msg);
+      pushToast("error", `Whisper download failed: ${msg}`);
     } finally {
       setDownloading(false);
     }

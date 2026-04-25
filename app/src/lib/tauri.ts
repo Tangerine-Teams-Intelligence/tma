@@ -31,10 +31,12 @@ async function safeInvoke<T>(
   try {
     return await realInvoke<T>(cmd, args);
   } catch (e) {
-    // Likely "command not registered" while T3 is still wiring things up.
-    // Surface in console but don't break the wizard flow.
+    // In Tauri context, an invoke failure is a real bug — log loudly so it's
+    // visible in DevTools instead of being swallowed by the mock. We still
+    // fall back to the mock so the UI doesn't crash, but the console.error
+    // gives engineers something to grep for.
     // eslint-disable-next-line no-console
-    console.warn(`[tauri] ${cmd} failed, using mock:`, e);
+    console.error(`[tauri] invoke "${cmd}" failed:`, e, "args=", args);
     return await mock();
   }
 }
@@ -198,11 +200,19 @@ export async function downloadWhisperModel(
     };
   }
   const { listen } = await import("@tauri-apps/api/event");
-  const { download_id } = await realInvoke<{ download_id: string }>(
-    "download_whisper_model",
-    { size },
-  );
-  const channel = `whisper:download:${download_id}`;
+  let downloadId: string;
+  try {
+    const r = await realInvoke<{ download_id: string }>("download_whisper_model", { size });
+    downloadId = r.download_id;
+  } catch (e) {
+    // Surface the underlying Rust AppError to the UI instead of silently
+    // returning a never-completing handle.
+    // eslint-disable-next-line no-console
+    console.error("[tauri] download_whisper_model failed to start:", e);
+    onEvent({ event: "error", message: errorMessage(e) });
+    throw e instanceof Error ? e : new Error(errorMessage(e));
+  }
+  const channel = `whisper:download:${downloadId}`;
   let resolveDone: (s: WhisperModelStatus) => void = () => {};
   const completion = new Promise<WhisperModelStatus>((r) => (resolveDone = r));
   const un = await listen<WhisperDownloadEvent>(channel, (msg) => {
@@ -216,10 +226,23 @@ export async function downloadWhisperModel(
   return {
     unsubscribe: () => {
       un();
-      void realInvoke("cancel_whisper_download", { download_id }).catch(() => {});
+      void realInvoke("cancel_whisper_download", { download_id: downloadId }).catch((e) => {
+        // eslint-disable-next-line no-console
+        console.error("[tauri] cancel_whisper_download failed:", e);
+      });
     },
     completion,
   };
+}
+
+function errorMessage(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  if (typeof e === "string") return e;
+  try {
+    return JSON.stringify(e);
+  } catch {
+    return String(e);
+  }
 }
 
 export interface DiscordGuild {

@@ -19,7 +19,7 @@ use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::Arc;
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use tauri::{AppHandle, Emitter, Runtime, State};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
@@ -86,12 +86,6 @@ pub async fn get_whisper_model_status(
     })
 }
 
-#[derive(Debug, Deserialize)]
-pub struct DownloadArgs {
-    /// "small" | "base" | "medium". Default "small".
-    pub size: Option<String>,
-}
-
 #[derive(Debug, Serialize)]
 pub struct DownloadStarted {
     pub download_id: String,
@@ -100,13 +94,16 @@ pub struct DownloadStarted {
 /// Spawn `<bundled-python> -m tmi.model_download --model <size> --dest <root>`.
 /// Returns immediately with a `download_id`; progress events fire on
 /// `whisper:download:<download_id>`. Caller listens via `@tauri-apps/api/event`.
+///
+/// JS contract: `invoke("download_whisper_model", { size: "small" | "base" | "medium" })`.
+/// The `size` parameter is optional; defaults to "small" when omitted/null.
 #[tauri::command]
 pub async fn download_whisper_model<R: Runtime>(
     app: AppHandle<R>,
     state: State<'_, AppState>,
-    args: DownloadArgs,
+    size: Option<String>,
 ) -> Result<DownloadStarted, AppError> {
-    let size = args.size.unwrap_or_else(|| "small".into());
+    let size = size.unwrap_or_else(|| "small".into());
     let python = state.paths.python_exe.clone();
     if !python.is_file() {
         return Err(AppError::config(
@@ -215,19 +212,16 @@ pub async fn download_whisper_model<R: Runtime>(
     Ok(DownloadStarted { download_id })
 }
 
-#[derive(Debug, Deserialize)]
-pub struct CancelArgs {
-    pub download_id: String,
-}
-
-#[tauri::command]
+/// JS contract: `invoke("cancel_whisper_download", { downloadId: "<uuid>" })`.
+/// (Tauri 2 auto-camelCases parameter names — Rust `download_id` ↔ JS `downloadId`.)
+#[tauri::command(rename_all = "snake_case")]
 pub async fn cancel_whisper_download(
     state: State<'_, AppState>,
-    args: CancelArgs,
+    download_id: String,
 ) -> Result<(), AppError> {
     let entry = {
         let mut tbl = state.downloads.lock();
-        tbl.remove(&args.download_id)
+        tbl.remove(&download_id)
     };
     if let Some(reg) = entry {
         let mut guard = reg.lock().await;
