@@ -63,3 +63,4 @@ Desktop.ini
 
 # Local TMA state
 .tmi/
+.audit-report.md
