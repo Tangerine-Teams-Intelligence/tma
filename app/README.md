@@ -1,12 +1,13 @@
 # Tangerine AI Teams — Desktop App
 
 Tauri 2.x desktop shell for the Tangerine Meeting Assistant CLI. Wraps the
-Python `tmi` CLI and Node Discord bot in a native Windows app with a setup
-wizard. Spec lives in `../APP-INTERFACES.md`.
+Python `tmi` CLI and Node Discord bot in a native Windows app. Top-level flow:
+sign in → install the Meeting skill → first meeting. Spec lives in
+`../APP-INTERFACES.md`.
 
 ## Status
 
-- T1 (this PR) — shell + setup wizard SW-0..SW-5 + theming + Zustand store + Vitest/Playwright scaffold
+- T1 (this PR) — super-app shell (auth → dashboard → skills marketplace → per-skill config) + theming + Zustand store + Vitest/Playwright scaffold. The legacy 5-step wizard has been retired in favour of a single Meeting skill config form.
 - T2 — meetings list, detail, live, review, apply, settings (placeholders here)
 - T3 — Rust IPC commands (in `src-tauri/src/commands/*.rs`; partially landed)
 
@@ -33,9 +34,10 @@ npm run tauri:dev
 ```
 
 This launches the native app window with the React UI hot-reloading from
-`http://localhost:1420`. The setup wizard appears on first launch (or any time
-`~/.tmi/config.yaml` is missing). On subsequent launches, the home page
-renders.
+`http://localhost:1420`. The auth screen is the boot gate. After sign-in
+(stub mode if `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` are unset) the
+dashboard renders; install the Meeting skill from the marketplace to configure
+Discord, Whisper, Claude, and team members.
 
 ## Web-only iteration (no Rust rebuild)
 
@@ -44,9 +46,9 @@ npm run dev
 ```
 
 Opens the React UI in your browser at `http://localhost:1420`. Tauri commands
-fall back to mock implementations (see `src/lib/tauri.ts`), so the wizard
-walks end-to-end without a working Rust backend. Useful for UI polish and
-component-level testing.
+fall back to mock implementations (see `src/lib/tauri.ts`), so auth + skill
+config walk end-to-end without a working Rust backend. Useful for UI polish
+and component-level testing.
 
 ## Tests
 
@@ -74,12 +76,14 @@ app/
 │   ├── components/
 │   │   ├── ui/              shadcn-style primitives (button, input, card, ...)
 │   │   ├── layout/          AppShell + Sidebar
-│   │   └── wizard/          SW0..SW5 + WizardShell
-│   ├── routes/              setup.tsx, home.tsx
+│   │   └── wizard/          legacy SW0..SW5 components (no longer routed; field UI is reimplemented inline in routes/skills/meeting.tsx)
+│   ├── routes/              auth.tsx, dashboard.tsx, skills/index.tsx, skills/meeting.tsx, home.tsx, setup.tsx (redirect)
 │   ├── pages/               placeholder pages owned by T2
 │   └── lib/
 │       ├── tauri.ts         typed `invoke()` wrappers + mocks
-│       ├── store.ts         Zustand slices: ui, wizard, config
+│       ├── supabase.ts      Supabase client singleton (stub mode when env vars unset)
+│       ├── auth.ts          useAuth hook + signIn/signUp/signOut
+│       ├── store.ts         Zustand slices: ui, wizard (legacy), config, skills
 │       ├── discord.ts       SW-1.3 polling constants + token helpers
 │       └── utils.ts
 ├── src-tauri/
