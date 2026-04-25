@@ -31,12 +31,26 @@ export interface DiscordConfig {
   command_prefix: string;
 }
 
+export interface AdapterFiles {
+  claude_md?: string;
+  knowledge_dir?: string;
+  session_state?: string;
+}
+
+export interface OutputAdapter {
+  type?: string;
+  name?: string;
+  target_repo?: string;
+  files?: AdapterFiles;
+}
+
 export interface TmiConfig {
   schema_version: number;
   meetings_repo: string;
   whisper: WhisperConfig;
   discord: DiscordConfig;
   team: TeamMember[];
+  output_adapters?: OutputAdapter[];
 }
 
 export function loadConfig(path: string): TmiConfig {
@@ -76,6 +90,7 @@ export function loadConfig(path: string): TmiConfig {
     command_prefix: cfg.discord?.command_prefix ?? "tmi",
   };
   cfg.team = cfg.team ?? [];
+  cfg.output_adapters = Array.isArray(cfg.output_adapters) ? cfg.output_adapters : [];
   return cfg;
 }
 
@@ -85,4 +100,35 @@ export function resolveEnv(name: string): string {
     throw new Error(`env var ${name} is not set`);
   }
   return v;
+}
+
+/**
+ * Resolve the memory-layer root directory.
+ *
+ * Priority:
+ *   1. ``MEMORY_ROOT`` env var (absolute path; used as-is).
+ *   2. ``TARGET_REPO`` env var → ``<TARGET_REPO>/memory``.
+ *   3. The first ``output_adapters[].target_repo`` in the config →
+ *      ``<target_repo>/memory``.
+ *   4. ``<HOME>/.tangerine-memory``.
+ *
+ * Mirrors the Python ``Config.memory_root_path`` resolver in
+ * ``src/tmi/config.py``. Both sides MUST agree so the wrap-time rewrite and
+ * the bot's live appends land in the same file.
+ */
+export function resolveMemoryRoot(cfg: TmiConfig): string {
+  const fromEnvDirect = process.env.MEMORY_ROOT;
+  if (fromEnvDirect && fromEnvDirect.length > 0) {
+    return fromEnvDirect;
+  }
+  const fromEnvTarget = process.env.TARGET_REPO;
+  if (fromEnvTarget && fromEnvTarget.length > 0) {
+    return `${fromEnvTarget}/memory`;
+  }
+  const adapter = cfg.output_adapters?.[0];
+  if (adapter?.target_repo) {
+    return `${adapter.target_repo}/memory`;
+  }
+  const home = process.env.USERPROFILE ?? process.env.HOME ?? ".";
+  return `${home}/.tangerine-memory`;
 }

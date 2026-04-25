@@ -5,9 +5,9 @@
 import { readFileSync, existsSync, mkdirSync, openSync, writeSync, closeSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { Client, Events, GatewayIntentBits, Interaction } from "discord.js";
-import { loadConfig, resolveEnv } from "./config.js";
+import { loadConfig, resolveEnv, resolveMemoryRoot } from "./config.js";
 import { MeetingContext } from "./meeting.js";
-import { TranscriptWriter, formatLine } from "./transcript.js";
+import { TranscriptWriter, formatLine, MemoryMirrorWriter } from "./transcript.js";
 import { StatusWriter } from "./status.js";
 import { createWhisperClient, type IWhisperClient } from "./whisper.js";
 import { VoiceCapture } from "./voice.js";
@@ -139,7 +139,26 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const transcript = new TranscriptWriter(meeting.transcriptPath);
+  // Memory-layer mirror: append every transcript line to a unified
+  // <memory_root>/meetings/<date>-<slug>.md file. Failures are non-fatal.
+  let mirror: MemoryMirrorWriter | null = null;
+  try {
+    const memoryRoot = resolveMemoryRoot(config);
+    const date = meeting.meeting.created_at.slice(0, 10);
+    mirror = new MemoryMirrorWriter(memoryRoot, {
+      meeting_id: meeting.meeting.id,
+      title: meeting.meeting.title,
+      date,
+      participants: meeting.participantAliases(),
+      source: "discord",
+    });
+    log(`memory mirror: ${mirror.filePath}`);
+  } catch (err) {
+    log(`memory mirror disabled: ${(err as Error).message}`);
+    mirror = null;
+  }
+
+  const transcript = new TranscriptWriter(meeting.transcriptPath, mirror);
   const status = new StatusWriter(meeting.statusPath);
   const whisper: IWhisperClient = (() => {
     if (config.whisper.provider === "local") {
