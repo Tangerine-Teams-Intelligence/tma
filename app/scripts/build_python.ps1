@@ -67,6 +67,10 @@ try {
     exit 2
   }
 
+  # Hidden imports for the local Whisper transcription path (WHISPER_MODE=local
+  # in the bot). PyInstaller can't discover these because `tmi.transcribe`
+  # imports `faster_whisper` lazily inside a function, and CTranslate2 has
+  # platform-specific .pyd modules that need explicit collection.
   $pyiArgs = @(
     "--noconfirm",
     "--clean",
@@ -75,6 +79,12 @@ try {
     "--paths", $SrcDir,
     "--collect-submodules", "tmi",
     "--collect-data", "tmi",
+    "--collect-all", "faster_whisper",
+    "--collect-all", "ctranslate2",
+    "--collect-all", "tokenizers",
+    "--collect-all", "huggingface_hub",
+    "--hidden-import", "tmi.transcribe",
+    "--hidden-import", "tmi.model_download",
     "--distpath", $DistDir,
     "--workpath", $WorkDir,
     "--specpath", $SpecDir,

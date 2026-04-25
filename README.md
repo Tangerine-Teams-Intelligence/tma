@@ -13,7 +13,7 @@ A 45-minute meeting produces three decisions, two new facts, one action plan. Th
 
 ## Two ways to use TMA
 
-- **Desktop app (recommended)**: [Download Tangerine AI Teams Setup for Windows](https://github.com/Tangerine-Intelligence/tangerine-meeting-live/releases/latest) → install → setup wizard. Requires Node 20+, Git, a Claude Code subscription, and an OpenAI API key (Whisper).
+- **Desktop app (recommended)**: [Download Tangerine AI Teams Setup for Windows](https://github.com/Tangerine-Intelligence/tangerine-meeting-live/releases/latest) → install → setup wizard. Requires Node 20+, Git, and a Claude Code subscription. Whisper transcription runs locally (bundled `faster-whisper`); first run downloads ~244 MB to your machine. OpenAI Whisper remains as an opt-in advanced toggle if you want max accuracy or have a weak CPU.
 - **CLI**: `pip install tangerine-meeting-assistant` + `npm install` for the bot. See [SETUP.md](SETUP.md).
 
 ---

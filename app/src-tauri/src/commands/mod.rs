@@ -34,6 +34,7 @@ pub mod discord;
 pub mod env;
 pub mod external;
 pub mod update;
+pub mod whisper_model;
 
 mod error;
 mod paths;
@@ -51,6 +52,7 @@ pub struct AppState {
     pub runs: Arc<ProcessRegistry>,
     pub watchers: Arc<RwLock<fs::WatcherTable>>,
     pub bots: Arc<RwLock<bot::BotTable>>,
+    pub downloads: Arc<parking_lot::Mutex<whisper_model::DownloadTable>>,
     pub http: reqwest::Client,
 }
 
@@ -62,6 +64,7 @@ impl AppState {
             runs: Arc::new(ProcessRegistry::default()),
             watchers: Arc::new(RwLock::new(Default::default())),
             bots: Arc::new(RwLock::new(Default::default())),
+            downloads: Arc::new(parking_lot::Mutex::new(Default::default())),
             http: reqwest::Client::builder()
                 .user_agent("TangerineMeeting/1.5")
                 .build()
@@ -127,6 +130,10 @@ macro_rules! tmi_invoke_handler {
             $crate::commands::discord::poll_discord_bot_presence,
             $crate::commands::discord::validate_discord_bot_token,
             $crate::commands::discord::validate_whisper_key,
+            // local whisper model (faster-whisper)
+            $crate::commands::whisper_model::get_whisper_model_status,
+            $crate::commands::whisper_model::download_whisper_model,
+            $crate::commands::whisper_model::cancel_whisper_download,
         ]
     };
 }

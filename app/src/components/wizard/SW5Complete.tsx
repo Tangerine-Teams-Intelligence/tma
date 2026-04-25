@@ -92,8 +92,12 @@ export function SW5Complete() {
                 }
               />
               <Row
-                label="Whisper key"
-                value={collected.whisperKey ? mask(collected.whisperKey) : "(none)"}
+                label="Whisper"
+                value={
+                  collected.whisperMode === "openai"
+                    ? `OpenAI · ${collected.whisperKey ? mask(collected.whisperKey) : "(no key)"}`
+                    : "Local (bundled faster-whisper)"
+                }
               />
               <Row label="Claude CLI" value={collected.claudeCliPath ?? "(not detected)"} />
               <Row

@@ -166,7 +166,7 @@ jobs:
             ## What's in this beta
 
             - **Tangerine Meeting** skill — Discord meeting capture → Claude Code memory diff
-            - Setup wizard: Discord bot + Whisper API key + Claude detection + team members
+            - Setup wizard: Discord bot + local Whisper download (~244 MB, OpenAI optional) + Claude detection + team members
             - Apache-2.0 licensed
 
             ## Known limitations

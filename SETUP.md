@@ -16,8 +16,9 @@ Install these first. Versions matter.
 | **Node.js** | **20 LTS+ (required for Discord bot subprocess)** | `node --version` |
 | git | any recent | `git --version` |
 | Claude Code | subscription + `claude` CLI in PATH | `claude --version` |
-| OpenAI API key | access to `whisper-1` | see §3 |
 | Discord account | with permission to add a bot to your team's server | — |
+
+> Whisper transcription runs locally via bundled `faster-whisper` (small model, int8). First run of the desktop app downloads ~244 MB to `%LocalAppData%\TangerineMeeting\models\`. No API key required for the default path. OpenAI Whisper is available as an opt-in fallback (see §3).
 
 The `claude` CLI is what powers the observer (prep / observe / wrap modes). TMA spawns it as a subprocess — no API key for Claude.
 
@@ -85,12 +86,18 @@ With Developer Mode on, right-click each user in your server → **Copy User ID*
 
 ---
 
-## 3. Get an OpenAI API key (for Whisper)
+## 3. Whisper transcription
+
+The default path is **local Whisper**: the desktop app's setup wizard downloads `faster-whisper-small-int8` (~244 MB) into `%LocalAppData%\TangerineMeeting\models\faster-whisper-small-int8\` on first run. Audio never leaves your machine and there's no per-minute cost.
+
+### 3.1 (Optional) OpenAI Whisper fallback
+
+If you want max accuracy or have a weak CPU, the wizard's "Advanced: use OpenAI Whisper instead" toggle accepts an OpenAI API key.
 
 1. https://platform.openai.com/api-keys → **Create new secret key**. Scope to "All" or minimum `audio.transcriptions:write`.
-2. Copy the key. Save as `OPENAI_API_KEY`.
+2. Copy the key. The wizard saves it as `OPENAI_API_KEY`.
 
-**Cost**: Whisper = $0.006/min. A 1-hour meeting = ~$0.36. The default 10-second chunking means one API call per 10 seconds per active speaker.
+**Cost (OpenAI mode only)**: Whisper = $0.006/min. A 1-hour meeting = ~$0.36. The default 10-second chunking means one API call per 10 seconds per active speaker.
 
 ---
 

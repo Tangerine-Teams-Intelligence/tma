@@ -16,6 +16,12 @@ dependencies = [
     "pyyaml>=6",
     "rich>=13",
     "gitpython>=3.1",
+    # Local Whisper transcription. CTranslate2-backed; runs on CPU with int8.
+    # The bot's WHISPER_MODE=local path shells out to `python -m tmi.transcribe`,
+    # which loads the model bundled by `tmi.model_download`.
+    "faster-whisper>=1.0",
+    # Used by tmi.model_download to fetch the small-int8 weights at first run.
+    "huggingface_hub>=0.20",
 ]
 
 [project.optional-dependencies]

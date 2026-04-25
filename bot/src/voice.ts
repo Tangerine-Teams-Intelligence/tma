@@ -15,13 +15,13 @@ import { Readable } from "node:stream";
 import { MeetingContext } from "./meeting.js";
 import { TranscriptWriter, formatLine, formatSttFailedLine } from "./transcript.js";
 import { StatusWriter } from "./status.js";
-import { WhisperClient } from "./whisper.js";
+import type { IWhisperClient } from "./whisper.js";
 
 export interface VoiceCaptureOptions {
   meeting: MeetingContext;
   transcript: TranscriptWriter;
   status: StatusWriter;
-  whisper: WhisperClient;
+  whisper: IWhisperClient;
   chunkSeconds: number;
   /** Max reconnect attempts; spec §10.2 says 3. */
   maxReconnects?: number;

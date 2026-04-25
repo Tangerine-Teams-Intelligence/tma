@@ -1,5 +1,17 @@
-// OpenAI Whisper API client. Non-streaming POST per chunk.
-// Spec: INTERFACES.md §10.1 — 3x retry with backoff (1s, 2s, 4s).
+// Whisper client. Two modes:
+//   - "local"  (default): spawn the bundled Python `python -m tmi.transcribe`
+//                          on a temp WAV file and parse its stdout JSON.
+//   - "openai" (opt-in):   POST audio to OpenAI Whisper API. Kept for users who
+//                          want max accuracy or have weak CPUs.
+//
+// Spec: INTERFACES.md §10.1 — 3x retry with backoff (1s, 2s, 4s) for the OpenAI
+// path. Local mode does not retry network errors (there are none); it surfaces
+// transcription errors directly so the bot can log + skip.
+
+import { spawn } from "node:child_process";
+import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 export interface WhisperResult {
   ok: true;
@@ -12,10 +24,13 @@ export interface WhisperFailure {
   attempts: number;
 }
 
-export interface WhisperOptions {
+export type WhisperMode = "local" | "openai";
+
+export interface OpenAIWhisperOptions {
+  mode?: "openai";
+  language: string | null;
   apiKey: string;
   model: string;
-  language: string | null;
   /** Override fetch for tests. */
   fetchImpl?: typeof fetch;
   /** Override sleep for tests. */
@@ -23,6 +38,21 @@ export interface WhisperOptions {
   /** Per-request wall-clock timeout. */
   requestTimeoutMs?: number;
 }
+
+export interface LocalWhisperOptions {
+  mode: "local";
+  language: string | null;
+  /** Absolute path to the bundled Python interpreter (PyInstaller --onedir). */
+  pythonExe: string;
+  /** Absolute path to the downloaded faster-whisper model directory. */
+  modelDir: string;
+  /** Per-call wall-clock timeout (ms). Default 60s. */
+  timeoutMs?: number;
+  /** Override spawn for tests. */
+  spawnImpl?: typeof spawn;
+}
+
+export type WhisperOptions = OpenAIWhisperOptions | LocalWhisperOptions;
 
 const BACKOFFS_MS = [1000, 2000, 4000];
 
@@ -56,18 +86,147 @@ export function pcm16ToWav(pcm: Buffer, sampleRate = 16000): Buffer {
   return Buffer.concat([header, pcm]);
 }
 
-export class WhisperClient {
-  private readonly opts: Required<WhisperOptions>;
+/** Common interface — voice.ts only sees `transcribe(pcm)`. */
+export interface IWhisperClient {
+  transcribe(pcm: Buffer): Promise<WhisperResult | WhisperFailure>;
+}
 
-  constructor(opts: WhisperOptions) {
+export function createWhisperClient(opts: WhisperOptions): IWhisperClient {
+  if ("mode" in opts && opts.mode === "local") {
+    return new LocalWhisperClient(opts);
+  }
+  return new OpenAIWhisperClient(opts as OpenAIWhisperOptions);
+}
+
+// ---------------------------------------------------------------------------
+// Local: spawn `<python> -m tmi.transcribe --audio <wav> --model-dir <dir>`
+// ---------------------------------------------------------------------------
+
+interface ResolvedLocalOpts {
+  language: string | null;
+  pythonExe: string;
+  modelDir: string;
+  timeoutMs: number;
+  spawnImpl: typeof spawn;
+}
+
+export class LocalWhisperClient implements IWhisperClient {
+  private readonly opts: ResolvedLocalOpts;
+
+  constructor(opts: LocalWhisperOptions) {
+    this.opts = {
+      language: opts.language,
+      pythonExe: opts.pythonExe,
+      modelDir: opts.modelDir,
+      timeoutMs: opts.timeoutMs ?? 60_000,
+      spawnImpl: opts.spawnImpl ?? spawn,
+    };
+  }
+
+  async transcribe(pcm: Buffer): Promise<WhisperResult | WhisperFailure> {
+    const wav = pcm16ToWav(pcm);
+    const dir = mkdtempSync(join(tmpdir(), "tmi-whisper-"));
+    const wavPath = join(dir, "chunk.wav");
+    try {
+      writeFileSync(wavPath, wav);
+      const { stdout, stderr, code } = await this.runOnce(wavPath);
+      if (code !== 0) {
+        return {
+          ok: false,
+          reason: shortReason(stderr || `exit_${code}`),
+          attempts: 1,
+        };
+      }
+      let parsed: { text?: string };
+      try {
+        parsed = JSON.parse(stdout) as { text?: string };
+      } catch (e) {
+        return {
+          ok: false,
+          reason: shortReason(`parse: ${(e as Error).message}`),
+          attempts: 1,
+        };
+      }
+      return { ok: true, text: (parsed.text ?? "").trim() };
+    } finally {
+      try {
+        rmSync(dir, { recursive: true, force: true });
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
+  private runOnce(
+    wavPath: string,
+  ): Promise<{ stdout: string; stderr: string; code: number }> {
+    const args = [
+      "-m",
+      "tmi.transcribe",
+      "--audio",
+      wavPath,
+      "--model-dir",
+      this.opts.modelDir,
+    ];
+    if (this.opts.language) args.push("--language", this.opts.language);
+
+    return new Promise((resolve) => {
+      const proc = this.opts.spawnImpl(this.opts.pythonExe, args, {
+        stdio: ["ignore", "pipe", "pipe"],
+        windowsHide: true,
+      });
+      let stdout = "";
+      let stderr = "";
+      const timer = setTimeout(() => {
+        try {
+          proc.kill("SIGKILL");
+        } catch {
+          /* ignore */
+        }
+      }, this.opts.timeoutMs);
+      proc.stdout?.on("data", (b: Buffer) => {
+        stdout += b.toString("utf8");
+      });
+      proc.stderr?.on("data", (b: Buffer) => {
+        stderr += b.toString("utf8");
+      });
+      proc.on("error", (err) => {
+        clearTimeout(timer);
+        resolve({ stdout, stderr: stderr || err.message, code: -1 });
+      });
+      proc.on("close", (code) => {
+        clearTimeout(timer);
+        resolve({ stdout, stderr, code: code ?? -1 });
+      });
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// OpenAI: POST audio/transcriptions (kept as opt-in fallback)
+// ---------------------------------------------------------------------------
+
+interface ResolvedOpenAIOpts {
+  apiKey: string;
+  model: string;
+  language: string | null;
+  requestTimeoutMs: number;
+  fetchImpl: typeof fetch;
+  sleepMs: (ms: number) => Promise<void>;
+}
+
+export class OpenAIWhisperClient implements IWhisperClient {
+  private readonly opts: ResolvedOpenAIOpts;
+
+  constructor(opts: OpenAIWhisperOptions) {
     this.opts = {
       apiKey: opts.apiKey,
       model: opts.model,
       language: opts.language,
+      requestTimeoutMs: opts.requestTimeoutMs ?? 30_000,
       fetchImpl: opts.fetchImpl ?? fetch,
       sleepMs: opts.sleepMs ?? defaultSleep,
-      requestTimeoutMs: opts.requestTimeoutMs ?? 30_000,
-    } as Required<WhisperOptions>;
+    };
   }
 
   /** Transcribe a 16kHz mono PCM buffer. Retries on timeout/5xx. */
@@ -133,6 +292,9 @@ export class WhisperClient {
     }
   }
 }
+
+/** Backwards-compatible alias. Existing code/tests may import `WhisperClient`. */
+export const WhisperClient = OpenAIWhisperClient;
 
 function shortReason(s: string): string {
   if (s.includes("aborted") || s.toLowerCase().includes("timeout")) return "timeout";

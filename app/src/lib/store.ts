@@ -21,6 +21,9 @@ export interface TeamMember {
 export interface WizardData {
   discordToken?: string;
   guildId?: string;
+  /** "local" = bundled faster-whisper (default). "openai" = OpenAI Whisper API. */
+  whisperMode?: "local" | "openai";
+  /** Only set when whisperMode === "openai". */
   whisperKey?: string;
   claudeCliPath?: string;
   claudeCliVersion?: string;

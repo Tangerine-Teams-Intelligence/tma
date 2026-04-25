@@ -1,7 +1,7 @@
 import { useStore } from "@/lib/store";
 import { SW0Welcome } from "@/components/wizard/SW0Welcome";
 import { SW1DiscordBot } from "@/components/wizard/SW1DiscordBot";
-import { SW2WhisperKey } from "@/components/wizard/SW2WhisperKey";
+import { SW2LocalWhisper } from "@/components/wizard/SW2LocalWhisper";
 import { SW3ClaudeDetect } from "@/components/wizard/SW3ClaudeDetect";
 import { SW4TeamMembers } from "@/components/wizard/SW4TeamMembers";
 import { SW5Complete } from "@/components/wizard/SW5Complete";
@@ -15,7 +15,7 @@ export default function SetupRoute() {
     case 1:
       return <SW1DiscordBot />;
     case 2:
-      return <SW2WhisperKey />;
+      return <SW2LocalWhisper />;
     case 3:
       return <SW3ClaudeDetect />;
     case 4:

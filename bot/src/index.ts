@@ -9,7 +9,7 @@ import { loadConfig, resolveEnv } from "./config.js";
 import { MeetingContext } from "./meeting.js";
 import { TranscriptWriter, formatLine } from "./transcript.js";
 import { StatusWriter } from "./status.js";
-import { WhisperClient } from "./whisper.js";
+import { createWhisperClient, type IWhisperClient } from "./whisper.js";
 import { VoiceCapture } from "./voice.js";
 import { registerCommands } from "./commands/index.js";
 import { handleJoin } from "./commands/join.js";
@@ -42,7 +42,10 @@ Optional:
 
 Env:
   DISCORD_BOT_TOKEN          Required unless --dry-run.
-  OPENAI_API_KEY             Required.`;
+  WHISPER_MODE               Optional; "local" (default) | "openai". Overrides config.
+  OPENAI_API_KEY             Required only when WHISPER_MODE=openai.
+  LOCAL_WHISPER_MODEL_PATH   Optional override for the bundled model directory.
+  LOCAL_WHISPER_PYTHON       Optional override for the bundled python.exe.`;
 
 function parseArgs(argv: string[]): CliArgs {
   const args: Partial<CliArgs> & { dryRun?: boolean; help?: boolean } = {};
@@ -138,11 +141,33 @@ async function main(): Promise<void> {
 
   const transcript = new TranscriptWriter(meeting.transcriptPath);
   const status = new StatusWriter(meeting.statusPath);
-  const whisper = new WhisperClient({
-    apiKey: resolveEnv(config.whisper.api_key_env),
-    model: config.whisper.model,
-    language: config.whisper.language,
-  });
+  const whisper: IWhisperClient = (() => {
+    if (config.whisper.provider === "local") {
+      const pythonExe = config.whisper.python_exe;
+      const modelDir = config.whisper.local_model_dir;
+      if (!pythonExe || !modelDir) {
+        throw new Error(
+          "WHISPER_MODE=local requires whisper.python_exe + whisper.local_model_dir " +
+            "(or LOCAL_WHISPER_PYTHON + LOCAL_WHISPER_MODEL_PATH env vars). " +
+            "Run the setup wizard to download the model.",
+        );
+      }
+      log(`whisper: local mode python=${pythonExe} model=${modelDir}`);
+      return createWhisperClient({
+        mode: "local",
+        language: config.whisper.language,
+        pythonExe,
+        modelDir,
+      });
+    }
+    log(`whisper: openai mode model=${config.whisper.model}`);
+    return createWhisperClient({
+      mode: "openai",
+      apiKey: resolveEnv(config.whisper.api_key_env),
+      model: config.whisper.model,
+      language: config.whisper.language,
+    });
+  })();
   const capture = new VoiceCapture({
     meeting,
     transcript,
