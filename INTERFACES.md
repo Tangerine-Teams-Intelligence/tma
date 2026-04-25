@@ -1082,6 +1082,166 @@ The canonical E2E test:
 
 ---
 
+## §13 Memory Layer
+
+The "memory layer" is a unified, repo-friendly view of every meeting and the
+decisions that came out of it. It lives under the **target repo** (the same
+repo `output_adapters[].target_repo` already points at), so the user's existing
+git history doubles as their meeting archive.
+
+The per-meeting `meetings/<id>/` directory under `meetings_repo` (§2.0) is the
+**working set** — internal state for one meeting in flight. The memory layer is
+the **published view** — flat files anyone (or any AI agent) can grep through
+without understanding TMA's lifecycle.
+
+### 13.1 Layout
+
+```
+<target_repo>/
+└── memory/
+    ├── meetings/
+    │   └── 2026-04-25-david-roadmap-sync.md      # one flat file per meeting
+    ├── decisions/
+    │   └── postgres-over-mongo.md                # one file per extracted decision
+    ├── people/                                   # v1.6+, not yet implemented
+    ├── projects/                                 # v1.6+, not yet implemented
+    ├── threads/                                  # v1.6+, not yet implemented
+    └── glossary/                                 # v1.6+, not yet implemented
+└── .tangerine/
+    └── index.json                                # spec only, not yet written
+```
+
+For v1.5 only `meetings/` and `decisions/` are populated.
+
+### 13.2 Memory root resolution
+
+The Python CLI resolves the memory root via `Config.memory_root_path(adapter_name)`:
+
+1. If `adapter_name` resolves to a configured `output_adapters[]` entry: use
+   `<that adapter's target_repo>/memory`.
+2. Else if exactly one adapter exists: use `<that adapter's target_repo>/memory`.
+3. Else default to `~/.tangerine-memory/` (no `memory/` suffix — the home
+   fallback IS the memory root).
+
+The Discord bot's `resolveMemoryRoot(cfg)` mirrors this with two additional env
+overrides for Tauri-spawned bot instances:
+
+1. `MEMORY_ROOT` env var → used as-is (absolute path).
+2. `TARGET_REPO` env var → `<TARGET_REPO>/memory`.
+3. First `output_adapters[].target_repo` in the config → `<…>/memory`.
+4. `<HOME>/.tangerine-memory`.
+
+Both implementations MUST agree on resolution so the bot's live transcript
+appends and the wrap-time rewrite land in the same file.
+
+### 13.3 Meeting file format
+
+`memory/meetings/<YYYY-MM-DD>-<slug>.md` where:
+- `<YYYY-MM-DD>` = `meeting.created_at` date in `Asia/Shanghai` (+08:00).
+- `<slug>` = `meeting.title` lowercased, alphanumerics only, hyphen-separated.
+
+Slug rules (must match between Python `slugify_for_memory` and TS
+`slugifyForMemory`):
+- `s.strip().lower()`
+- Replace runs of non-alphanumeric chars with `-`
+- Collapse multiple hyphens
+- Trim leading/trailing hyphens
+- If empty, use `"untitled"`
+
+Content:
+
+```markdown
+---
+date: 2026-04-25
+title: "David roadmap sync"
+source: discord
+meeting_id: 2026-04-25-david-roadmap-sync
+participants:
+  - daizhe
+  - david
+duration_min: 47        # null if can't be parsed from transcript timestamps
+---
+
+## Transcript
+
+[19:00:00] daizhe: ...
+[19:00:30] david: ...
+
+## Summary
+
+(optional — present after wrap)
+
+## Decisions
+
+(optional — present after wrap if any decisions extracted)
+- [Use Postgres over Mongo](../decisions/use-postgres-over-mongo.md)
+```
+
+The bot writes a stub file (frontmatter + `## Transcript` heading) on first
+voice activity, then appends each transcript line as it arrives. `tmi wrap`
+re-renders the file at the end of the meeting with the full transcript +
+summary body + decision links.
+
+### 13.4 Decision file format
+
+`memory/decisions/<slug>.md` where `<slug>` = lowercased decision-title slug
+(same rules as §13.3).
+
+```markdown
+---
+date: 2026-04-25
+title: Use Postgres over Mongo
+source: meeting
+source_id: 2026-04-25-david-roadmap-sync
+source_line: 47          # first transcript line ref; null if none
+status: decided
+---
+
+## Decision
+
+decided — Postgres for v1
+
+**Decided by**: daizhe; david agreed at L52
+
+## Context
+
+<full topic block from summary.md>
+
+## Provenance
+
+- Source meeting: [David roadmap sync](../meetings/2026-04-25-david-roadmap-sync.md#L47)
+- Transcript refs: L40, L52
+```
+
+The Provenance section is required and MUST point back to the source meeting
+file. The `#L47` anchor relies on `react-markdown` rendering line numbers; no
+explicit anchor tags are written to the transcript itself in v1.5.
+
+### 13.5 Decision extraction
+
+Performed by `tmi.memory.extract_decisions_from_summary()` in the `tmi wrap`
+post-processing step. Heuristic:
+
+1. Locate the `## Topics covered` section in `summary.md`.
+2. For each `### Topic N: <title>` subsection:
+   - Read the bullet `- **Outcome**: ...`. Skip topics with no Outcome.
+   - If the Outcome value (lowercased) starts with `decided` or `agreed`,
+     promote it to a decision.
+3. Pull `Decided by`, `Transcript refs` from the same bullet block.
+4. Use the topic title as the decision slug source.
+
+Failures here are non-fatal — wrap still completes and writes summary +
+knowledge-diff. The user gets a console warning if memory writes are skipped.
+
+### 13.6 Backward compatibility
+
+The per-meeting `meetings/<id>/` layout under `meetings_repo` (§2.0) is
+unchanged. Old meetings remain valid. New meetings get both layouts: the
+internal working set under `meetings_repo`, AND the published view under
+`<target_repo>/memory`.
+
+---
+
 ## Appendix A: File touch matrix
 
 Quick reference — who writes what.
@@ -1096,6 +1256,8 @@ Quick reference — who writes what.
 | `knowledge-diff.md` | — | — | — | — | W | R/W (edits) | R |
 | `status.yaml` | W | W (intents subtree) | W (bot subtree) | — (CLI writes for it) | W | W (review subtree) | W (apply subtree) |
 | target repo files | — | — | — | — | — | — | W |
+| `<target_repo>/memory/meetings/<slug>.md` | — | — | W (init + append) | — | W (rewrite full) | — | — |
+| `<target_repo>/memory/decisions/<slug>.md` | — | — | — | — | W (one per decision) | — | — |
 
 (R = reads, W = writes, — = neither.)
 
