@@ -32,7 +32,7 @@ export default function AuthRoute() {
         return;
       }
       setLocalOnly(false);
-      navigate("/memory", { replace: true });
+      navigate("/today", { replace: true });
     } finally {
       setBusy(false);
     }
@@ -43,7 +43,7 @@ export default function AuthRoute() {
     // Stub-mode auth lets us drop a local synthetic session so the route
     // guard in App.tsx lets us through. Email is just a label.
     void signIn("local@tangerine.local", "localmode").then(() => {
-      navigate("/memory", { replace: true });
+      navigate("/today", { replace: true });
     });
   }
 

@@ -14,6 +14,15 @@ import MeetingDetailPage from "@/pages/meetings/detail";
 import LivePage from "@/pages/live";
 import ReviewPage from "@/pages/review";
 import SettingsPage from "@/pages/settings";
+// Stage 1 Wave 3 — Chief of Staff views.
+import TodayRoute from "@/routes/today";
+import ThisWeekRoute from "@/routes/this-week";
+import PeopleListRoute from "@/routes/people";
+import PersonDetailRoute from "@/routes/people/detail";
+import ProjectsListRoute from "@/routes/projects";
+import ProjectDetailRoute from "@/routes/projects/detail";
+import ThreadsListRoute from "@/routes/threads";
+import ThreadDetailRoute from "@/routes/threads/detail";
 import { getConfig } from "@/lib/tauri";
 import { useStore } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
@@ -103,15 +112,17 @@ export default function App() {
 
   return (
     <Routes>
-      {/* Auth screen still reachable when signed in, but redirects to memory. */}
-      <Route path="/auth" element={<Navigate to="/memory" replace />} />
+      {/* Auth screen still reachable when signed in, but redirects to /today. */}
+      <Route path="/auth" element={<Navigate to="/today" replace />} />
 
-      {/* Legacy routes → redirect into the new shell. */}
-      <Route path="/dashboard" element={<Navigate to="/memory" replace />} />
-      <Route path="/skills" element={<Navigate to="/memory" replace />} />
+      {/* Legacy routes → redirect into the new shell. /memory is still
+          reachable for the file tree, but the default landing is now
+          /today (Stage 1 Wave 3). */}
+      <Route path="/dashboard" element={<Navigate to="/today" replace />} />
+      <Route path="/skills" element={<Navigate to="/today" replace />} />
       <Route path="/skills/meeting" element={<Navigate to="/sources/discord" replace />} />
-      <Route path="/setup" element={<Navigate to="/memory" replace />} />
-      <Route path="/home" element={<Navigate to="/memory" replace />} />
+      <Route path="/setup" element={<Navigate to="/today" replace />} />
+      <Route path="/home" element={<Navigate to="/today" replace />} />
       {/* Old "Meeting tool" surface — Meeting was the Discord source. */}
       <Route path="/meeting" element={<Navigate to="/sources/discord" replace />} />
       <Route path="/meeting/setup" element={<DiscordSourceRoute />} />
@@ -125,9 +136,19 @@ export default function App() {
 
       {/* Everything else lives inside the always-on sidebar shell. */}
       <Route element={<AppShell />}>
-        <Route index element={<Navigate to="/memory" replace />} />
+        <Route index element={<Navigate to="/today" replace />} />
 
-        {/* MEMORY — file tree + viewer */}
+        {/* Stage 1 Wave 3 — Chief of Staff views (default landing). */}
+        <Route path="today" element={<TodayRoute />} />
+        <Route path="this-week" element={<ThisWeekRoute />} />
+        <Route path="people" element={<PeopleListRoute />} />
+        <Route path="people/:alias" element={<PersonDetailRoute />} />
+        <Route path="projects" element={<ProjectsListRoute />} />
+        <Route path="projects/:slug" element={<ProjectDetailRoute />} />
+        <Route path="threads" element={<ThreadsListRoute />} />
+        <Route path="threads/:topic" element={<ThreadDetailRoute />} />
+
+        {/* MEMORY — file tree + viewer (still reachable, no longer default) */}
         <Route path="memory" element={<MemoryRoute />} />
         <Route path="memory/*" element={<MemoryRoute />} />
 
@@ -137,12 +158,10 @@ export default function App() {
         {/* SINKS */}
         <Route path="sinks/:id" element={<SinkDetailRoute />} />
 
-        {/* INBOX */}
+        {/* INBOX — real implementation; reads briefs/pending.md */}
         <Route path="inbox" element={<InboxRoute />} />
 
-        {/* ALIGNMENT — v1.6 placeholder. Mock dashboard for the same-screen
-            rate so the CoS direction is visible without us shipping the
-            real computation yet. */}
+        {/* ALIGNMENT — real implementation; reads alignment.json */}
         <Route path="alignment" element={<AlignmentRoute />} />
 
         {/* Meeting detail / live (kept — the Discord source's per-call view). */}
@@ -159,7 +178,7 @@ export default function App() {
         <Route path="settings" element={<SettingsPage />} />
       </Route>
 
-      <Route path="*" element={<Navigate to="/memory" replace />} />
+      <Route path="*" element={<Navigate to="/today" replace />} />
     </Routes>
   );
 }
