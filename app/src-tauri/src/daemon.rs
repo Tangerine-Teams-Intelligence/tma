@@ -47,6 +47,23 @@ pub struct DaemonStatus {
     pub last_brief_date: Option<String>,
     pub heartbeat_count: u64,
     pub errors: Vec<String>,
+    /// v1.8 Phase 2-B: number of pre-meeting brief triggers we've fired off
+    /// to the calendar source's `briefs` probe since the daemon started.
+    /// Used by the UI to surface "X briefs queued today" in the writeback
+    /// section of the Slack source page.
+    pub premeeting_briefs_queued: u64,
+    /// RFC 3339 timestamp of the last successful pre-meeting brief tick
+    /// (regardless of whether the tick produced any triggers — this is the
+    /// liveness indicator, not a "found something" indicator).
+    pub last_premeeting_check: Option<String>,
+    /// v1.8 Phase 2-D: RFC 3339 timestamp of the last successful email
+    /// IMAP digest. The daemon throttles fetches to once per
+    /// `email_min_interval` (default 24h), regardless of how often the
+    /// heartbeat fires.
+    pub last_email_fetch: Option<String>,
+    /// v1.8 Phase 2-D: total number of email threads written or merged
+    /// across all heartbeats. Incremented after a successful fetch_recent.
+    pub email_threads_total: u64,
 }
 
 #[derive(Debug, Default)]
@@ -87,6 +104,16 @@ pub struct DaemonConfig {
     pub interval: Option<Duration>,
     /// Daemon log file (rotated by app shell).
     pub log_path: Option<PathBuf>,
+    /// v1.8 Phase 2-C — user data directory (where per-source JSON configs
+    /// and the `.env` allow-list live). When `None`, the daemon resolves it
+    /// from `LOCALAPPDATA` / `data_local_dir()`. None of the new source
+    /// ticks panic when this is unset; they degrade to no-op.
+    pub user_data: Option<PathBuf>,
+    /// v1.8 Phase 2-D — Email source config. `Some(_)` means the heartbeat
+    /// fetches recent email at most once per `email_min_interval`
+    /// (default 24h). `None` is the default (no email source configured).
+    pub email_config: Option<crate::sources::email::EmailConfig>,
+    pub email_min_interval: Option<Duration>,
 }
 
 impl DaemonConfig {
@@ -98,6 +125,9 @@ impl DaemonConfig {
             team_repo_path: None,
             interval: None,
             log_path: None,
+            user_data: None,
+            email_config: None,
+            email_min_interval: None,
         }
     }
 }
@@ -204,6 +234,166 @@ async fn do_heartbeat(cfg: &DaemonConfig, control: &Arc<DaemonControl>) {
             s.last_brief = Some(Utc::now().to_rfc3339());
             s.last_brief_date = Some(today);
         }
+    }
+
+    // 6. v1.8 Phase 2-B — pre-meeting brief triggers (calendar source).
+    //
+    // Per `sources/calendar/daemon-hook.md`: each heartbeat we run
+    // `tangerine-calendar briefs` against the configured iCal feeds. It
+    // prints one line per upcoming event in [now + lead - window, now + lead]
+    // — the canonical daemon-cadence trigger probe. We count successful
+    // ticks rather than attempting to parse the lines here; the actual
+    // Slack post is handed off to the writeback Tauri command which the
+    // brief-renderer in `commands/writeback_slack_calendar.rs` invokes.
+    //
+    // We coordinate with that module by flipping a pair of fields in the
+    // status struct so the UI can render "X briefs queued / last checked at
+    // T". The spawn-blocking pattern mirrors the python subcommand path
+    // above so we don't introduce a second tokio task surface.
+    match run_calendar_briefs_probe(cfg).await {
+        Ok(triggers_seen) => {
+            let mut s = control.status.lock();
+            s.last_premeeting_check = Some(Utc::now().to_rfc3339());
+            s.premeeting_briefs_queued = s
+                .premeeting_briefs_queued
+                .saturating_add(triggers_seen as u64);
+        }
+        Err(e) => {
+            control.record_error("premeeting_briefs", e);
+        }
+    }
+
+    // 7. v1.8 Phase 2-C — Notion / Loom / Zoom ticks. Each is best-effort
+    //    and short-circuits when no token is present, so a fresh install
+    //    where the user hasn't set these up yet sees zero overhead beyond
+    //    a JSON file existence check. No skipping the rest of the
+    //    heartbeat if any of these fail.
+    let user_data = cfg
+        .user_data
+        .clone()
+        .or_else(resolve_user_data_for_daemon);
+    if let Some(ud) = user_data {
+        let memory_root = cfg.memory_root.clone();
+
+        let notion_res = crate::commands::notion::tick_from_daemon(&ud, &memory_root).await;
+        for e in notion_res.errors {
+            control.record_error("notion_tick", e);
+        }
+
+        let loom_res = crate::commands::loom::tick_from_daemon(&ud, &memory_root).await;
+        for e in loom_res.errors {
+            control.record_error("loom_tick", e);
+        }
+
+        let zoom_res = crate::commands::zoom::tick_from_daemon(&ud, &memory_root).await;
+        for e in zoom_res.errors {
+            control.record_error("zoom_tick", e);
+        }
+    }
+
+    // 8. v1.8 Phase 2-D — Email source. Throttled — only fetch when
+    //    enough time has elapsed since the last successful pull
+    //    (`email_min_interval`, default 24h). Skipped entirely when
+    //    `cfg.email_config` is None (= user hasn't connected email yet).
+    if let Some(email_cfg) = &cfg.email_config {
+        if email_due(&control.snapshot(), cfg) {
+            match crate::sources::email::fetch_recent(
+                email_cfg.clone(),
+                Some(cfg.memory_root.clone()),
+            )
+            .await
+            {
+                Ok(res) => {
+                    let mut s = control.status.lock();
+                    s.last_email_fetch = Some(Utc::now().to_rfc3339());
+                    s.email_threads_total =
+                        s.email_threads_total.saturating_add(res.threads_written as u64);
+                }
+                Err(e) => {
+                    control.record_error("email_tick", e.to_string());
+                }
+            }
+        }
+    }
+}
+
+/// True when the daemon should run an email fetch this heartbeat. Honours
+/// `cfg.email_min_interval` (default 24h). Always true on first run
+/// (`last_email_fetch` is None).
+fn email_due(status: &DaemonStatus, cfg: &DaemonConfig) -> bool {
+    let interval = cfg.email_min_interval.unwrap_or(Duration::from_secs(24 * 60 * 60));
+    let last = match &status.last_email_fetch {
+        Some(s) => s,
+        None => return true,
+    };
+    let parsed = match chrono::DateTime::parse_from_rfc3339(last) {
+        Ok(dt) => dt.with_timezone(&Utc),
+        Err(_) => return true,
+    };
+    let elapsed = match Utc::now().signed_duration_since(parsed).to_std() {
+        Ok(d) => d,
+        Err(_) => return true,
+    };
+    elapsed >= interval
+}
+
+/// Resolve the `user_data` directory the same way `commands::paths::AppPaths`
+/// does (LOCALAPPDATA on Windows, data_local_dir elsewhere). Returns None if
+/// neither is available — the source ticks then no-op.
+fn resolve_user_data_for_daemon() -> Option<PathBuf> {
+    #[cfg(windows)]
+    {
+        if let Ok(local) = std::env::var("LOCALAPPDATA") {
+            return Some(PathBuf::from(local).join("TangerineMeeting"));
+        }
+    }
+    dirs::data_local_dir().map(|d| d.join("TangerineMeeting"))
+}
+
+/// Invoke the calendar source's `briefs` probe and return the number of
+/// trigger lines it printed. Stage 1 of Phase 2-B: count + log; Stage 2
+/// will parse each line and dispatch to the Slack writeback path.
+///
+/// Best-effort by design — the probe is idempotent and missing the binary
+/// (no calendar source set up yet) shouldn't kill the heartbeat. We map
+/// "command not found" / "no config" into Ok(0) so a fresh install where
+/// the calendar source hasn't been wired up yet still produces clean
+/// daemon snapshots.
+async fn run_calendar_briefs_probe(cfg: &DaemonConfig) -> Result<usize, String> {
+    let memory_root = cfg.memory_root.clone();
+    let join = tokio::task::spawn_blocking(move || {
+        // The TS calendar package ships a CLI under `sources/calendar/dist/cli.js`.
+        // We resolve `node` from PATH (same convention as the bot launcher).
+        // If neither node nor the bundled cli exist, treat as zero-trigger.
+        let cli_path = std::env::var("TANGERINE_CAL_CLI")
+            .ok()
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| std::path::PathBuf::from("tangerine-calendar"));
+        let mut cmd = std::process::Command::new(&cli_path);
+        cmd.args(["briefs", "--memory-root"]).arg(&memory_root);
+        let out = match cmd.output() {
+            Ok(o) => o,
+            Err(_e) => {
+                // Probe missing — treat as no-op rather than an error so the
+                // daemon stays clean on machines without the calendar source.
+                return Ok(0usize);
+            }
+        };
+        if !out.status.success() {
+            return Err(format!(
+                "calendar briefs exit {}: {}",
+                out.status,
+                String::from_utf8_lossy(&out.stderr)
+            ));
+        }
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        let count = stdout.lines().filter(|l| !l.trim().is_empty()).count();
+        Ok(count)
+    })
+    .await;
+    match join {
+        Ok(r) => r,
+        Err(e) => Err(format!("join: {}", e)),
     }
 }
 
@@ -332,6 +522,26 @@ mod tests {
     }
 
     #[test]
+    fn email_due_is_true_when_never_fetched() {
+        let cfg = DaemonConfig::solo(std::env::temp_dir());
+        let st = DaemonStatus::default();
+        assert!(email_due(&st, &cfg));
+    }
+
+    #[test]
+    fn email_due_respects_min_interval() {
+        let mut cfg = DaemonConfig::solo(std::env::temp_dir());
+        cfg.email_min_interval = Some(Duration::from_secs(60 * 60));
+        let mut st = DaemonStatus::default();
+        st.last_email_fetch = Some(Utc::now().to_rfc3339());
+        // Just fetched — must not be due.
+        assert!(!email_due(&st, &cfg));
+        // 2 h ago — due.
+        st.last_email_fetch = Some((Utc::now() - chrono::Duration::hours(2)).to_rfc3339());
+        assert!(email_due(&st, &cfg));
+    }
+
+    #[test]
     fn should_generate_brief_skips_before_8am() {
         // Can't easily mock `Local::now()` without bringing in a clock crate.
         // The "after 8 AM" branch is exercised by inspecting both arms via
@@ -371,6 +581,9 @@ mod tests {
             team_repo_path: None,
             interval: Some(Duration::from_millis(5)),
             log_path: None,
+            user_data: None,
+            email_config: None,
+            email_min_interval: None,
         };
         let control = Arc::new(DaemonControl::default());
         run_for_test(cfg, control.clone(), 3).await;

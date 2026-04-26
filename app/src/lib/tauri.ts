@@ -813,3 +813,470 @@ export async function exportDebugBundle(destPath: string): Promise<{ zip_path: s
     file_count: 7,
   }));
 }
+
+// ============================================================
+// v1.8 Phase 2-C — Notion / Loom / Zoom (read-side connectors)
+// ============================================================
+//
+// Each setup page reads its config via the *_get_config wrapper, validates
+// the bearer secret via *_validate_*, then writes the editable fields via
+// *_set_config. The actual ingest is invoked by the daemon heartbeat (see
+// app/src-tauri/src/daemon.rs) — these wrappers also expose a manual
+// *_capture entry the UI uses for "Sync now" buttons.
+
+export interface NotionConfig {
+  token_present: boolean;
+  database_ids: string[];
+  decisions_db_id?: string | null;
+  capture_enabled: boolean;
+  writeback_enabled: boolean;
+  last_sync?: string | null;
+}
+
+export interface NotionDb {
+  id: string;
+  title: string;
+}
+
+export interface NotionAtom {
+  path: string;
+  page_id: string;
+  database_id: string;
+  title: string;
+  last_edited_time: string;
+  preview: string;
+}
+
+export async function notionGetConfig(): Promise<NotionConfig> {
+  return safeInvoke("notion_get_config", undefined, () => ({
+    token_present: false,
+    database_ids: [],
+    decisions_db_id: null,
+    capture_enabled: true,
+    writeback_enabled: false,
+    last_sync: null,
+  }));
+}
+
+export async function notionSetConfig(args: {
+  database_ids: string[];
+  decisions_db_id?: string | null;
+  capture_enabled: boolean;
+  writeback_enabled: boolean;
+}): Promise<void> {
+  return safeInvoke("notion_set_config", args, () => {
+    console.info("[mock] notion_set_config", args);
+  });
+}
+
+export async function notionValidateToken(): Promise<{
+  ok: boolean;
+  bot_name?: string | null;
+  error?: string | null;
+}> {
+  return safeInvoke("notion_validate_token", undefined, () => ({
+    ok: false,
+    bot_name: null,
+    error: "no Tauri bridge",
+  }));
+}
+
+export async function notionListDatabases(): Promise<NotionDb[]> {
+  return safeInvoke("notion_list_databases", undefined, () => []);
+}
+
+export async function notionCapture(args: {
+  memory_root: string;
+  project?: string;
+}): Promise<{
+  written: number;
+  atoms: NotionAtom[];
+  errors: string[];
+}> {
+  return safeInvoke("notion_capture", args, () => ({
+    written: 0,
+    atoms: [],
+    errors: ["no Tauri bridge"],
+  }));
+}
+
+export async function notionWritebackDecision(args: {
+  atom_path: string;
+  db_id?: string | null;
+}): Promise<{
+  created: boolean;
+  page_id?: string | null;
+  idempotent_hit: boolean;
+}> {
+  return safeInvoke("notion_writeback_decision", args, () => ({
+    created: false,
+    page_id: null,
+    idempotent_hit: false,
+  }));
+}
+
+// ----- Loom -----
+
+export interface LoomConfig {
+  token_present: boolean;
+  watched_folders: string[];
+  capture_enabled: boolean;
+  last_sync?: string | null;
+}
+
+export interface LoomAtom {
+  path: string;
+  video_id: string;
+  url: string;
+  title: string;
+  created_at: string;
+  transcript_chars: number;
+}
+
+export async function loomGetConfig(): Promise<LoomConfig> {
+  return safeInvoke("loom_get_config", undefined, () => ({
+    token_present: false,
+    watched_folders: [],
+    capture_enabled: true,
+    last_sync: null,
+  }));
+}
+
+export async function loomSetConfig(args: {
+  watched_folders: string[];
+  capture_enabled: boolean;
+}): Promise<void> {
+  return safeInvoke("loom_set_config", args, () => {
+    console.info("[mock] loom_set_config", args);
+  });
+}
+
+export async function loomValidateToken(): Promise<{
+  ok: boolean;
+  workspace?: string | null;
+  error?: string | null;
+}> {
+  return safeInvoke("loom_validate_token", undefined, () => ({
+    ok: false,
+    workspace: null,
+    error: "no Tauri bridge",
+  }));
+}
+
+export async function loomPullTranscript(loom_url: string): Promise<{
+  video_id: string;
+  transcript: string;
+}> {
+  return safeInvoke("loom_pull_transcript", { loom_url }, () => ({
+    video_id: "mock",
+    transcript: "(mock transcript)",
+  }));
+}
+
+export async function loomCapture(memory_root: string): Promise<{
+  written: number;
+  atoms: LoomAtom[];
+  errors: string[];
+}> {
+  return safeInvoke("loom_capture", { memory_root }, () => ({
+    written: 0,
+    atoms: [],
+    errors: ["no Tauri bridge"],
+  }));
+}
+
+// ----- Zoom -----
+
+export interface ZoomConfig {
+  account_id_present: boolean;
+  client_id_present: boolean;
+  client_secret_present: boolean;
+  capture_enabled: boolean;
+  lookback_days: number;
+  last_sync?: string | null;
+}
+
+export interface ZoomMeetingAtom {
+  path: string;
+  meeting_id: string;
+  topic: string;
+  start_time: string;
+  duration_min: number;
+  transcript_chars: number;
+}
+
+export async function zoomGetConfig(): Promise<ZoomConfig> {
+  return safeInvoke("zoom_get_config", undefined, () => ({
+    account_id_present: false,
+    client_id_present: false,
+    client_secret_present: false,
+    capture_enabled: true,
+    lookback_days: 7,
+    last_sync: null,
+  }));
+}
+
+export async function zoomSetConfig(args: {
+  capture_enabled: boolean;
+  lookback_days?: number;
+}): Promise<void> {
+  return safeInvoke("zoom_set_config", args, () => {
+    console.info("[mock] zoom_set_config", args);
+  });
+}
+
+export async function zoomValidateCredentials(): Promise<{
+  ok: boolean;
+  account_email?: string | null;
+  error?: string | null;
+}> {
+  return safeInvoke("zoom_validate_credentials", undefined, () => ({
+    ok: false,
+    account_email: null,
+    error: "no Tauri bridge",
+  }));
+}
+
+export async function zoomCapture(memory_root: string): Promise<{
+  written: number;
+  atoms: ZoomMeetingAtom[];
+  errors: string[];
+}> {
+  return safeInvoke("zoom_capture", { memory_root }, () => ({
+    written: 0,
+    atoms: [],
+    errors: ["no Tauri bridge"],
+  }));
+}
+
+// ============================================================
+// v1.8 Phase 2-D — Email source (IMAP digest) + Voice notes
+// ============================================================
+
+export interface EmailConfig {
+  provider: "gmail" | "outlook" | "imap";
+  username: string;
+  app_password?: string | null;
+  fetch_lookback_days?: number;
+  host?: string | null;
+  port?: number | null;
+}
+
+export interface EmailTestConnectionResult {
+  ok: boolean;
+  host: string;
+  port: number;
+  error: string | null;
+  stored_password: boolean;
+}
+
+export interface EmailFetchResult {
+  threads_written: number;
+  messages_seen: number;
+  provider: string;
+}
+
+/**
+ * Validate the IMAP credentials and store the app password in the OS
+ * keychain on success. Returns a structured `{ok, error}` result rather
+ * than throwing — the UI surfaces the error inline.
+ */
+export async function emailTestConnection(
+  config: EmailConfig
+): Promise<EmailTestConnectionResult> {
+  return safeInvoke("email_test_connection", { config }, () => ({
+    ok: false,
+    host: config.host ?? "",
+    port: config.port ?? 993,
+    error: "no Tauri bridge",
+    stored_password: false,
+  }));
+}
+
+/**
+ * Manual fetch trigger — the daemon already runs this once a day. Useful
+ * for the "fetch now" button in the email setup page.
+ */
+export async function emailFetchRecent(config: EmailConfig): Promise<EmailFetchResult> {
+  return safeInvoke("email_fetch_recent", { config }, () => ({
+    threads_written: 0,
+    messages_seen: 0,
+    provider: config.provider,
+  }));
+}
+
+export interface VoiceAtom {
+  recorded_at: string;
+  duration_sec: number;
+  transcript: string;
+  source: string;
+  mime_type: string;
+  file_path: string;
+}
+
+export interface VoiceListItem {
+  slug: string;
+  recorded_at: string;
+  duration_sec: number;
+  path: string;
+}
+
+/**
+ * Decode the base64 audio blob, run it through the bundled Whisper, and
+ * write a markdown atom under `~/.tangerine-memory/threads/voice/`.
+ * Returns the atom (with `file_path`) so the recorder can navigate to it.
+ */
+export async function voiceNotesRecordAndTranscribe(
+  audio_b64: string,
+  mime_type: string
+): Promise<VoiceAtom> {
+  return safeInvoke(
+    "voice_notes_record_and_transcribe",
+    { audio_b64, mime_type },
+    () => ({
+      recorded_at: new Date().toISOString(),
+      duration_sec: 0,
+      transcript: "(mock transcript — Tauri bridge not available)",
+      source: "voice-notes",
+      mime_type,
+      file_path: "~/.tangerine-memory/threads/voice/mock.md",
+    })
+  );
+}
+
+export async function voiceNotesListRecent(): Promise<VoiceListItem[]> {
+  return safeInvoke("voice_notes_list_recent", undefined, () => []);
+}
+
+// ============================================================
+// v1.8 Phase 2-B — Slack + Calendar writeback
+// ============================================================
+//
+// All three commands are fire-and-forget from the React side: success
+// returns void, errors surface via the global toast pipeline. The Rust side
+// is the single point that knows about the keychain-stored Slack bot token
+// and Google OAuth refresh token; we never round-trip secrets through here.
+
+/**
+ * Post a pre-meeting brief to Slack for the meeting whose decision atom
+ * lives at `decisionPath`. Pass an empty `channelId` to fall back to the
+ * channel encoded in the atom's `slack_channel` frontmatter.
+ */
+export async function slackWritebackBrief(
+  decisionPath: string,
+  channelId: string
+): Promise<void> {
+  return safeInvoke(
+    "slack_writeback_brief",
+    { decisionPath, channelId },
+    () => {
+      // eslint-disable-next-line no-console
+      console.info("[mock] slack_writeback_brief", { decisionPath, channelId });
+    }
+  );
+}
+
+/** Post a finalized-meeting summary (decisions + action items) to Slack. */
+export async function slackWritebackSummary(
+  meetingPath: string,
+  channelId: string
+): Promise<void> {
+  return safeInvoke(
+    "slack_writeback_summary",
+    { meetingPath, channelId },
+    () => {
+      // eslint-disable-next-line no-console
+      console.info("[mock] slack_writeback_summary", { meetingPath, channelId });
+    }
+  );
+}
+
+/**
+ * Append a `Meeting summary (Tangerine)` block to the original Google
+ * Calendar event description. Idempotent — the Rust side detects the
+ * sentinel and skips a second append.
+ */
+export async function calendarWritebackSummary(
+  meetingPath: string,
+  eventId: string
+): Promise<void> {
+  return safeInvoke(
+    "calendar_writeback_summary",
+    { meetingPath, eventId },
+    () => {
+      // eslint-disable-next-line no-console
+      console.info("[mock] calendar_writeback_summary", { meetingPath, eventId });
+    }
+  );
+}
+
+// ============================================================
+// v1.8 Phase 2-A — Writeback (GitHub + Linear)
+// ============================================================
+
+/**
+ * Result shape returned by both `writeback_decision` and the auto-watcher's
+ * `writeback:event` event payload. Tagged union — the discriminator is
+ * `status`. Mirrors `crate::sources::WritebackOutcome` exactly.
+ */
+export type WritebackOutcome =
+  | { status: "posted"; external_url: string; kind: string }
+  | { status: "already_done"; external_url: string }
+  | { status: "not_applicable"; reason: string }
+  | { status: "disabled" }
+  | { status: "failed"; error: string };
+
+export interface WritebackLogEntry {
+  decision_path: string;
+  source: string;
+  external_id: string;
+  outcome: WritebackOutcome;
+  ts: string;
+}
+
+export interface ReadWritebackLogResult {
+  entries: WritebackLogEntry[];
+  log_path: string;
+}
+
+/**
+ * Trigger writeback for one decision file. Path may be absolute or
+ * relative to the memory root (`decisions/<file>.md`). Idempotent — a
+ * second call for the same decision returns `already_done`.
+ */
+export async function writebackDecision(decisionPath: string): Promise<WritebackOutcome> {
+  return safeInvoke(
+    "writeback_decision",
+    { args: { decision_path: decisionPath } },
+    () => ({
+      status: "not_applicable" as const,
+      reason: "Tauri bridge not available — mock writeback skipped.",
+    })
+  );
+}
+
+/** Read the most-recent writeback log entries. Default limit 5. */
+export async function readWritebackLog(args: {
+  limit?: number;
+  source?: "github" | "linear";
+}): Promise<ReadWritebackLogResult> {
+  return safeInvoke(
+    "read_writeback_log",
+    { args: { limit: args.limit ?? 5, source: args.source ?? null } },
+    () => ({ entries: [], log_path: "(mock)" })
+  );
+}
+
+/**
+ * Toggle the filesystem watcher that automatically posts writebacks when
+ * decisions land. Returns the resulting `running` state. The Sources/<source>
+ * page calls this whenever the user flips the per-source toggle AND ALSO
+ * persists the change to `~/.tmi/config.yaml` so cold launches restore it.
+ */
+export async function setWritebackWatcher(enabled: boolean): Promise<{ running: boolean }> {
+  return safeInvoke(
+    "set_writeback_watcher",
+    { args: { enabled } },
+    () => ({ running: enabled })
+  );
+}

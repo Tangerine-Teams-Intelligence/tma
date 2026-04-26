@@ -3,13 +3,26 @@ import { ArrowLeft, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { findSource, type SourceId, SOURCES } from "@/lib/sources";
 import DiscordSourceRoute from "@/routes/sources/discord";
+import EmailSourceRoute from "@/routes/sources/email";
+import VoiceNotesSourceRoute from "@/routes/sources/voice-notes";
+// v1.8 Phase 2-C — Notion / Loom / Zoom real-wire setup pages.
+import NotionSourceRoute from "@/routes/sources/notion";
+import LoomSourceRoute from "@/routes/sources/loom";
+import ZoomSourceRoute from "@/routes/sources/zoom";
+// v1.8 Phase 2-B — Slack + Calendar writeback pages.
+import SlackSourceRoute from "@/routes/sources/slack";
+import CalendarSourceRoute from "@/routes/sources/calendar";
+// v1.8 Phase 2-A — GitHub + Linear writeback pages.
+import GithubSourceRoute from "@/routes/sources/github";
+import LinearSourceRoute from "@/routes/sources/linear";
 
 /**
  * /sources/:id — dispatch.
  *
- * v1.5 only `discord` has a real config surface (the existing
- * meeting-setup.tsx form, moved under sources/). Everything else lands on a
- * "Coming v1.x" placeholder.
+ * Sources with a real config surface get rendered inline; everything else
+ * lands on a "Coming v1.x" placeholder. v1.8 Phase 2-C added Notion / Loom /
+ * Zoom; v1.8 Phase 2-D wires Email + Voice notes alongside the existing
+ * Discord page.
  */
 export default function SourceDetailRoute() {
   const { id } = useParams<{ id: string }>();
@@ -22,6 +35,33 @@ export default function SourceDetailRoute() {
 
   if (def.id === "discord") {
     return <DiscordSourceRoute />;
+  }
+  if (def.id === "notion") {
+    return <NotionSourceRoute />;
+  }
+  if (def.id === "loom") {
+    return <LoomSourceRoute />;
+  }
+  if (def.id === "zoom") {
+    return <ZoomSourceRoute />;
+  }
+  if (def.id === "email") {
+    return <EmailSourceRoute />;
+  }
+  if (def.id === "voice-notes") {
+    return <VoiceNotesSourceRoute />;
+  }
+  if (def.id === "slack") {
+    return <SlackSourceRoute />;
+  }
+  if (def.id === "cal") {
+    return <CalendarSourceRoute />;
+  }
+  if (def.id === "github") {
+    return <GithubSourceRoute />;
+  }
+  if (def.id === "linear") {
+    return <LinearSourceRoute />;
   }
 
   return <ComingSourcePage id={def.id} />;

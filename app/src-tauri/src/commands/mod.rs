@@ -39,6 +39,26 @@ pub mod update;
 pub mod whisper_model;
 pub mod ai_tools;
 
+// === Phase 2-B writeback (Slack + Calendar) ===
+// v1.8 Phase 2: writeback to Slack (pre-meeting brief + decision summary)
+// and Google Calendar (append summary to event description). Sibling agents
+// own GitHub / Linear writeback in `writeback.rs` — the two modules are
+// independent and may merge separately.
+pub mod writeback_slack_calendar;
+// === end Phase 2-B writeback ===
+
+// === Phase 2-A writeback (GitHub + Linear) ===
+// v1.8 Phase 2: closes the loop on the GitHub + Linear capture connectors
+// by posting a markdown comment back to the linked PR (GitHub) or opening
+// a "decision recorded" issue in the linked project (Linear) when an
+// atom-decision is finalised under `~/.tangerine-memory/decisions/`. The
+// adapters live in `crate::sources::{github, linear}`; this module is the
+// thin Tauri command surface so the frontend can manually trigger and read
+// the writeback log. The filesystem watcher in `crate::sources::watcher`
+// is opt-in (toggled per-source in ~/.tmi/config.yaml).
+pub mod writeback;
+// === end Phase 2-A writeback ===
+
 // Stage 1 Wave 3 — view-layer commands (today / people / projects / threads
 // / alignment / inbox / cursor writes / what's-new diff). Pure read/write
 // over the .tangerine/ sidecar; no shared state.
@@ -50,6 +70,19 @@ pub mod github;
 pub mod sync;
 pub mod invite;
 pub mod ws;
+
+// === Phase 2-C real-wire (Notion + Loom + Zoom) ===
+// v1.8 Phase 2: read-side connectors that walk Notion databases, Loom
+// workspace videos, and Zoom cloud recordings, and write atoms into the
+// user's memory dir. Notion also has a writeback path for decisions.
+// Each module owns its own per-user JSON config under
+// `<user_data>/sources/{name}.json` and reads its bearer secret(s) from
+// the shared `.env` allow-list (see env.rs). Daemon ticks them per
+// heartbeat — skipped when no token is configured.
+pub mod notion;
+pub mod loom;
+pub mod zoom;
+// === end Phase 2-C real-wire ===
 
 mod error;
 mod paths;
@@ -218,6 +251,45 @@ macro_rules! tmi_invoke_handler {
             // v1.8 Phase 1 — AI tools detection (sidebar status panel)
             $crate::commands::ai_tools::detect_ai_tools,
             $crate::commands::ai_tools::get_ai_tool_status,
+            // === Phase 2-B writeback (Slack + Calendar) ===
+            $crate::commands::writeback_slack_calendar::slack_writeback_brief,
+            $crate::commands::writeback_slack_calendar::slack_writeback_summary,
+            $crate::commands::writeback_slack_calendar::calendar_writeback_summary,
+            // === end Phase 2-B writeback ===
+            // === Phase 2-A writeback (GitHub + Linear) ===
+            $crate::commands::writeback::writeback_decision,
+            $crate::commands::writeback::read_writeback_log,
+            $crate::commands::writeback::set_writeback_watcher,
+            // === end Phase 2-A writeback ===
+            // === Phase 2-C real-wire (Notion + Loom + Zoom) ===
+            $crate::commands::notion::notion_get_config,
+            $crate::commands::notion::notion_set_config,
+            $crate::commands::notion::notion_validate_token,
+            $crate::commands::notion::notion_list_databases,
+            $crate::commands::notion::notion_capture,
+            $crate::commands::notion::notion_writeback_decision,
+            $crate::commands::loom::loom_get_config,
+            $crate::commands::loom::loom_set_config,
+            $crate::commands::loom::loom_validate_token,
+            $crate::commands::loom::loom_pull_transcript,
+            $crate::commands::loom::loom_capture,
+            $crate::commands::zoom::zoom_get_config,
+            $crate::commands::zoom::zoom_set_config,
+            $crate::commands::zoom::zoom_validate_credentials,
+            $crate::commands::zoom::zoom_capture,
+            // === end Phase 2-C real-wire ===
+            // === Phase 2-D new sources (Email + Voice notes) ===
+            // Email: IMAP digest. Test connection stores the app password
+            // in the OS keychain; fetch_recent runs daily via the daemon
+            // hook (see crate::daemon for the heartbeat tick).
+            $crate::sources::email::email_test_connection,
+            $crate::sources::email::email_fetch_recent,
+            // Voice notes: in-app recorder + local Whisper transcription.
+            // The frontend sends a base64 audio blob; we hand it off to the
+            // existing python -m tmi.transcribe module (no new whisper dep).
+            $crate::sources::voice_notes::voice_notes_record_and_transcribe,
+            $crate::sources::voice_notes::voice_notes_list_recent,
+            // === end Phase 2-D new sources ===
         ]
     };
 }

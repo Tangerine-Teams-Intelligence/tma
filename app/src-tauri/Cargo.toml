@@ -1,6 +1,6 @@
 [package]
 name = "tangerine-meeting"
-version = "1.8.0-beta.1"
+version = "1.8.0-beta.2"
 description = "Tangerine AI Teams — desktop shell for the Tangerine Meeting Assistant CLI"
 authors = ["Tangerine Intelligence Inc."]
 license = "Apache-2.0"
@@ -64,6 +64,32 @@ notify = "6"
 notify-debouncer-mini = "0.4"
 
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+
+# v1.8 Phase 2-D — Email source (IMAP digest).
+#
+# `imap` 3.0 is the maintained fork of the original abandoned crate; pairs with
+# `native-tls` for STARTTLS / IMAPS over 993. We deliberately use the
+# blocking interface inside `tokio::task::spawn_blocking` (same pattern the
+# daemon uses for `git pull`) rather than chasing async-imap, which has thinner
+# Tangerine-side ergonomics and a smaller dep churn budget.
+#
+# `mailparse` parses RFC 5322 messages (headers + multipart bodies). Pure-Rust,
+# zero alloc on header reads — fits the lean dep tree.
+# 3.x is alpha-only on crates.io; pinning to the latest published alpha keeps
+# the dep tree resolvable without forcing `--allow-prerelease`. (Sibling
+# Phase 2-D agent introduced this dep; the unpinned `"3"` failed to resolve.)
+imap = { version = "3.0.0-alpha.15", default-features = false, features = ["native-tls"] }
+native-tls = "0.2"
+mailparse = "0.15"
+# `base64` is already pulled in for invite tokens; the email source reuses it
+# to decode RFC 2047 encoded subjects when mailparse hands back raw bytes.
+
+# v1.8 Phase 2-D — Voice notes source.
+#
+# `base64` is already in the tree; voice notes piggy-back on it to receive
+# audio blobs from the React MediaRecorder layer. WAV writing is hand-rolled
+# (16 kHz mono PCM is a 44-byte header) so we avoid a dedicated audio crate
+# whose feature surface would dwarf the actual bytes-of-code we need.
 
 thiserror = "1"
 anyhow = "1"

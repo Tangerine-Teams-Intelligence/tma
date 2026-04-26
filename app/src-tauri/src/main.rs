@@ -119,7 +119,11 @@ fn main() {
                 .map(|h| h.join(".tangerine-memory"))
                 .unwrap_or_else(|| std::path::PathBuf::from(".tangerine-memory"));
             std::fs::create_dir_all(&daemon_root).ok();
-            let daemon_cfg = daemon::DaemonConfig::solo(daemon_root);
+            let mut daemon_cfg = daemon::DaemonConfig::solo(daemon_root);
+            // v1.8 Phase 2-C — pass the resolved user_data so source ticks
+            // (Notion / Loom / Zoom) read their per-user config + .env from
+            // the same place the Tauri commands write to.
+            daemon_cfg.user_data = Some(state.paths.user_data.clone());
             let daemon_control = daemon::start(daemon_cfg);
             state.daemon.install(daemon_control);
             Ok(())

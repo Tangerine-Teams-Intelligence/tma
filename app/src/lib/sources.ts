@@ -49,6 +49,14 @@ export interface SourceDef {
   status: SourceStatus;
   /** undefined = shipping now. */
   comingIn?: string;
+  /**
+   * Route to dispatch to when the user clicks this source in the sidebar.
+   * Defaults to `/sources/<id>` (handled by source-detail.tsx). Set
+   * explicitly when a source ships before the others in the same batch
+   * and needs a different path (e.g. /sources/voice-notes vs the legacy
+   * /sources/voice).
+   */
+  routePath?: string;
 }
 
 /**
@@ -104,13 +112,12 @@ export const SOURCES: SourceDef[] = [
   {
     id: "notion",
     title: "Notion",
-    produces: "memory/projects/*.md",
-    blurb: "Mirrors your project pages as markdown.",
+    produces: "memory/projects/{project}/notion/*.md",
+    blurb: "Mirrors your databases as markdown; writes back decisions.",
     longBlurb:
-      "Watches the Notion pages you authorize and mirrors them as markdown into your memory dir. Subsequent edits in Notion show up as diffs in /inbox before the memory file updates.",
+      "Walks the Notion databases you authorize each heartbeat, writes one markdown atom per page (with frontmatter for source / page id / db id / last_edited_time), and mirrors decisions back into a designated decisions database when writeback is enabled. Read + write are both off by default — toggle them in the source settings.",
     icon: FileText,
-    status: "coming",
-    comingIn: "v1.8",
+    status: "active",
   },
   {
     id: "cal",
@@ -126,46 +133,44 @@ export const SOURCES: SourceDef[] = [
   {
     id: "loom",
     title: "Loom",
-    produces: "memory/threads/loom-*.md",
-    blurb: "Auto-transcribes shared video memos.",
+    produces: "memory/threads/loom/*.md",
+    blurb: "Pulls workspace transcripts; one atom per video.",
     longBlurb:
-      "When a teammate shares a Loom in a connected channel, Tangerine pulls the transcript and stores a memory entry alongside the link.",
+      "Walks the Loom workspace videos you authorize and writes one markdown atom per video with the transcript inline. Optional folder filters; manual transcript pull from any Loom share URL.",
     icon: Video,
-    status: "coming",
-    comingIn: "v1.9",
+    status: "active",
   },
   {
     id: "zoom",
     title: "Zoom",
-    produces: "memory/meetings/*.md",
+    produces: "memory/meetings/zoom-*.md",
     blurb: "Pulls Zoom cloud recording transcripts.",
     longBlurb:
-      "Same shape as Discord but for Zoom — Tangerine reads cloud-recording transcripts and writes a meeting memory file per call.",
+      "Replacement capture path for users without Discord. Server-to-Server OAuth pulls cloud recordings + auto-generated transcripts and writes one meeting atom per call. Configurable lookback window (default 7 days).",
     icon: MessageSquare,
-    status: "coming",
-    comingIn: "v1.9",
+    status: "active",
   },
   {
     id: "email",
     title: "Email",
-    produces: "memory/threads/email-*.md",
-    blurb: "Reads team mailboxes; surfaces decisions and threads.",
+    produces: "memory/threads/email/*.md",
+    blurb: "IMAP digest — daily fetch, threaded into memory.",
     longBlurb:
-      "Connects via OAuth (Gmail / Outlook). Threads with decisions, action items, or external commitments become memory entries. Tangerine never sends mail — read-only.",
+      "Connect Gmail or Outlook (or any IMAP provider) with an app password. Tangerine fetches recent threads daily, groups by subject + reply chain, and writes one digest atom per thread to memory/threads/email/. Read-only — Tangerine never sends mail.",
     icon: Mail,
-    status: "coming",
-    comingIn: "v1.8",
+    status: "active",
+    routePath: "/sources/email/setup",
   },
   {
     id: "voice-notes",
     title: "Voice notes",
-    produces: "memory/threads/voice-*.md",
-    blurb: "Drop a voice note, get a transcribed memory entry.",
+    produces: "memory/threads/voice/*.md",
+    blurb: "Record a voice note, transcribed via local Whisper.",
     longBlurb:
-      "Record a voice note from your phone or desktop and Tangerine transcribes it via local Whisper, attaches it to the relevant thread, and writes a memory entry. Useful for capturing ideas between meetings without typing.",
+      "Click record in the Tangerine desktop app, talk, click stop. The audio runs through the bundled Whisper model (the same one Discord meetings use) and lands as a markdown atom under memory/threads/voice/. Audio never leaves your machine.",
     icon: Mic,
-    status: "coming",
-    comingIn: "v1.8",
+    status: "active",
+    routePath: "/sources/voice-notes/setup",
   },
 ];
 

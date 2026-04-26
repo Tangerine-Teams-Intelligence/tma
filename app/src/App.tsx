@@ -8,6 +8,13 @@ import SinkDetailRoute from "@/routes/sink-detail";
 import InboxRoute from "@/routes/inbox";
 import AlignmentRoute from "@/routes/alignment";
 import DiscordSourceRoute from "@/routes/sources/discord";
+// v1.8 Phase 2-C — Notion / Loom / Zoom real-wire setup pages.
+import NotionSourceRoute from "@/routes/sources/notion";
+import LoomSourceRoute from "@/routes/sources/loom";
+import ZoomSourceRoute from "@/routes/sources/zoom";
+// v1.8 Phase 2-D — Email + Voice notes (new sources, ingest only).
+import EmailSourceRoute from "@/routes/sources/email";
+import VoiceNotesSourceRoute from "@/routes/sources/voice-notes";
 import OnboardingTeamRoute from "@/routes/onboarding-team";
 import JoinTeamRoute from "@/routes/join-team";
 import MeetingDetailPage from "@/pages/meetings/detail";
@@ -138,6 +145,15 @@ export default function App() {
 
       {/* Discord source setup is a full-page form — no sidebar chrome. */}
       <Route path="/sources/discord/setup" element={<DiscordSourceRoute />} />
+
+      {/* v1.8 Phase 2-C — Notion / Loom / Zoom setup pages (full-page forms). */}
+      <Route path="/sources/notion/setup" element={<NotionSourceRoute />} />
+      <Route path="/sources/loom/setup" element={<LoomSourceRoute />} />
+      <Route path="/sources/zoom/setup" element={<ZoomSourceRoute />} />
+
+      {/* v1.8 Phase 2-D — Email + Voice notes setup pages (full-page). */}
+      <Route path="/sources/email/setup" element={<EmailSourceRoute />} />
+      <Route path="/sources/voice-notes/setup" element={<VoiceNotesSourceRoute />} />
 
       {/* Everything else lives inside the always-on sidebar shell. */}
       <Route element={<AppShell />}>

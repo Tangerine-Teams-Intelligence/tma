@@ -55,6 +55,16 @@ pub struct DaemonStatusOut {
     pub last_brief_date: Option<String>,
     pub heartbeat_count: u64,
     pub errors: Vec<String>,
+    /// v1.8 Phase 2-B — pre-meeting brief liveness.
+    #[serde(default)]
+    pub premeeting_briefs_queued: u64,
+    #[serde(default)]
+    pub last_premeeting_check: Option<String>,
+    /// v1.8 Phase 2-D — email source liveness.
+    #[serde(default)]
+    pub last_email_fetch: Option<String>,
+    #[serde(default)]
+    pub email_threads_total: u64,
 }
 
 #[tauri::command]
@@ -69,6 +79,10 @@ pub async fn daemon_status(state: State<'_, AppState>) -> Result<DaemonStatusOut
             last_brief_date: s.last_brief_date,
             heartbeat_count: s.heartbeat_count,
             errors: s.errors,
+            premeeting_briefs_queued: s.premeeting_briefs_queued,
+            last_premeeting_check: s.last_premeeting_check,
+            last_email_fetch: s.last_email_fetch,
+            email_threads_total: s.email_threads_total,
         },
         None => DaemonStatusOut {
             running: false,
@@ -78,6 +92,10 @@ pub async fn daemon_status(state: State<'_, AppState>) -> Result<DaemonStatusOut
             last_brief_date: None,
             heartbeat_count: 0,
             errors: vec![],
+            premeeting_briefs_queued: 0,
+            last_premeeting_check: None,
+            last_email_fetch: None,
+            email_threads_total: 0,
         },
     })
 }

@@ -35,7 +35,25 @@ use tauri::State;
 
 use super::{AppError, AppState};
 
-const ALLOWED_KEYS: &[&str] = &["DISCORD_BOT_TOKEN", "OPENAI_API_KEY", "ANTHROPIC_API_KEY"];
+// LINEAR_API_KEY added 2026-04-26 for v1.8 Phase 2 writeback. Linear's API
+// is a personal-API-key Bearer flow (no OAuth device flow yet); we reuse the
+// same .env mechanism rather than adding a new auth surface.
+//
+// Phase 2-C real-wire (Notion + Loom + Zoom) added 2026-04-26. Notion + Loom
+// are bearer-token sources; Zoom uses Server-to-Server OAuth so we store the
+// account/client triplet here and exchange it for a short-lived access token
+// per heartbeat in commands/zoom.rs.
+const ALLOWED_KEYS: &[&str] = &[
+    "DISCORD_BOT_TOKEN",
+    "OPENAI_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "LINEAR_API_KEY",
+    "NOTION_API_TOKEN",
+    "LOOM_API_TOKEN",
+    "ZOOM_ACCOUNT_ID",
+    "ZOOM_CLIENT_ID",
+    "ZOOM_CLIENT_SECRET",
+];
 
 /// Read the .env file into a vec of (k, v) pairs, returning empty if the
 /// file is missing or unreadable. Used by `runner::spawn_streamed` callers

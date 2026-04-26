@@ -1,7 +1,7 @@
 {
   "name": "tangerine-meeting-app",
   "private": true,
-  "version": "1.8.0-beta.1",
+  "version": "1.8.0-beta.2",
   "type": "module",
   "description": "Tangerine AI Teams v1.6 desktop shell (Tauri 2.x + React 19) — adds team memory sync.",
   "scripts": {

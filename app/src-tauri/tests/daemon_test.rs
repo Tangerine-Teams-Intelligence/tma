@@ -39,6 +39,9 @@ fn fail_fast_cfg(root: PathBuf) -> DaemonConfig {
         team_repo_path: None,
         interval: Some(Duration::from_millis(5)),
         log_path: None,
+        user_data: None,
+        email_config: None,
+        email_min_interval: None,
     }
 }
 
