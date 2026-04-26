@@ -7,18 +7,34 @@
  */
 
 import type {
+  AgiEnvelope,
   BridgeMessage,
   BridgeResponse,
   MemoryResult,
 } from '../shared/types';
 
 export async function bridgeSearch(query: string, limit = 5): Promise<MemoryResult[]> {
-  const resp = await sendMessage<MemoryResult[]>({
+  const out = await bridgeSearchEnvelope(query, limit);
+  return out.results;
+}
+
+/**
+ * Envelope-aware search. Returns results plus the optional Stage 1 envelope
+ * (Hook 4). Smart-chip uses this so it can render the confidence badge.
+ */
+export async function bridgeSearchEnvelope(
+  query: string,
+  limit = 5
+): Promise<{ results: MemoryResult[]; envelope?: AgiEnvelope }> {
+  const resp = await sendMessage<{ results: MemoryResult[]; envelope?: AgiEnvelope }>({
     type: 'memory.search',
     payload: { query, limit },
   });
-  if (!resp.ok) return [];
-  return resp.data ?? [];
+  if (!resp.ok || !resp.data) return { results: [] };
+  // Background may return either the legacy array shape or the new
+  // {results, envelope} shape. Accept both for forward/backward compat.
+  if (Array.isArray(resp.data)) return { results: resp.data as MemoryResult[] };
+  return resp.data;
 }
 
 export async function bridgePing(): Promise<boolean> {

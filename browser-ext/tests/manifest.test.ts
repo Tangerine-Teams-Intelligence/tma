@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { DEFAULT_SETTINGS } from '../src/shared/types';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, '..');
@@ -67,5 +68,11 @@ describe('manifest.json', () => {
     const popup = manifest.action?.default_popup;
     expect(popup).toBeTruthy();
     expect(existsSync(join(root, popup))).toBe(true);
+  });
+});
+
+describe('DEFAULT_SETTINGS smart inject', () => {
+  it('defaults smartInject to false (privacy-conservative)', () => {
+    expect(DEFAULT_SETTINGS.smartInject).toBe(false);
   });
 });

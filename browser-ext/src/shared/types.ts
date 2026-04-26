@@ -39,6 +39,26 @@ export interface SearchResponse {
   results: MemoryResult[];
   /** Server-reported elapsed time in ms (best-effort). */
   tookMs?: number;
+  /**
+   * Stage 1 AGI envelope (Hook 4). Optional — older Tangerine desktop apps
+   * (< v1.7) won't include this. Newer ones surface confidence so the chip
+   * can render a "⭐ confident" / "🤔 uncertain" badge.
+   */
+  envelope?: AgiEnvelope;
+}
+
+/**
+ * Stage 1 response envelope. Same shape as mcp-server/src/envelope.ts and
+ * the Rust ws_server reply. Stage 1 = confidence: 1.0, alternatives: [],
+ * reasoning_notes: null. Stage 2 fills these.
+ */
+export interface AgiEnvelope {
+  data?: unknown;
+  confidence: number;
+  freshness_seconds: number;
+  source_atoms: string[];
+  alternatives: unknown[];
+  reasoning_notes: string | null;
 }
 
 export interface FileResponse {
@@ -74,6 +94,13 @@ export interface ExtensionSettings {
   resultLimit: number;
   /** Auto-prefill the search query from textarea content. */
   autoPrefill: boolean;
+  /**
+   * Smart inject: when on, the content script silently watches the textarea
+   * (debounced 1.5s). If the typed text looks like a question, we run a
+   * memory search and pop a small chip near the textarea offering to inject
+   * the matches. Default OFF — opt-in per the privacy note in popup.html.
+   */
+  smartInject: boolean;
 }
 
 export const DEFAULT_SETTINGS: ExtensionSettings = {
@@ -81,6 +108,7 @@ export const DEFAULT_SETTINGS: ExtensionSettings = {
   enabledSites: { chatgpt: true, claude: true, gemini: true },
   resultLimit: 5,
   autoPrefill: true,
+  smartInject: false,
 };
 
 /** Background ↔ content script bridge messages. */

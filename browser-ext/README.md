@@ -46,8 +46,53 @@ Click the 🍊 in the browser toolbar to open the settings popup:
 | Enabled sites        | ChatGPT / Claude / Gemini all on | Disable per-site if you don't want the button  |
 | Results per search   | 5                             | Sent as `limit` in the search request          |
 | Auto-prefill query   | on                            | Seeds the search box from your textarea text   |
+| **Smart inject**     | **off**                       | Proactive injector — see below                  |
 
 Settings persist via `chrome.storage.sync` (synced across your Chrome profile).
+
+## Smart inject (Stage 1 AI surface upgrade)
+
+When **Smart inject** is on, the content script silently watches your prompt
+textarea (debounced 1.5s). If the typed text looks like a question
+(`isQuestionLike` heuristic — wh-words, ends in `?`, >50 chars, or contains
+imperative verbs like `summarise` / `find` / `recap`), we run a memory
+search through the localhost websocket. If results come back, a small chip
+pops near the textarea:
+
+```
+🍊 3 relevant memories  ⭐ confident  ×
+```
+
+Hover the chip → dropdown of snippets. Click **Inject all** → memories
+prepended to your prompt as a quoted context block. Click **×** → dismissed
+for that prompt for the rest of the tab session.
+
+**Privacy.** Off by default. Even on, every search is local
+(`ws://127.0.0.1:7780/memory`) — nothing leaves your machine. The chip is
+opt-in because debounced polling has a predictable read pattern that some
+users want to disable.
+
+## AGI envelope (Stage 1 Hook 4)
+
+The desktop app's localhost ws server returns the same envelope shape as the
+MCP server:
+
+```json
+{
+  "data":              {"...": "actual payload"},
+  "confidence":        1.0,
+  "freshness_seconds": 60,
+  "source_atoms":      ["evt-..."],
+  "alternatives":      [],
+  "reasoning_notes":   null
+}
+```
+
+Stage 1 always returns `confidence: 1.0`. The smart-inject chip surfaces
+this as `⭐ confident`. Stage 2 will start emitting `< 1.0` and the chip
+will downgrade the badge to `· likely` (≥ 0.5) or `🤔 uncertain` (< 0.5).
+Schema is documented in `mcp-server/README.md` and the desktop app's
+`<root>/.tangerine/SCHEMA.md`.
 
 ## Wire protocol
 
