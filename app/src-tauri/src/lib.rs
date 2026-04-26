@@ -7,3 +7,4 @@
 //! download_whisper_model, cancel_whisper_download in commands::whisper_model).
 
 pub mod commands;
+pub mod uri_handler;

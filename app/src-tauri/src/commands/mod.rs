@@ -37,6 +37,12 @@ pub mod external;
 pub mod update;
 pub mod whisper_model;
 
+// v1.6.0 team memory sync.
+pub mod git;
+pub mod github;
+pub mod sync;
+pub mod invite;
+
 mod error;
 mod paths;
 mod runner;
@@ -55,6 +61,10 @@ pub struct AppState {
     pub bots: Arc<RwLock<bot::BotTable>>,
     pub downloads: Arc<parking_lot::Mutex<whisper_model::DownloadTable>>,
     pub http: reqwest::Client,
+    /// v1.6.0: control surface for the background memory sync ticker.
+    /// Lives in `commands::sync`; held here so commands can reach it via
+    /// `state.sync.dirty.notify_waiters()` without juggling globals.
+    pub sync: Arc<sync::SyncControl>,
 }
 
 impl AppState {
@@ -67,9 +77,10 @@ impl AppState {
             bots: Arc::new(RwLock::new(Default::default())),
             downloads: Arc::new(parking_lot::Mutex::new(Default::default())),
             http: reqwest::Client::builder()
-                .user_agent("TangerineMeeting/1.5")
+                .user_agent("TangerineMeeting/1.6")
                 .build()
                 .map_err(|e| AppError::internal("http_init", e.to_string()))?,
+            sync: Arc::new(sync::SyncControl::default()),
         })
     }
 }
@@ -138,6 +149,26 @@ macro_rules! tmi_invoke_handler {
             // memory layer (sample seeding + root resolution)
             $crate::commands::memory::resolve_memory_root,
             $crate::commands::memory::init_memory_with_samples,
+            // v1.6.0 — git ops
+            $crate::commands::git::git_check,
+            $crate::commands::git::git_clone,
+            $crate::commands::git::git_pull,
+            $crate::commands::git::git_push,
+            $crate::commands::git::git_status,
+            $crate::commands::git::git_commit_all,
+            $crate::commands::git::git_init_and_push,
+            // v1.6.0 — github oauth + repo create
+            $crate::commands::github::github_device_flow_start,
+            $crate::commands::github::github_device_flow_poll,
+            $crate::commands::github::github_create_repo,
+            // v1.6.0 — background sync ticker
+            $crate::commands::sync::sync_start,
+            $crate::commands::sync::sync_stop,
+            $crate::commands::sync::sync_kick,
+            $crate::commands::sync::sync_status,
+            // v1.6.0 — invite link codec
+            $crate::commands::invite::generate_invite,
+            $crate::commands::invite::parse_invite,
         ]
     };
 }

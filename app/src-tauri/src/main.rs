@@ -24,32 +24,50 @@ use tauri::{Manager, WindowEvent};
 
 use tangerine_meeting_lib::commands;
 use tangerine_meeting_lib::tmi_invoke_handler;
+use tangerine_meeting_lib::uri_handler;
 
 fn main() {
     // Single-instance plugin: when a second `tangerine-meeting.exe` is launched
     // the callback fires in the already-running process; we focus the existing
-    // window instead of letting Tauri spawn a duplicate. The closure receives
-    // the second instance's argv + cwd; we ignore both for now (no deep links).
+    // window instead of letting Tauri spawn a duplicate. v1.6.0: the callback
+    // also extracts any `tangerine://` URL out of argv and forwards it to the
+    // frontend's join-team route via the `deeplink://join` event.
     tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             if let Some(win) = app.get_webview_window("main") {
                 let _ = win.unminimize();
                 let _ = win.show();
                 let _ = win.set_focus();
             }
+            if let Some(uri) = uri_handler::extract_uri(&argv) {
+                uri_handler::emit_deeplink(app, uri);
+            }
         }))
+        .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .setup(|app| {
             // Initialise AppState (paths, runs, watchers, bots, downloads,
-            // http) so every command in the macro can read it from
+            // http, sync) so every command in the macro can read it from
             // `state::<AppState>()`.
             commands::setup_state(app)?;
             let win = app.get_webview_window("main").expect("main window missing");
             // Min size enforced via tauri.conf.json; we just persist the close
             // hint here.
             let _ = win;
+            // Cold-launch deep-link: when the OS spawns us with a
+            // tangerine://join URL on first launch, argv carries it. Forward
+            // to the frontend the same way the single-instance callback does.
+            let argv: Vec<String> = std::env::args().collect();
+            if let Some(uri) = uri_handler::extract_uri(&argv) {
+                let handle = app.handle().clone();
+                // Defer one tick so the webview is ready to receive the event.
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+                    uri_handler::emit_deeplink(&handle, uri);
+                });
+            }
             Ok(())
         })
         .invoke_handler(tmi_invoke_handler!())
