@@ -140,14 +140,44 @@ Two extra flags every source MUST honor:
 
 ## Module A integration
 
-When Module A's `event_router` lands, sources will fan out atoms via:
+Sources route every atom through Module A's `event_router` via the
+`tmi.daemon_cli emit-atom` subprocess. The connector hands the atom JSON to
+Python (over stdin to avoid Windows command-line length caps), and Module A
+takes care of:
 
-```python
-from tmi.event_router import EventRouter
-EventRouter(memory_root=...).process(atom_dict)
-```
+1. **Validation** — `validate_atom()` injects the 8 Stage 2 AGI defaults
+   (embedding/concepts/confidence/alternatives/source_count/reasoning_notes/
+   sentiment/importance) for any field the connector forgot.
+2. **Canonical id** — if the connector didn't supply an id, Module A
+   computes `evt-<YYYY-MM-DD>-<10-hex>` from sha256(source|kind|source_id|ts).
+   Connectors are encouraged to compute the id locally too (see the
+   `makeAtomId` helper in `sources/github/src/normalize.ts`) so atoms read
+   with a stable id BEFORE they reach the router.
+3. **Fan-out** — timeline file, per-thread file, per-person file, per-project
+   file are all written from the same atom dict.
+4. **Index update** — the canonical `.tangerine/timeline.json` gets a record
+   per atom, sorted by (ts, id).
+5. **on_atom dispatch** — Stage 2 reasoning agents subscribe via
+   `event_router.on_atom`; Stage 1 has 0 subscribers but the dispatcher runs.
 
-Until then, sources write directly to the timeline + threads files. Each `memory.ts` MUST leave a `// TODO(module-a)` comment at the integration point so the swap is mechanical.
+The wire format is documented in `sources/github/src/memory.ts`
+(`atomToPayload` function) and consumed by `tmi.daemon_cli._build_event_from_payload`.
+
+### Atom id schema (Module A wins)
+
+Sources MUST emit ids in the format `evt-<YYYY-MM-DD>-<10-hex-of-sha256>`.
+The hash inputs are pipe-separated `source|kind|source_id|ts`. A source's
+`source_id` is the connector's stable upstream identifier — for GitHub it's
+`gh:<repo>:<kind>:<numeric-id>:<verb>` (see `ghSourceId` in the GitHub
+normalizer for the canonical form).
+
+### Atom kind vocabulary (Module A wins)
+
+The canonical kind set is `meeting_chunk | decision | pr_event | comment |
+ticket_event | brief | summary | calendar_event`. Sources MUST collapse
+their narrower upstream verbs onto these. The narrow verb is preserved on
+`refs.<source>.action` so downstream UX can still tell `pr_event(opened)`
+apart from `pr_event(merged)`.
 
 ## Adding a new source
 

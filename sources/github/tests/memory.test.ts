@@ -1,6 +1,13 @@
-// Memory writer: timeline + thread file emission, dedup, identity learning.
-import { describe, it, expect, beforeEach } from "vitest";
-import { mkdtempSync, rmSync, readFileSync, existsSync } from "node:fs";
+// Memory I/O — config + identity + Module-A router integration.
+//
+// We don't shell out to Python in unit tests. setRouterForTesting() injects
+// a deterministic in-memory router that records every emit-atom call so
+// assertions can verify the exact JSON payload Module A would receive.
+// The integration test (integration.test.ts) exercises the full flow with
+// the same stub.
+
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -12,8 +19,11 @@ import {
   readIdentity,
   writeIdentity,
   learnIdentities,
-  atomToMarkdown,
+  setRouterForTesting,
   utcDate,
+  _atomToPayloadForTesting,
+  type AtomRouter,
+  type EmitAtomResult,
 } from "../src/memory.js";
 import { defaultConfig, type Atom } from "../src/types.js";
 
@@ -23,14 +33,15 @@ function tmpRoot(): string {
 
 function fakeAtom(overrides: Partial<Atom> = {}): Atom {
   return {
-    id: "evt-gh-myorg-api-pr-47-opened",
+    id: "evt-2026-04-26-aaaaaaaaaa",
     ts: "2026-04-26T09:00:00.000Z",
     source: "github",
     actor: "eric",
     actors: ["eric", "daizhe"],
-    kind: "pr_opened",
+    kind: "pr_event",
+    source_id: "gh:myorg/api:pr_event:47:opened",
     refs: {
-      github: { repo: "myorg/api", pr: 47, url: "https://github.com/myorg/api/pull/47" },
+      github: { repo: "myorg/api", pr: 47, url: "https://github.com/myorg/api/pull/47", action: "opened" },
       meeting: null,
       decisions: [],
       people: ["eric", "daizhe"],
@@ -40,30 +51,30 @@ function fakeAtom(overrides: Partial<Atom> = {}): Atom {
     status: "active",
     sample: false,
     body: "**eric** opened PR #47 (eric/pg-migration → main): _postgres-migration_",
+    embedding: null,
+    concepts: [],
+    confidence: 1.0,
+    alternatives: [],
+    source_count: 1,
+    reasoning_notes: null,
+    sentiment: null,
+    importance: null,
     ...overrides,
   };
 }
 
-describe("atomToMarkdown", () => {
-  it("renders required frontmatter keys", () => {
-    const md = atomToMarkdown(fakeAtom());
-    expect(md.startsWith("---\n")).toBe(true);
-    expect(md).toContain("id: evt-gh-myorg-api-pr-47-opened");
-    expect(md).toContain("source: github");
-    expect(md).toContain("kind: pr_opened");
-    expect(md).toContain("actor: eric");
-    expect(md).toContain("actors: [eric, daizhe]");
-    expect(md).toContain("threads: [pr-myorg-api-47]");
-    expect(md).toContain("projects: [v1-launch]");
-    expect(md).toContain("status: active");
-    expect(md).toContain("sample: false");
-    expect(md).toContain("**eric** opened PR #47");
-  });
-  it("emits null literal for meeting when unset", () => {
-    const md = atomToMarkdown(fakeAtom());
-    expect(md).toContain("meeting: null");
-  });
-});
+/** Stub router — records calls in-memory + simulates Module-A dedup by id. */
+function makeStubRouter(): { router: AtomRouter; calls: { root: string; atom: Atom }[] } {
+  const seenIds = new Set<string>();
+  const calls: { root: string; atom: Atom }[] = [];
+  const router: AtomRouter = async (root, atom): Promise<EmitAtomResult> => {
+    calls.push({ root, atom });
+    if (seenIds.has(atom.id)) return { events: 1, skipped: 1 };
+    seenIds.add(atom.id);
+    return { events: 1, skipped: 0 };
+  };
+  return { router, calls };
+}
 
 describe("utcDate", () => {
   it("extracts YYYY-MM-DD prefix", () => {
@@ -106,65 +117,107 @@ describe("identity IO + learning", () => {
   });
 });
 
-describe("writeAtom — timeline + thread", () => {
+describe("payload conversion for Module A emit-atom", () => {
+  it("flattens the atom into the JSON shape daemon_cli expects", () => {
+    const p = _atomToPayloadForTesting(fakeAtom());
+    expect(p.id).toBe("evt-2026-04-26-aaaaaaaaaa");
+    expect(p.source).toBe("github");
+    expect(p.kind).toBe("pr_event");
+    expect(p.source_id).toBe("gh:myorg/api:pr_event:47:opened");
+    // refs become a plain object — Module A reads sub-keys.
+    const refs = p.refs as Record<string, unknown>;
+    expect(refs.threads).toEqual(["pr-myorg-api-47"]);
+    expect(refs.people).toEqual(["eric", "daizhe"]);
+    expect(refs.projects).toEqual(["v1-launch"]);
+    expect((refs.github as Record<string, unknown>).action).toBe("opened");
+  });
+  it("populates all 8 Stage 2 AGI defaults if missing", () => {
+    const p = _atomToPayloadForTesting(fakeAtom({ embedding: undefined as unknown as null }));
+    expect(p.embedding).toBeNull();
+    expect(p.concepts).toEqual([]);
+    expect(p.confidence).toBe(1.0);
+    expect(p.alternatives).toEqual([]);
+    expect(p.source_count).toBe(1);
+    expect(p.reasoning_notes).toBeNull();
+    expect(p.sentiment).toBeNull();
+    expect(p.importance).toBeNull();
+  });
+});
+
+describe("writeAtom — Module A integration", () => {
   let root: string;
-  beforeEach(() => { root = tmpRoot(); });
-  it("writes to both timeline and thread files", async () => {
+  let stub: ReturnType<typeof makeStubRouter>;
+
+  beforeEach(() => {
+    root = tmpRoot();
+    stub = makeStubRouter();
+    setRouterForTesting(stub.router);
+  });
+  afterEach(() => setRouterForTesting(null));
+
+  it("hands the atom to Module A's router", async () => {
     const paths = makePaths(root);
-    const r = await writeAtom(paths, fakeAtom());
+    const atom = fakeAtom();
+    const r = await writeAtom(paths, atom);
     expect(r.wroteTimeline).toBe(true);
-    expect(r.wroteThreadFiles).toBe(1);
-    const t = readFileSync(paths.timeline("2026-04-26"), "utf8");
-    const th = readFileSync(paths.thread("pr-myorg-api-47"), "utf8");
-    expect(t).toContain("evt-gh-myorg-api-pr-47-opened");
-    expect(th).toContain("evt-gh-myorg-api-pr-47-opened");
+    expect(r.wroteThreadFiles).toBe(1); // refs.threads.length
+    expect(stub.calls).toHaveLength(1);
+    expect(stub.calls[0].root).toBe(root);
+    expect(stub.calls[0].atom.id).toBe(atom.id);
   });
 
-  it("is idempotent — second write is a no-op", async () => {
+  it("router-side dedup surfaces as skipped on second call", async () => {
     const paths = makePaths(root);
     await writeAtom(paths, fakeAtom());
-    const r2 = await writeAtom(paths, fakeAtom());
-    expect(r2.wroteTimeline).toBe(false);
-    expect(r2.wroteThreadFiles).toBe(0);
-    const t = readFileSync(paths.timeline("2026-04-26"), "utf8");
-    // The id should appear exactly once.
-    const occurrences = (t.match(/evt-gh-myorg-api-pr-47-opened/g) ?? []).length;
-    expect(occurrences).toBe(1);
+    const r = await writeAtom(paths, fakeAtom());
+    expect(r.wroteTimeline).toBe(false);
+    expect(stub.calls).toHaveLength(2);  // both calls reach Module A
   });
 
-  it("writes a fresh atom into existing file with separator", async () => {
+  it("multiple threads → wroteThreadFiles count matches", async () => {
     const paths = makePaths(root);
-    await writeAtom(paths, fakeAtom());
-    await writeAtom(paths, fakeAtom({ id: "evt-gh-myorg-api-pr-47-comment-12345", kind: "pr_comment" }));
-    const t = readFileSync(paths.timeline("2026-04-26"), "utf8");
-    expect(t).toContain("evt-gh-myorg-api-pr-47-opened");
-    expect(t).toContain("evt-gh-myorg-api-pr-47-comment-12345");
-    // Two `---` opens.
-    const opens = (t.match(/^---$/gm) ?? []).length;
-    expect(opens).toBeGreaterThanOrEqual(4); // 2 atoms × open + close
-  });
-
-  it("groups by ts UTC date", async () => {
-    const paths = makePaths(root);
-    await writeAtom(paths, fakeAtom());
-    await writeAtom(paths, fakeAtom({ id: "evt-x", ts: "2026-04-27T01:00:00.000Z", refs: { ...fakeAtom().refs, threads: ["pr-myorg-api-99"] } }));
-    expect(existsSync(paths.timeline("2026-04-26"))).toBe(true);
-    expect(existsSync(paths.timeline("2026-04-27"))).toBe(true);
+    const atom = fakeAtom({
+      refs: {
+        ...fakeAtom().refs,
+        threads: ["pr-myorg-api-47", "epic-postgres"],
+      },
+    });
+    const r = await writeAtom(paths, atom);
+    expect(r.wroteThreadFiles).toBe(2);
   });
 });
 
 describe("writeAtoms batch", () => {
   let root: string;
-  beforeEach(() => { root = tmpRoot(); });
-  it("counts written vs skipped (dedup)", async () => {
+  let stub: ReturnType<typeof makeStubRouter>;
+
+  beforeEach(() => {
+    root = tmpRoot();
+    stub = makeStubRouter();
+    setRouterForTesting(stub.router);
+  });
+  afterEach(() => setRouterForTesting(null));
+
+  it("counts written vs skipped (router-side dedup)", async () => {
     const paths = makePaths(root);
     const a1 = fakeAtom();
-    const a2 = fakeAtom({ id: "evt-2", ts: "2026-04-26T09:30:00.000Z" });
+    const a2 = fakeAtom({ id: "evt-2026-04-26-bbbbbbbbbb", ts: "2026-04-26T09:30:00.000Z" });
     const first = await writeAtoms(paths, [a1, a2]);
     expect(first.written).toBe(2);
     expect(first.skipped).toBe(0);
     const second = await writeAtoms(paths, [a1, a2]);
     expect(second.written).toBe(0);
     expect(second.skipped).toBe(2);
+  });
+
+  it("sorts by ts before handing to Module A", async () => {
+    const paths = makePaths(root);
+    const later = fakeAtom({ id: "evt-2026-04-27-aaaaaaaaaa", ts: "2026-04-27T08:00:00.000Z" });
+    const earlier = fakeAtom({ id: "evt-2026-04-26-bbbbbbbbbb", ts: "2026-04-26T08:00:00.000Z" });
+    await writeAtoms(paths, [later, earlier]);
+    expect(stub.calls.map((c) => c.atom.id)).toEqual([
+      "evt-2026-04-26-bbbbbbbbbb",
+      "evt-2026-04-27-aaaaaaaaaa",
+    ]);
   });
 });

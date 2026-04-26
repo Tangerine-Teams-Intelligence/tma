@@ -10,8 +10,14 @@
 // Each `normalize<X>` function takes the raw GitHub object, the parent ref
 // (repo, pr/issue number), and the resolution context (identity map +
 // project detection rules), and returns one Atom.
+//
+// Atom id and kind names follow the Module A canonical schema (Module A
+// wins): id is ``evt-<YYYY-MM-DD>-<10-hex>`` from sha256(source|kind|source_id|ts);
+// kinds are pr_event / comment / ticket_event / decision (the narrow GitHub
+// verb is preserved on refs.github.action). See ``makeAtomId`` below.
 
-import type { Atom, AtomKind, AtomRefs, IdentityMap, SourceConfig } from "./types.js";
+import { createHash } from "node:crypto";
+import type { Atom, AtomKind, AtomRefs, GithubAction, IdentityMap, SourceConfig } from "./types.js";
 
 export interface NormalizeCtx {
   repo: string; // "org/name"
@@ -118,6 +124,49 @@ function nowOr(ts: string | null | undefined, fallback: Date = new Date()): stri
   return fallback.toISOString();
 }
 
+/**
+ * Module A canonical id: ``evt-<YYYY-MM-DD>-<10-hex>`` from
+ * sha256(source|kind|source_id|ts). Same inputs → same id forever.
+ *
+ * The Python side (``tmi.event_router.make_event_id``) computes this exact
+ * same hash; if a connector sends an atom with id="" the daemon recomputes
+ * via the same formula. We compute it client-side too so atoms read with a
+ * stable id BEFORE they hit the router.
+ */
+export function makeAtomId(
+  source: string,
+  kind: string,
+  sourceId: string,
+  ts: string,
+): string {
+  const datePart = /^\d{4}-\d{2}-\d{2}/.exec(ts)?.[0] ?? new Date().toISOString().slice(0, 10);
+  const digest = createHash("sha256").update(`${source}|${kind}|${sourceId}|${ts}`).digest("hex");
+  return `evt-${datePart}-${digest.slice(0, 10)}`;
+}
+
+/** Build the source_id portion of the canonical id. Stable across polls so
+ *  re-ingestion lands on the exact same atom id. */
+function ghSourceId(repo: string, kind: string, parts: (string | number)[]): string {
+  return `gh:${repo}:${kind}:${parts.join(":")}`;
+}
+
+/** Stage 1 AGI defaults — set so atoms read identically before/after they
+ *  hop to Module A. Module A's validate_atom() injects these too, but we
+ *  set them here so memory.ts can serialise the full schema for connectors
+ *  that bypass the router (none today, but the contract is the contract). */
+function withAgiDefaults<T extends object>(atom: T): T {
+  const a = atom as Record<string, unknown>;
+  if (a.embedding === undefined) a.embedding = null;
+  if (a.concepts === undefined) a.concepts = [];
+  if (a.confidence === undefined) a.confidence = 1.0;
+  if (a.alternatives === undefined) a.alternatives = [];
+  if (a.source_count === undefined) a.source_count = 1;
+  if (a.reasoning_notes === undefined) a.reasoning_notes = null;
+  if (a.sentiment === undefined) a.sentiment = null;
+  if (a.importance === undefined) a.importance = null;
+  return atom;
+}
+
 // ----------------------------------------------------------------------
 // PR
 
@@ -150,15 +199,18 @@ export function normalizePr(raw: RawPr, ctx: NormalizeCtx): Atom {
   const head = raw.head?.ref ?? "?";
   const draftTag = raw.draft ? " (draft)" : "";
   const bodyLine = raw.body ? `\n\n${truncate(raw.body, 800)}` : "";
-  return {
-    id: `evt-gh-${slugRepo(ctx.repo)}-pr-${raw.number}-opened`,
-    ts: nowOr(raw.created_at),
+  const ts = nowOr(raw.created_at);
+  const sourceId = ghSourceId(ctx.repo, "pr_event", [raw.number, "opened"]);
+  return withAgiDefaults({
+    id: makeAtomId("github", "pr_event", sourceId, ts),
+    ts,
     source: "github",
     actor,
     actors,
-    kind: "pr_opened",
+    kind: "pr_event",
+    source_id: sourceId,
     refs: buildRefs({
-      github: { repo: ctx.repo, pr: raw.number, url: raw.html_url ?? undefined },
+      github: { repo: ctx.repo, pr: raw.number, url: raw.html_url ?? undefined, action: "opened" },
       people: actors,
       projects,
       threads: [thread],
@@ -168,22 +220,25 @@ export function normalizePr(raw: RawPr, ctx: NormalizeCtx): Atom {
     body:
       `**${actor}** opened PR #${raw.number}${draftTag} (${head} → ${base}): _${escapeMd(raw.title)}_${bodyLine}` +
       (raw.html_url ? `\n\nOriginal at: ${raw.html_url}` : ""),
-  };
+  });
 }
 
 export function normalizePrMerged(raw: RawPr, ctx: NormalizeCtx): Atom {
   const actor = aliasFor(raw.merged_by?.login ?? raw.user?.login, ctx.identity);
   const projects = extractProjects(raw.labels, raw.title, ctx.config);
   const thread = ctx.threadIdForPr(raw.number);
-  return {
-    id: `evt-gh-${slugRepo(ctx.repo)}-pr-${raw.number}-merged`,
-    ts: nowOr(raw.merged_at),
+  const ts = nowOr(raw.merged_at);
+  const sourceId = ghSourceId(ctx.repo, "pr_event", [raw.number, "merged"]);
+  return withAgiDefaults({
+    id: makeAtomId("github", "pr_event", sourceId, ts),
+    ts,
     source: "github",
     actor,
     actors: [actor],
-    kind: "pr_merged",
+    kind: "pr_event",
+    source_id: sourceId,
     refs: buildRefs({
-      github: { repo: ctx.repo, pr: raw.number, url: raw.html_url ?? undefined },
+      github: { repo: ctx.repo, pr: raw.number, url: raw.html_url ?? undefined, action: "merged" },
       people: [actor],
       projects,
       threads: [thread],
@@ -194,22 +249,25 @@ export function normalizePrMerged(raw: RawPr, ctx: NormalizeCtx): Atom {
       `**${actor}** merged PR #${raw.number} (${escapeMd(raw.title)}). ` +
       (raw.merge_commit_sha ? `Merge SHA \`${raw.merge_commit_sha.slice(0, 12)}\`.` : "") +
       (raw.html_url ? `\n\nOriginal at: ${raw.html_url}` : ""),
-  };
+  });
 }
 
 export function normalizePrClosed(raw: RawPr, ctx: NormalizeCtx): Atom {
   const actor = aliasFor(raw.user?.login, ctx.identity); // best-effort; GitHub doesn't always tell us who closed
   const projects = extractProjects(raw.labels, raw.title, ctx.config);
   const thread = ctx.threadIdForPr(raw.number);
-  return {
-    id: `evt-gh-${slugRepo(ctx.repo)}-pr-${raw.number}-closed`,
-    ts: nowOr(raw.closed_at),
+  const ts = nowOr(raw.closed_at);
+  const sourceId = ghSourceId(ctx.repo, "pr_event", [raw.number, "closed"]);
+  return withAgiDefaults({
+    id: makeAtomId("github", "pr_event", sourceId, ts),
+    ts,
     source: "github",
     actor,
     actors: [actor],
-    kind: "pr_closed",
+    kind: "pr_event",
+    source_id: sourceId,
     refs: buildRefs({
-      github: { repo: ctx.repo, pr: raw.number, url: raw.html_url ?? undefined },
+      github: { repo: ctx.repo, pr: raw.number, url: raw.html_url ?? undefined, action: "closed" },
       people: [actor],
       projects,
       threads: [thread],
@@ -219,7 +277,7 @@ export function normalizePrClosed(raw: RawPr, ctx: NormalizeCtx): Atom {
     body:
       `PR #${raw.number} (${escapeMd(raw.title)}) was closed without merge.` +
       (raw.html_url ? `\n\nOriginal at: ${raw.html_url}` : ""),
-  };
+  });
 }
 
 // ----------------------------------------------------------------------
@@ -255,22 +313,29 @@ export function normalizeComment(raw: RawComment, ctx: NormalizeCtx): Atom {
   const titleSuffix = raw.parentTitle ? ` (${escapeMd(raw.parentTitle)})` : "";
   const body = raw.body ? truncate(raw.body, 800) : "_(empty)_";
 
-  // Decision sniff — kind upgrade.
-  const kind: AtomKind = looksLikeDecision(raw.body) ? "decision" : isPr ? "pr_comment" : "issue_commented";
+  // Decision sniff — kind upgrade. Otherwise everything is a Module-A `comment`,
+  // regardless of whether it's a PR conversation or issue conversation comment;
+  // the parent kind is preserved on refs.github (pr vs issue).
+  const kind: AtomKind = looksLikeDecision(raw.body) ? "decision" : "comment";
+  const action: GithubAction = "comment_created";
+  const sourceId = ghSourceId(ctx.repo, "comment", [isPr ? "pr" : "issue", raw.parentNumber, raw.id]);
+  const ts = nowOr(raw.created_at);
 
-  return {
-    id: `evt-gh-${slugRepo(ctx.repo)}-${isPr ? "pr" : "issue"}-${raw.parentNumber}-comment-${raw.id}`,
-    ts: nowOr(raw.created_at),
+  return withAgiDefaults({
+    id: makeAtomId("github", kind, sourceId, ts),
+    ts,
     source: "github",
     actor,
     actors,
     kind,
+    source_id: sourceId,
     refs: buildRefs({
       github: {
         repo: ctx.repo,
         ...(isPr ? { pr: raw.parentNumber } : { issue: raw.parentNumber }),
         comment_id: raw.id,
         url: raw.html_url ?? undefined,
+        action,
       },
       people: actors,
       // Comments inherit projects from their parent — caller passes via ctx if known.
@@ -283,7 +348,7 @@ export function normalizeComment(raw: RawComment, ctx: NormalizeCtx): Atom {
     body:
       `**${actor}** commented on ${parentTag}${inlineTag}${titleSuffix}:\n\n> ${body.split("\n").join("\n> ")}` +
       (raw.html_url ? `\n\nOriginal at: ${raw.html_url}` : ""),
-  };
+  });
 }
 
 // ----------------------------------------------------------------------
@@ -312,21 +377,33 @@ export function normalizeReview(raw: RawReview, ctx: NormalizeCtx): Atom {
         : stateTag === "dismissed"
           ? "dismissed their review on"
           : "reviewed";
+  const action: GithubAction =
+    stateTag === "approved"
+      ? "review_approved"
+      : stateTag === "changes_requested"
+        ? "review_changes_requested"
+        : stateTag === "dismissed"
+          ? "review_dismissed"
+          : "review_commented";
   const titleSuffix = raw.parentTitle ? ` (${escapeMd(raw.parentTitle)})` : "";
   const bodyLine = raw.body ? `\n\n> ${truncate(raw.body, 800).split("\n").join("\n> ")}` : "";
-  return {
-    id: `evt-gh-${slugRepo(ctx.repo)}-pr-${raw.parentNumber}-review-${raw.id}`,
-    ts: nowOr(raw.submitted_at),
+  const ts = nowOr(raw.submitted_at);
+  const sourceId = ghSourceId(ctx.repo, "pr_event", [raw.parentNumber, "review", raw.id]);
+  return withAgiDefaults({
+    id: makeAtomId("github", "pr_event", sourceId, ts),
+    ts,
     source: "github",
     actor,
     actors: [actor],
-    kind: "pr_review",
+    kind: "pr_event",
+    source_id: sourceId,
     refs: buildRefs({
       github: {
         repo: ctx.repo,
         pr: raw.parentNumber,
         review_id: raw.id,
         url: raw.html_url ?? undefined,
+        action,
       },
       people: [actor],
       projects: [],
@@ -337,7 +414,7 @@ export function normalizeReview(raw: RawReview, ctx: NormalizeCtx): Atom {
     body:
       `**${actor}** ${verb} PR #${raw.parentNumber}${titleSuffix}.${bodyLine}` +
       (raw.html_url ? `\n\nOriginal at: ${raw.html_url}` : ""),
-  };
+  });
 }
 
 // ----------------------------------------------------------------------
@@ -373,15 +450,18 @@ export function normalizeIssue(raw: RawIssue, ctx: NormalizeCtx): Atom {
   const actors = uniq([actor, ...mentions]);
   const thread = ctx.threadIdForIssue(raw.number);
   const bodyLine = raw.body ? `\n\n${truncate(raw.body, 800)}` : "";
-  return {
-    id: `evt-gh-${slugRepo(ctx.repo)}-issue-${raw.number}-opened`,
-    ts: nowOr(raw.created_at),
+  const ts = nowOr(raw.created_at);
+  const sourceId = ghSourceId(ctx.repo, "ticket_event", [raw.number, "opened"]);
+  return withAgiDefaults({
+    id: makeAtomId("github", "ticket_event", sourceId, ts),
+    ts,
     source: "github",
     actor,
     actors,
-    kind: "issue_opened",
+    kind: "ticket_event",
+    source_id: sourceId,
     refs: buildRefs({
-      github: { repo: ctx.repo, issue: raw.number, url: raw.html_url ?? undefined },
+      github: { repo: ctx.repo, issue: raw.number, url: raw.html_url ?? undefined, action: "issue_opened" },
       people: actors,
       projects,
       threads: [thread],
@@ -391,7 +471,7 @@ export function normalizeIssue(raw: RawIssue, ctx: NormalizeCtx): Atom {
     body:
       `**${actor}** opened Issue #${raw.number}: _${escapeMd(raw.title)}_${bodyLine}` +
       (raw.html_url ? `\n\nOriginal at: ${raw.html_url}` : ""),
-  };
+  });
 }
 
 export function normalizeIssueClosed(raw: RawIssue, ctx: NormalizeCtx): Atom {
@@ -400,15 +480,18 @@ export function normalizeIssueClosed(raw: RawIssue, ctx: NormalizeCtx): Atom {
   const projects = extractProjects(labels, raw.title, ctx.config);
   const thread = ctx.threadIdForIssue(raw.number);
   const reason = raw.state_reason ? ` (reason: ${raw.state_reason})` : "";
-  return {
-    id: `evt-gh-${slugRepo(ctx.repo)}-issue-${raw.number}-closed`,
-    ts: nowOr(raw.closed_at),
+  const ts = nowOr(raw.closed_at);
+  const sourceId = ghSourceId(ctx.repo, "ticket_event", [raw.number, "closed"]);
+  return withAgiDefaults({
+    id: makeAtomId("github", "ticket_event", sourceId, ts),
+    ts,
     source: "github",
     actor,
     actors: [actor],
-    kind: "issue_closed",
+    kind: "ticket_event",
+    source_id: sourceId,
     refs: buildRefs({
-      github: { repo: ctx.repo, issue: raw.number, url: raw.html_url ?? undefined },
+      github: { repo: ctx.repo, issue: raw.number, url: raw.html_url ?? undefined, action: "issue_closed" },
       people: [actor],
       projects,
       threads: [thread],
@@ -418,7 +501,7 @@ export function normalizeIssueClosed(raw: RawIssue, ctx: NormalizeCtx): Atom {
     body:
       `Issue #${raw.number} (${escapeMd(raw.title)}) was closed${reason}.` +
       (raw.html_url ? `\n\nOriginal at: ${raw.html_url}` : ""),
-  };
+  });
 }
 
 // ----------------------------------------------------------------------

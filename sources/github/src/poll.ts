@@ -73,12 +73,18 @@ async function getClient(opts: PollOpts): Promise<GhClient> {
   return makeClient(token);
 }
 
-/** Decorate downstream atoms (comments/reviews) with their parent's projects. */
+/** Decorate downstream atoms (comments/reviews) with their parent's projects.
+ *  After the Module-A reconciliation, parent kinds are `pr_event` (action=opened)
+ *  and `ticket_event` (action=issue_opened). */
 function decorateProjects(atoms: Atom[]): void {
   const projByThread = new Map<string, string[]>();
-  // First pass: build thread → projects from parent atoms (pr_opened, issue_opened).
+  // First pass: build thread → projects from parent atoms (PR/issue openings).
   for (const a of atoms) {
-    if (a.kind === "pr_opened" || a.kind === "issue_opened") {
+    const action = a.refs.github?.action;
+    if (
+      (a.kind === "pr_event" && action === "opened") ||
+      (a.kind === "ticket_event" && action === "issue_opened")
+    ) {
       for (const t of a.refs.threads) {
         projByThread.set(t, a.refs.projects);
       }
@@ -137,9 +143,10 @@ async function pollOneRepo(
     commentRes.rawLogins.forEach((l) => allRawLogins.add(l));
     if (commentRes.newCursor && (cursor === null || commentRes.newCursor > cursor)) cursor = commentRes.newCursor;
 
-    // Reviews: only for the PRs we observed.
+    // Reviews: only for the PRs we observed (the ones whose pr_event came
+    // back with action=opened — those are the canonical PR records).
     const candidatePrs = prRes.atoms
-      .filter((a) => a.kind === "pr_opened")
+      .filter((a) => a.kind === "pr_event" && a.refs.github?.action === "opened")
       .map((a) => ({ number: a.refs.github!.pr!, title: extractTitle(a.body) }));
     const reviewRes = await ingestReviewsForPrs(client, owner, name, ctx, candidatePrs, since);
     atoms.push(...reviewRes.atoms);

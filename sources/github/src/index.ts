@@ -22,10 +22,12 @@ export {
   writeIdentity,
   writeAtom,
   writeAtoms,
-  atomToMarkdown,
+  setRouterForTesting,
+  type AtomRouter,
+  type EmitAtomResult,
   type MemoryPaths,
 } from "./memory.js";
 export { makeClient, type GhClient } from "./client.js";
-export { makeCtx, type NormalizeCtx } from "./normalize.js";
+export { makeCtx, makeAtomId, type NormalizeCtx } from "./normalize.js";
 export { processWebhook } from "./ingest/webhook.js";
-export type { Atom, AtomKind, AtomRefs, RepoConfig, SourceConfig, IdentityMap } from "./types.js";
+export type { Atom, AtomKind, AtomRefs, GithubAction, RepoConfig, SourceConfig, IdentityMap } from "./types.js";

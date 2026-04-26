@@ -98,22 +98,23 @@ Atoms are written under `~/.tangerine-memory/` by default (override with `--memo
         └── github.identity.json # GitHub login → Tangerine alias
 ```
 
-Each atom is YAML frontmatter + markdown:
+Each atom (after Module A writes it) is YAML frontmatter + markdown:
 
 ```yaml
 ---
-id: evt-gh-myorg-api-pr-47-comment-12345
+id: evt-2026-04-26-aBc12dEf01
 ts: 2026-04-26T09:30:00.000Z
 source: github
 actor: eric
 actors: [eric, daizhe]
-kind: pr_comment
+kind: comment
 refs:
   github:
     repo: myorg/api
     pr: 47
     comment_id: 12345
     url: https://github.com/myorg/api/pull/47#issuecomment-12345
+    action: comment_created
   meeting: null
   decisions: []
   people: [eric, daizhe]
@@ -129,19 +130,28 @@ sample: false
 Original at: https://github.com/myorg/api/pull/47#issuecomment-12345
 ```
 
+Module A also stamps the 8 Stage 2 future-proof fields (embedding/concepts/
+confidence/alternatives/source_count/reasoning_notes/sentiment/importance)
+into the `.tangerine/timeline.json` index — non-default values surface, the
+defaults stay implicit to keep the index lean.
+
 ## Atom kinds emitted
 
-| Kind | When |
-| --- | --- |
-| `pr_opened` | PR is created or first observed |
-| `pr_merged` | PR was merged (carries merger + merge SHA) |
-| `pr_closed` | PR was closed without merge |
-| `pr_review` | Reviewer submitted Approve / Request changes / Comment |
-| `pr_comment` | Conversation tab comment OR inline diff comment |
-| `issue_opened` | Issue is created or first observed |
-| `issue_commented` | Issue conversation comment |
-| `issue_closed` | Issue is closed (carries `state_reason`) |
-| `decision` | Body matches a decision sniffer pattern (e.g. "we decided", "going with") — promoted from `pr_comment` / `issue_commented` |
+Module A's canonical kind vocabulary is narrow — the upstream verb (e.g.
+"opened" vs "merged") is preserved on `refs.github.action`.
+
+| Kind | refs.github.action | When |
+| --- | --- | --- |
+| `pr_event` | `opened` | PR is created or first observed |
+| `pr_event` | `merged` | PR was merged (carries merger + merge SHA) |
+| `pr_event` | `closed` | PR was closed without merge |
+| `pr_event` | `review_approved` | Reviewer submitted "Approve" |
+| `pr_event` | `review_changes_requested` | Reviewer submitted "Request changes" |
+| `pr_event` | `review_dismissed` / `review_commented` | Other review states |
+| `comment` | `comment_created` | PR conversation tab comment, PR inline diff comment, or issue comment |
+| `ticket_event` | `issue_opened` | Issue is created or first observed |
+| `ticket_event` | `issue_closed` | Issue is closed (carries `state_reason` in body) |
+| `decision` | `comment_created` | Comment body matches a decision sniffer pattern (e.g. "we decided", "going with") — promoted from `comment` |
 
 ## Identity mapping
 
@@ -229,7 +239,26 @@ src/
 
 ## Module A integration
 
-Once `tmi.event_router.EventRouter` lands in the main package, `memory.ts` will swap its direct file writes for `router.process(atom)`. Look for the `// TODO(module-a)` comment at the top of `src/memory.ts`. Until then, the connector writes directly to `timeline/` + `threads/`, which is exactly what the router will produce anyway — the swap is mechanical.
+Every atom is handed to Module A's `event_router` via the
+`tmi.daemon_cli emit-atom` subprocess. The connector builds the atom dict in
+`normalize.ts` (with the canonical Module-A id + kind), then `memory.ts`
+spawns Python over stdin. Module A handles timeline + thread + people +
+project fan-out, the AGI hook validation, and `on_atom` dispatch.
+
+Atom ids follow the Module-A canonical format: `evt-<YYYY-MM-DD>-<10-hex>`
+from `sha256(source|kind|source_id|ts)`. The TypeScript `makeAtomId` helper
+in `normalize.ts` computes the same hash as Python's `make_event_id` so atoms
+read with a stable id before they hit the router.
+
+Atom kinds use the Module-A canonical vocabulary: PR opens / merges /
+closes / reviews all flatten to `pr_event` (with the narrow verb on
+`refs.github.action`); PR + issue conversation comments flatten to `comment`
+(promoted to `decision` on sniff hit); issue opens / closes flatten to
+`ticket_event`.
+
+Tests inject a deterministic in-memory router via `setRouterForTesting()` so
+unit tests don't need a Python interpreter. The integration test exercises
+the full Octokit + Module-A wire format with the same stub.
 
 ## Tests
 
@@ -237,7 +266,12 @@ Once `tmi.event_router.EventRouter` lands in the main package, `memory.ts` will 
 npm test
 ```
 
-75 tests. Coverage: auth (keytar mocked), normalize (every kind, decision sniffer, mention extraction, project extraction, alias resolution), webhook payloads, memory writer (timeline + thread + dedup), client wrapper + rate-limit math, CLI commands, end-to-end integration with stubbed GitHub API.
+85 tests. Coverage: auth (keytar mocked), normalize (every kind under the
+Module-A vocabulary, decision sniffer, mention extraction, project
+extraction, alias resolution, canonical id stability), webhook payloads,
+memory writer (router stub, payload conversion, batch sort/dedup), client
+wrapper + rate-limit math, CLI commands, end-to-end integration with
+stubbed GitHub API + stubbed Module-A router.
 
 ## License
 

@@ -1,16 +1,35 @@
-// Atom schema (sources/README.md) + GitHub-specific helpers.
+// Atom schema (sources/README.md + Module A SCHEMA.md) + GitHub-specific helpers.
+//
+// Module A is the source of truth for the kind vocabulary. GitHub events map
+// onto the canonical Module A kinds:
+//   pr_opened / pr_merged / pr_closed / pr_review → pr_event
+//   pr_comment / issue_commented                  → comment
+//   issue_opened / issue_closed                   → ticket_event
+//   bodies that pass the decision sniffer         → decision
+//
+// The narrow upstream verb (opened/merged/closed/etc) lives in body markdown
+// + refs.github.action so consumers can still tell them apart.
 
 export type AtomKind =
-  | "pr_opened"
-  | "pr_updated"
-  | "pr_review"
-  | "pr_comment"
-  | "pr_merged"
-  | "pr_closed"
-  | "issue_opened"
-  | "issue_commented"
-  | "issue_closed"
+  | "pr_event"
+  | "comment"
+  | "ticket_event"
   | "decision";
+
+/** GitHub-side action verb — preserved on refs.github.action so the kind
+ *  vocabulary stays narrow per Module A but downstream UX still knows whether
+ *  a pr_event was open / merge / close / review. */
+export type GithubAction =
+  | "opened"
+  | "merged"
+  | "closed"
+  | "review_approved"
+  | "review_changes_requested"
+  | "review_dismissed"
+  | "review_commented"
+  | "comment_created"
+  | "issue_opened"
+  | "issue_closed";
 
 export interface AtomGithubRef {
   repo: string; // "org/name"
@@ -19,6 +38,9 @@ export interface AtomGithubRef {
   comment_id?: number;
   review_id?: number;
   url?: string;
+  /** Narrow upstream verb (preserved on the atom so we don't lose pr_opened
+   *  vs pr_merged distinction when collapsing into Module A's `pr_event`). */
+  action?: GithubAction;
 }
 
 export interface AtomRefs {
@@ -31,6 +53,8 @@ export interface AtomRefs {
 }
 
 export interface Atom {
+  /** Canonical Module-A id: ``evt-<YYYY-MM-DD>-<10-hex>`` from sha256(source|kind|source_id|ts).
+   *  Computed by ``makeAtomId`` in normalize.ts. */
   id: string;
   ts: string; // RFC 3339 UTC
   source: "github";
@@ -41,6 +65,22 @@ export interface Atom {
   status: "active" | "superseded" | "archived";
   sample: boolean;
   body: string; // markdown body (no frontmatter delimiters)
+  /** Stable source-side identifier that goes into the id hash. The Module A
+   *  contract is sha256(source|kind|source_id|ts) — keeping the source_id on
+   *  the atom lets the Python emit-atom recompute the same id deterministically. */
+  source_id: string;
+
+  // === Stage 2 AGI hooks (STAGE1_AGI_HOOKS.md §1) — Stage 1 ships defaults ===
+  // Module A's validate_atom() injects these if absent, but we set them here
+  // so the connector's atoms read identically before and after the hop.
+  embedding?: number[] | null;
+  concepts?: string[];
+  confidence?: number;
+  alternatives?: Array<Record<string, unknown>>;
+  source_count?: number;
+  reasoning_notes?: string | null;
+  sentiment?: string | null;
+  importance?: number | null;
 }
 
 /** Repo configuration entry. */

@@ -110,13 +110,28 @@ describe("slugRepo", () => {
   });
 });
 
+// Module-A canonical id: `evt-<YYYY-MM-DD>-<10-hex>`
+const MODULE_A_ID_RE = /^evt-\d{4}-\d{2}-\d{2}-[a-f0-9]{10}$/;
+
 describe("normalizePr", () => {
   const raw = fixtures("pr_opened.json") as RawPr;
   const a = normalizePr(raw, ctx);
 
-  it("emits the right id, kind, source", () => {
-    expect(a.id).toBe("evt-gh-myorg-api-pr-47-opened");
-    expect(a.kind).toBe("pr_opened");
+  it("emits a Module-A canonical id", () => {
+    expect(a.id).toMatch(MODULE_A_ID_RE);
+    // Date-prefix matches ts.
+    expect(a.id.slice(4, 14)).toBe("2026-04-26");
+  });
+  it("kind collapsed to pr_event (Module A vocabulary)", () => {
+    expect(a.kind).toBe("pr_event");
+  });
+  it("preserves the upstream verb on refs.github.action", () => {
+    expect(a.refs.github?.action).toBe("opened");
+  });
+  it("source identifier is stable + namespaced", () => {
+    expect(a.source_id).toBe("gh:myorg/api:pr_event:47:opened");
+  });
+  it("source = github", () => {
     expect(a.source).toBe("github");
   });
   it("normalizes ts to UTC RFC 3339", () => {
@@ -135,6 +150,7 @@ describe("normalizePr", () => {
       repo: "myorg/api",
       pr: 47,
       url: "https://github.com/myorg/api/pull/47",
+      action: "opened",
     });
   });
   it("detects projects from labels and title", () => {
@@ -149,13 +165,41 @@ describe("normalizePr", () => {
     expect(a.body).toContain("eric/pg-migration → main");
     expect(a.body).toContain("Original at: https://github.com/myorg/api/pull/47");
   });
+  it("ships Stage 2 AGI defaults (8 fields)", () => {
+    expect(a.embedding).toBeNull();
+    expect(a.concepts).toEqual([]);
+    expect(a.confidence).toBe(1.0);
+    expect(a.alternatives).toEqual([]);
+    expect(a.source_count).toBe(1);
+    expect(a.reasoning_notes).toBeNull();
+    expect(a.sentiment).toBeNull();
+    expect(a.importance).toBeNull();
+  });
+});
+
+describe("normalizePr id stability", () => {
+  it("same input → same id always", () => {
+    const raw = fixtures("pr_opened.json") as RawPr;
+    const a1 = normalizePr(raw, ctx);
+    const a2 = normalizePr(raw, ctx);
+    expect(a1.id).toBe(a2.id);
+  });
+  it("opened vs merged of the same PR → different ids", () => {
+    const raw = fixtures("pr_merged.json") as RawPr;
+    const opened = normalizePr(raw, ctx);
+    const merged = normalizePrMerged(raw, ctx);
+    expect(opened.id).not.toBe(merged.id);
+  });
 });
 
 describe("normalizePrMerged", () => {
   const raw = fixtures("pr_merged.json") as RawPr;
   const a = normalizePrMerged(raw, ctx);
+  it("kind = pr_event with action = merged", () => {
+    expect(a.kind).toBe("pr_event");
+    expect(a.refs.github?.action).toBe("merged");
+  });
   it("uses merged_at as ts and merger as actor", () => {
-    expect(a.kind).toBe("pr_merged");
     expect(a.ts).toBe("2026-04-26T10:55:00.000Z");
     expect(a.actor).toBe("eric");
   });
@@ -165,10 +209,11 @@ describe("normalizePrMerged", () => {
 });
 
 describe("normalizePrClosed", () => {
-  it("emits pr_closed when not merged", () => {
+  it("emits pr_event with action = closed when not merged", () => {
     const raw = { ...fixtures("pr_merged.json"), merged_at: null, merge_commit_sha: null, closed_at: "2026-04-26T11:00:00Z" } as RawPr;
     const a = normalizePrClosed(raw, ctx);
-    expect(a.kind).toBe("pr_closed");
+    expect(a.kind).toBe("pr_event");
+    expect(a.refs.github?.action).toBe("closed");
     expect(a.body).toContain("closed without merge");
   });
 });
@@ -178,11 +223,14 @@ describe("normalizeComment (PR conversation)", () => {
   const raw: RawComment = { ...c, parentNumber: 47, parentKind: "pr", parentTitle: "postgres-migration" };
   const a = normalizeComment(raw, ctx);
 
-  it("emits stable id with comment_id", () => {
-    expect(a.id).toBe("evt-gh-myorg-api-pr-47-comment-12345");
+  it("emits a Module-A canonical id", () => {
+    expect(a.id).toMatch(MODULE_A_ID_RE);
   });
-  it("kind = pr_comment", () => {
-    expect(a.kind).toBe("pr_comment");
+  it("kind = comment (Module A vocabulary)", () => {
+    expect(a.kind).toBe("comment");
+  });
+  it("source_id includes parent kind + number + comment_id", () => {
+    expect(a.source_id).toBe("gh:myorg/api:comment:pr:47:12345");
   });
   it("attaches ref to the parent PR thread", () => {
     expect(a.refs.threads).toEqual(["pr-myorg-api-47"]);
@@ -215,12 +263,14 @@ describe("normalizeReview", () => {
   const raw = fixtures("pr_review.json") as Omit<RawReview, "parentNumber">;
   const r: RawReview = { ...raw, parentNumber: 47, parentTitle: "postgres-migration" };
   const a = normalizeReview(r, ctx);
-  it("kind = pr_review and includes verb form", () => {
-    expect(a.kind).toBe("pr_review");
+  it("kind = pr_event with action = review_approved", () => {
+    expect(a.kind).toBe("pr_event");
+    expect(a.refs.github?.action).toBe("review_approved");
     expect(a.body).toContain("approved PR #47");
   });
-  it("changes_requested gets the right verb", () => {
+  it("changes_requested maps to review_changes_requested", () => {
     const a2 = normalizeReview({ ...r, state: "changes_requested" }, ctx);
+    expect(a2.refs.github?.action).toBe("review_changes_requested");
     expect(a2.body).toContain("requested changes on PR #47");
   });
 });
@@ -228,8 +278,9 @@ describe("normalizeReview", () => {
 describe("normalizeIssue", () => {
   const raw = fixtures("issue_opened.json") as RawIssue;
   const a = normalizeIssue(raw, ctx);
-  it("kind = issue_opened", () => {
-    expect(a.kind).toBe("issue_opened");
+  it("kind = ticket_event with action = issue_opened", () => {
+    expect(a.kind).toBe("ticket_event");
+    expect(a.refs.github?.action).toBe("issue_opened");
   });
   it("string labels work too", () => {
     expect(a.refs.projects).toContain("reliability");
@@ -242,8 +293,9 @@ describe("normalizeIssue", () => {
 describe("normalizeIssueClosed", () => {
   const raw = fixtures("issue_closed.json") as RawIssue;
   const a = normalizeIssueClosed(raw, ctx);
-  it("kind = issue_closed and includes reason", () => {
-    expect(a.kind).toBe("issue_closed");
+  it("kind = ticket_event with action = issue_closed", () => {
+    expect(a.kind).toBe("ticket_event");
+    expect(a.refs.github?.action).toBe("issue_closed");
     expect(a.body).toContain("(reason: completed)");
   });
 });

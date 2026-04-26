@@ -1,28 +1,33 @@
-// Atom → memory tree writer.
+// Atom → Module A event_router (via tmi.daemon_cli emit-atom subprocess).
 //
-// Layout under <memory>:
-//   timeline/<YYYY-MM-DD>.md          chronological feed (one file per UTC day)
+// Layout under <memory> (written by Module A, not us):
+//   timeline/<YYYY-MM-DD>.md          chronological feed
 //   threads/<thread-id>.md            per-PR / per-issue feed
-//   .tangerine/sources/github.config.json     repo + cursor state
-//   .tangerine/sources/github.identity.json   GitHub login → Tangerine alias
+//   people/<alias>.md                 Timeline mentions for each person
+//   projects/<slug>.md                Timeline mentions for each project
+//   .tangerine/timeline.json          atom index
+//   .tangerine/sources/github.config.json     repo + cursor state (us)
+//   .tangerine/sources/github.identity.json   GitHub login → Tangerine alias (us)
 //
-// Atoms are appended in YAML-frontmatter + markdown form, separated by `\n---\n`.
+// We still own config + identity files (the connector's bookkeeping). All
+// timeline / threads / people / projects fan-out is done by Module A's
+// event_router, accessed through ``python -m tmi.daemon_cli emit-atom``.
 //
-// Dedup is per-file: before appending, we read the file and skip any atom whose
-// `id:` already appears. Cheap-but-correct for the scales we care about
-// (thousands of atoms per repo per month).
-//
-// TODO(module-a): once `tmi.event_router.EventRouter` lands in src/tmi/, swap
-// the direct file writes here for `router.process(atom)`. The router will
-// handle fan-out to people/projects/threads/timeline uniformly across sources.
+// Why the subprocess hop instead of an in-Node atom writer? Single source of
+// truth: the canonical id formula, AGI hook validation, on_atom dispatch,
+// and entity fan-out all live in Python. Re-implementing them in Node would
+// drift. The subprocess cost is fine — emit-atom runs in <50ms and only
+// fires once per atom (poll cycles batch-process, not per-row).
 
 import { promises as fs } from "node:fs";
 import { existsSync, mkdirSync } from "node:fs";
+import { spawn } from "node:child_process";
 import { dirname, join } from "node:path";
 import * as os from "node:os";
 import type { Atom, IdentityMap, SourceConfig } from "./types.js";
 import { defaultConfig } from "./types.js";
 
+/** Kept for backward-compat exports; Module A is the writer now. */
 export const ATOM_SEPARATOR = "\n---\n";
 
 export interface MemoryPaths {
@@ -95,45 +100,113 @@ export async function writeIdentity(paths: MemoryPaths, id: IdentityMap): Promis
 }
 
 // ----------------------------------------------------------------------
-// Atom IO
+// Atom IO — routes through Module A via ``tmi.daemon_cli emit-atom``
 
-export function atomToMarkdown(atom: Atom): string {
-  // Hand-rolled YAML — the schema is small, fixed, and we want stable output.
-  const lines: string[] = ["---"];
-  lines.push(`id: ${atom.id}`);
-  lines.push(`ts: ${atom.ts}`);
-  lines.push(`source: ${atom.source}`);
-  lines.push(`actor: ${atom.actor}`);
-  lines.push(`actors: [${atom.actors.map(yamlStr).join(", ")}]`);
-  lines.push(`kind: ${atom.kind}`);
-  lines.push(`refs:`);
-  if (atom.refs.github) {
-    lines.push(`  github:`);
-    lines.push(`    repo: ${yamlStr(atom.refs.github.repo)}`);
-    if (atom.refs.github.pr !== undefined) lines.push(`    pr: ${atom.refs.github.pr}`);
-    if (atom.refs.github.issue !== undefined) lines.push(`    issue: ${atom.refs.github.issue}`);
-    if (atom.refs.github.comment_id !== undefined) lines.push(`    comment_id: ${atom.refs.github.comment_id}`);
-    if (atom.refs.github.review_id !== undefined) lines.push(`    review_id: ${atom.refs.github.review_id}`);
-    if (atom.refs.github.url) lines.push(`    url: ${yamlStr(atom.refs.github.url)}`);
-  }
-  lines.push(`  meeting: ${atom.refs.meeting === null ? "null" : yamlStr(atom.refs.meeting)}`);
-  lines.push(`  decisions: [${atom.refs.decisions.map(yamlStr).join(", ")}]`);
-  lines.push(`  people: [${atom.refs.people.map(yamlStr).join(", ")}]`);
-  lines.push(`  projects: [${atom.refs.projects.map(yamlStr).join(", ")}]`);
-  lines.push(`  threads: [${atom.refs.threads.map(yamlStr).join(", ")}]`);
-  lines.push(`status: ${atom.status}`);
-  lines.push(`sample: ${atom.sample ? "true" : "false"}`);
-  lines.push("---");
-  lines.push("");
-  lines.push(atom.body);
-  lines.push("");
-  return lines.join("\n");
+/** Module-A daemon-CLI invocation. Module A handles fan-out + AGI hook
+ *  validation + on_atom dispatch. ``module a wins.``
+ *
+ *  Override paths in tests via the `routerOverride` parameter to keep them
+ *  hermetic (no Python needed). */
+export type AtomRouter = (memoryRoot: string, atom: Atom) => Promise<EmitAtomResult>;
+
+export interface EmitAtomResult {
+  /** Always 1 if Module A accepted the payload (validates + writes). */
+  events: number;
+  /** Module A returns 1 if the atom id collided with an existing one. */
+  skipped: number;
 }
 
-function yamlStr(s: string): string {
-  // Quote anything that's not pure word characters to keep YAML happy.
-  if (/^[a-zA-Z0-9_./:@-]+$/.test(s)) return s;
-  return JSON.stringify(s);
+let _routerOverride: AtomRouter | null = null;
+
+/** Tests inject a deterministic router so they don't need Python. */
+export function setRouterForTesting(impl: AtomRouter | null): void {
+  _routerOverride = impl;
+}
+
+/** Read the python binary to invoke. Honors PYTHON_BIN env var. */
+function pythonBin(): string {
+  return process.env.PYTHON_BIN || "python";
+}
+
+/** Invoke ``python -m tmi.daemon_cli emit-atom`` with the atom on stdin.
+ *  We use stdin (not --atom-json) because atoms can exceed Windows' command
+ *  line length cap when bodies are long. Returns parsed JSON from stdout. */
+async function spawnEmitAtom(memoryRoot: string, atom: Atom): Promise<EmitAtomResult> {
+  return new Promise<EmitAtomResult>((resolve, reject) => {
+    const child = spawn(
+      pythonBin(),
+      ["-m", "tmi.daemon_cli", "emit-atom", "--memory-root", memoryRoot],
+      { stdio: ["pipe", "pipe", "pipe"] },
+    );
+    const stdoutChunks: Buffer[] = [];
+    const stderrChunks: Buffer[] = [];
+    child.stdout.on("data", (c) => stdoutChunks.push(c));
+    child.stderr.on("data", (c) => stderrChunks.push(c));
+    child.once("error", reject);
+    child.once("close", (code) => {
+      const out = Buffer.concat(stdoutChunks).toString("utf8").trim();
+      const err = Buffer.concat(stderrChunks).toString("utf8").trim();
+      if (code !== 0) {
+        reject(new Error(`tmi.daemon_cli emit-atom exit ${code}: ${err || "(no stderr)"}`));
+        return;
+      }
+      try {
+        const parsed = JSON.parse(out) as {
+          op?: string;
+          events?: number;
+          skipped?: number;
+        };
+        resolve({
+          events: parsed.events ?? 0,
+          skipped: parsed.skipped ?? 0,
+        });
+      } catch (e) {
+        reject(new Error(`tmi.daemon_cli emit-atom returned non-JSON: ${out.slice(0, 500)}`));
+      }
+    });
+    child.stdin.write(JSON.stringify(atom));
+    child.stdin.end();
+  });
+}
+
+/** Build the JSON payload Module A's emit-atom subcommand expects. */
+function atomToPayload(atom: Atom): Record<string, unknown> {
+  // Module A's payload contract is a flat dict (see daemon_cli._build_event_from_payload).
+  // We pass through everything the connector knows; Module A injects AGI defaults
+  // for any missing future-fields via validate_atom().
+  return {
+    id: atom.id,
+    ts: atom.ts,
+    source: atom.source,
+    actor: atom.actor,
+    actors: atom.actors,
+    kind: atom.kind,
+    source_id: atom.source_id,
+    body: atom.body,
+    status: atom.status,
+    sample: atom.sample,
+    refs: {
+      meeting: atom.refs.meeting,
+      decisions: atom.refs.decisions,
+      people: atom.refs.people,
+      projects: atom.refs.projects,
+      threads: atom.refs.threads,
+      // github sub-ref isn't in Module A's stock refs vocabulary. We let it
+      // travel through; daemon_cli ignores unknown ref keys today and Stage 2
+      // can promote the GitHub-specific shape to a typed sub-namespace later.
+      github: atom.refs.github,
+    },
+    // AGI defaults — Module A would inject these too via validate_atom, but
+    // sending them explicitly keeps the wire format obvious.
+    embedding: atom.embedding ?? null,
+    concepts: atom.concepts ?? [],
+    confidence: atom.confidence ?? 1.0,
+    alternatives: atom.alternatives ?? [],
+    source_count: atom.source_count ?? 1,
+    reasoning_notes: atom.reasoning_notes ?? null,
+    sentiment: atom.sentiment ?? null,
+    importance: atom.importance ?? null,
+  };
 }
 
 /** UTC date stamp YYYY-MM-DD from an RFC 3339 ts. */
@@ -141,63 +214,47 @@ export function utcDate(ts: string): string {
   return ts.slice(0, 10);
 }
 
-/**
- * Append an atom to a file unless its id is already present. Returns true if
- * we wrote something, false if it was a dup. Idempotent across runs.
- */
-async function appendAtomIfNew(filePath: string, atom: Atom): Promise<boolean> {
-  ensureDir(filePath);
-  const md = atomToMarkdown(atom);
-  let existing = "";
-  try {
-    existing = await fs.readFile(filePath, "utf8");
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
-  }
-  // Cheap dedup — atoms are line-prefixed by `id: <atom.id>`. Check that exact line.
-  if (existing.includes(`\nid: ${atom.id}\n`) || existing.startsWith(`---\nid: ${atom.id}\n`)) {
-    return false;
-  }
-  const next = existing.length === 0 ? md : existing.replace(/\s*$/, "") + ATOM_SEPARATOR + md;
-  await fs.writeFile(filePath, next, "utf8");
-  return true;
-}
-
 export interface WriteResult {
+  /** Module A wrote a fresh entry to the timeline (true) or it was a dup (false). */
   wroteTimeline: boolean;
+  /** Always equals refs.threads.length on success — Module A fans out once
+   *  per thread / person / project. We surface the threads count here for
+   *  back-compat with the old per-thread report. */
   wroteThreadFiles: number;
 }
 
-/** Write atom to its day's timeline file AND each thread file in refs.threads. */
+/** Hand a single atom to Module A. */
 export async function writeAtom(paths: MemoryPaths, atom: Atom): Promise<WriteResult> {
-  const date = utcDate(atom.ts);
-  const wroteTimeline = await appendAtomIfNew(paths.timeline(date), atom);
-  let wroteThreadFiles = 0;
-  for (const t of atom.refs.threads) {
-    const wrote = await appendAtomIfNew(paths.thread(t), atom);
-    if (wrote) wroteThreadFiles += 1;
-  }
-  return { wroteTimeline, wroteThreadFiles };
+  const router = _routerOverride ?? ((root: string, a: Atom) => spawnEmitAtom(root, a));
+  // Pass the structured atom through the router; payload conversion happens
+  // either in spawnEmitAtom (real path) or inside the test override.
+  const res = await router(paths.root, atom);
+  const wrote = res.events > 0 && res.skipped === 0;
+  return {
+    wroteTimeline: wrote,
+    wroteThreadFiles: wrote ? atom.refs.threads.length : 0,
+  };
 }
 
-/**
- * Write a batch of atoms. Returns counts. Identity learning: any actor we
- * haven't seen before gets a self-mapping appended to the identity map.
- */
+/** Hand a batch of atoms to Module A in chronological order. */
 export async function writeAtoms(
   paths: MemoryPaths,
   atoms: Atom[],
 ): Promise<{ written: number; skipped: number }> {
   let written = 0;
   let skipped = 0;
-  // Sort chronologically so timeline files stay ordered.
   const sorted = [...atoms].sort((a, b) => a.ts.localeCompare(b.ts));
   for (const a of sorted) {
     const r = await writeAtom(paths, a);
-    if (r.wroteTimeline || r.wroteThreadFiles > 0) written += 1;
+    if (r.wroteTimeline) written += 1;
     else skipped += 1;
   }
   return { written, skipped };
+}
+
+/** Internal: exposed for tests that want to inspect the wire payload. */
+export function _atomToPayloadForTesting(atom: Atom): Record<string, unknown> {
+  return atomToPayload(atom);
 }
 
 /**
