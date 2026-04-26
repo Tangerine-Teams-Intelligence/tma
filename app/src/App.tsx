@@ -6,6 +6,7 @@ import MemoryRoute from "@/routes/memory";
 import SourceDetailRoute from "@/routes/source-detail";
 import SinkDetailRoute from "@/routes/sink-detail";
 import InboxRoute from "@/routes/inbox";
+import AlignmentRoute from "@/routes/alignment";
 import DiscordSourceRoute from "@/routes/sources/discord";
 import MeetingDetailPage from "@/pages/meetings/detail";
 import LivePage from "@/pages/live";
@@ -95,6 +96,11 @@ export default function App() {
 
         {/* INBOX */}
         <Route path="inbox" element={<InboxRoute />} />
+
+        {/* ALIGNMENT — v1.6 placeholder. Mock dashboard for the same-screen
+            rate so the CoS direction is visible without us shipping the
+            real computation yet. */}
+        <Route path="alignment" element={<AlignmentRoute />} />
 
         {/* Meeting detail / live (kept — the Discord source's per-call view). */}
         <Route path="meeting/:id" element={<MeetingDetailPage />} />
