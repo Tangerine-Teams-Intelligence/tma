@@ -1,0 +1,8 @@
+{
+  "id": 99001,
+  "body": "Looks good. We decided to ship the partition strategy in a follow-up.",
+  "state": "approved",
+  "user": { "login": "daizhe-z" },
+  "submitted_at": "2026-04-26T10:00:00Z",
+  "html_url": "https://github.com/myorg/api/pull/47#pullrequestreview-99001"
+}
