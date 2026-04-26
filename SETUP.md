@@ -1,6 +1,12 @@
-# SETUP.md — Tangerine Meeting Assistant
+# SETUP.md — Tangerine
+
+> AI that follows your whole team.
+>
+> Meetings, docs, decisions, code, chat — your team's AI knows it all.
 
 Zero-to-first-meeting in ~15 minutes. Follow top to bottom.
+
+**Status (v1.5.4-beta)**: only the Discord source is shippable. Browser extension Sink + MCP server Sink + Linear / GitHub / Slack / Notion sources land v1.6+. This guide covers Discord because that's what works today.
 
 If you get stuck, jump to [§7 Troubleshooting](#7-troubleshooting).
 

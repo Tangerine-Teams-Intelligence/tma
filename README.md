@@ -1,19 +1,31 @@
-# Tangerine Meeting Assistant
+# Tangerine
 
-> Your meeting → your team's AI context, automatically.
+> AI that follows your whole team.
+>
+> Meetings, docs, decisions, code, chat — your team's AI knows it all.
 
 [![Latest Release](https://img.shields.io/github/v/release/Tangerine-Intelligence/tangerine-meeting-live?include_prereleases)](https://github.com/Tangerine-Intelligence/tangerine-meeting-live/releases/latest)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-A 45-minute meeting produces three decisions, two new facts, one action plan. Then the CEO opens Claude Code and re-types it all from memory. TMA closes that loop: decisions land in `CLAUDE.md`, `knowledge/`, `session-state.md` as a reviewed diff, not a Notion page.
+Tangerine is a memory layer for your team. We capture what your team does — meetings, decisions, threads, code — and structure it as markdown memory in your own dir. Then the AI tools you already pay for (Claude Pro, ChatGPT, Cursor, Claude Code) read that memory through Sinks (browser extension, MCP server). We never run an LLM ourselves.
 
-**Status**: v1.5.0-beta, Apache-2.0. See [PLAN.md](PLAN.md) for roadmap, [INTERFACES.md](INTERFACES.md) for the full spec, [SETUP.md](SETUP.md) to install.
+**Status (v1.5.4-beta)**: Sources = Discord (live). Sinks = none yet (browser extension + MCP server land v1.6). See the roadmap below.
+
+### Roadmap
+
+| Version | What lands |
+|---|---|
+| **v1.5** (now) | Discord source · memory tree UI · dark mode · Cmd+K memory search (stub) |
+| **v1.6** | Linear + GitHub sources · browser extension Sink · MCP server Sink · memory fulltext index |
+| **v1.7** | Calendar source · /inbox approval flow for write-back · Public API Sink |
+| **v1.8** | Slack + Notion sources |
+| **v1.9** | Loom + Zoom sources |
 
 ---
 
-## Two ways to use TMA
+## Two ways to use Tangerine
 
-- **Desktop app (recommended)**: [Download Tangerine AI Teams Setup for Windows](https://github.com/Tangerine-Intelligence/tangerine-meeting-live/releases/latest) → install → sign in → set up the Meeting tool → run your first meeting. The desktop app is a super-app: 10 productivity tools (Meeting, Wiki, Track, Review, Schedule, Loom, Hire, Voice, Survey, Chat) under one login. Meeting is the only tool shipping in v1.5; the rest land in v1.6+. Requires Node 20+, Git, and a Claude Code subscription. Whisper transcription runs locally (bundled `faster-whisper`); first run downloads ~244 MB to your machine. OpenAI Whisper remains as an opt-in advanced toggle if you want max accuracy or have a weak CPU.
+- **Desktop app (recommended)**: [Download Tangerine for Windows](https://github.com/Tangerine-Intelligence/tangerine-meeting-live/releases/latest) → install → sign in → set up the Discord source → run your first meeting. Discord is the only source shipping in v1.5; Linear / Slack / Notion / GitHub / Cal / Loom / Zoom land in v1.6+. Requires Node 20+, Git, and a Claude Code subscription. Whisper transcription runs locally (bundled `faster-whisper`); first run downloads ~244 MB to your machine. OpenAI Whisper remains as an opt-in advanced toggle if you want max accuracy or have a weak CPU.
 - **CLI**: `pip install tangerine-meeting-assistant` + `npm install` for the bot. See [SETUP.md](SETUP.md).
 
 ---
