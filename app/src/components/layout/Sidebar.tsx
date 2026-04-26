@@ -28,18 +28,34 @@ import { MemoryTree } from "@/components/MemoryTree";
 export function Sidebar() {
   const navigate = useNavigate();
   const memoryRoot = useStore((s) => s.ui.memoryRoot);
+  const samplesSeeded = useStore((s) => s.ui.samplesSeeded);
   const togglePalette = useStore((s) => s.ui.togglePalette);
   const [tree, setTree] = useState<MemoryNode[]>([]);
 
   useEffect(() => {
     let cancel = false;
-    void readMemoryTree(memoryRoot).then((t) => {
-      if (!cancel) setTree(t);
-    });
+    let cancelled = false;
+    const refresh = () =>
+      readMemoryTree(memoryRoot).then((t) => {
+        if (!cancel && !cancelled) setTree(t);
+      });
+    void refresh();
+    // Re-walk when window regains focus so files written by sources outside
+    // the app (Discord bot writing to memory/meetings/) show up automatically.
+    const onFocus = () => void refresh();
+    if (typeof window !== "undefined") {
+      window.addEventListener("focus", onFocus);
+    }
     return () => {
       cancel = true;
+      cancelled = true;
+      if (typeof window !== "undefined") {
+        window.removeEventListener("focus", onFocus);
+      }
     };
-  }, [memoryRoot]);
+    // samplesSeeded is in deps so the tree refreshes once Rust finishes the
+    // first-launch sample copy.
+  }, [memoryRoot, samplesSeeded]);
 
   async function handleLock() {
     await signOut();

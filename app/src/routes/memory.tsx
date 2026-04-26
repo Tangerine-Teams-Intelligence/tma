@@ -6,11 +6,12 @@ import { useStore } from "@/lib/store";
 import {
   emptyCoverage,
   readMemoryFile,
+  readMemoryTree,
   type CoverageStats,
 } from "@/lib/memory";
 import { MarkdownView } from "@/components/MarkdownView";
 import { SOURCES } from "@/lib/sources";
-import { openExternal } from "@/lib/tauri";
+import { openExternal, initMemoryWithSamples, resolveMemoryRoot } from "@/lib/tauri";
 
 /**
  * Default landing surface after auth: 3-pane shape.
@@ -27,6 +28,9 @@ export default function MemoryRoute() {
   const params = useParams();
   const relPath = params["*"] ?? "";
   const memoryRoot = useStore((s) => s.ui.memoryRoot);
+  const setMemoryRoot = useStore((s) => s.ui.setMemoryRoot);
+  const samplesSeeded = useStore((s) => s.ui.samplesSeeded);
+  const setSamplesSeeded = useStore((s) => s.ui.setSamplesSeeded);
   const pushToast = useStore((s) => s.ui.pushToast);
 
   const [content, setContent] = useState<string | null>(null);
@@ -36,6 +40,41 @@ export default function MemoryRoute() {
     stats.comingSources = SOURCES.filter((s) => s.status === "coming").map((s) => s.title);
     return stats;
   });
+
+  // First-launch seed: if the memory dir is empty AND samples haven't been
+  // seeded yet, copy bundled samples in so the user sees a populated tree
+  // immediately. Idempotent — Rust no-ops if dir is non-empty.
+  useEffect(() => {
+    if (samplesSeeded) return;
+    let cancel = false;
+    void (async () => {
+      // Resolve real path from Rust if we still have the placeholder.
+      const info = await resolveMemoryRoot();
+      if (cancel) return;
+      if (info.path && info.path !== memoryRoot && !info.path.startsWith("~")) {
+        setMemoryRoot(info.path);
+      }
+      if (!info.is_empty) {
+        // Dir already has user content — skip sample seeding entirely.
+        setSamplesSeeded(true);
+        return;
+      }
+      const tree = await readMemoryTree(info.path || memoryRoot);
+      if (cancel) return;
+      const hasFiles = tree.some((n) => n.kind === "file" || (n.children && n.children.length > 0));
+      if (!hasFiles) {
+        const r = await initMemoryWithSamples();
+        if (cancel) return;
+        if (r.path && !r.path.startsWith("~")) {
+          setMemoryRoot(r.path);
+        }
+      }
+      setSamplesSeeded(true);
+    })();
+    return () => {
+      cancel = true;
+    };
+  }, [memoryRoot, samplesSeeded, setMemoryRoot, setSamplesSeeded]);
 
   useEffect(() => {
     let cancel = false;

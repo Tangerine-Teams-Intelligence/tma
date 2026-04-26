@@ -42,6 +42,57 @@ async function safeInvoke<T>(
 }
 
 // ============================================================
+// Memory layer (sample seeding + root resolution)
+// ============================================================
+
+export interface MemoryRootInfo {
+  /** Absolute path to `<home>/.tangerine-memory/`. */
+  path: string;
+  /** True when the dir exists on disk. */
+  exists: boolean;
+  /** True when the dir is missing OR empty. */
+  is_empty: boolean;
+}
+
+export interface InitMemoryResult {
+  /** Resolved memory root. */
+  path: string;
+  /** True when sample files were just copied; false when dir was already populated. */
+  seeded: boolean;
+  /** Number of files copied. 0 when `seeded` is false. */
+  copied: number;
+  /** Optional error when the seed attempt failed; we still return a path. */
+  error: string | null;
+}
+
+/**
+ * Resolve the absolute path to the user's memory dir. Mock returns the
+ * `~/.tangerine-memory` placeholder so the UI's breadcrumb shows something
+ * sensible outside Tauri.
+ */
+export async function resolveMemoryRoot(): Promise<MemoryRootInfo> {
+  return safeInvoke("resolve_memory_root", undefined, () => ({
+    path: "~/.tangerine-memory",
+    exists: false,
+    is_empty: true,
+  }));
+}
+
+/**
+ * Copy bundled sample files into the user's memory dir. Idempotent — only
+ * seeds when the dir is empty. Mock returns a no-op so vitest doesn't try to
+ * touch the real filesystem.
+ */
+export async function initMemoryWithSamples(): Promise<InitMemoryResult> {
+  return safeInvoke("init_memory_with_samples", undefined, () => ({
+    path: "~/.tangerine-memory",
+    seeded: false,
+    copied: 0,
+    error: null,
+  }));
+}
+
+// ============================================================
 // System / external
 // ============================================================
 

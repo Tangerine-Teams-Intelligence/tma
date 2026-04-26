@@ -27,6 +27,7 @@ use tauri::{AppHandle, Manager, Runtime};
 
 pub mod config;
 pub mod meetings;
+pub mod memory;
 pub mod tmi;
 pub mod bot;
 pub mod fs;
@@ -134,6 +135,9 @@ macro_rules! tmi_invoke_handler {
             $crate::commands::whisper_model::get_whisper_model_status,
             $crate::commands::whisper_model::download_whisper_model,
             $crate::commands::whisper_model::cancel_whisper_download,
+            // memory layer (sample seeding + root resolution)
+            $crate::commands::memory::resolve_memory_root,
+            $crate::commands::memory::init_memory_with_samples,
         ]
     };
 }

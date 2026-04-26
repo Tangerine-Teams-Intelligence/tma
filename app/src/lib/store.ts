@@ -77,6 +77,10 @@ interface UiSlice {
   paletteOpen: boolean;
   /** True when user chose "Skip — local memory only" on auth. */
   localOnly: boolean;
+  /** True after `init_memory_with_samples` has run successfully (or no-op). */
+  samplesSeeded: boolean;
+  /** True after the user dismisses the in-content sample banner. */
+  sampleBannerDismissed: boolean;
   toasts: { id: string; kind: "info" | "success" | "error"; text: string }[];
   setTheme: (t: ThemeMode) => void;
   cycleTheme: () => void;
@@ -85,6 +89,8 @@ interface UiSlice {
   setPalette: (open: boolean) => void;
   togglePalette: () => void;
   setLocalOnly: (v: boolean) => void;
+  setSamplesSeeded: (v: boolean) => void;
+  dismissSampleBanner: () => void;
   pushToast: (kind: "info" | "success" | "error", text: string) => void;
   dismissToast: (id: string) => void;
 }
@@ -161,6 +167,8 @@ export const useStore = create<Store>()(
         sidebarCollapsed: false,
         paletteOpen: false,
         localOnly: false,
+        samplesSeeded: false,
+        sampleBannerDismissed: false,
         toasts: [],
         setTheme: (t) => {
           const resolved = resolveTheme(t);
@@ -183,6 +191,10 @@ export const useStore = create<Store>()(
           set((s) => ({ ui: { ...s.ui, paletteOpen: !s.ui.paletteOpen } })),
         setLocalOnly: (v) =>
           set((s) => ({ ui: { ...s.ui, localOnly: v } })),
+        setSamplesSeeded: (v) =>
+          set((s) => ({ ui: { ...s.ui, samplesSeeded: v } })),
+        dismissSampleBanner: () =>
+          set((s) => ({ ui: { ...s.ui, sampleBannerDismissed: true } })),
         pushToast: (kind, text) =>
           set((s) => ({
             ui: {
@@ -238,16 +250,27 @@ export const useStore = create<Store>()(
       storage: createJSONStorage(() =>
         typeof window !== "undefined" ? window.localStorage : (undefined as unknown as Storage),
       ),
-      // Persist the meeting config + the user's theme + memory root choice.
+      // Persist the meeting config + the user's theme + memory root choice
+      // + the sample-seed/banner flags so we don't re-seed every launch.
       partialize: (s) =>
         ({
-          ui: { theme: s.ui.theme, memoryRoot: s.ui.memoryRoot },
+          ui: {
+            theme: s.ui.theme,
+            memoryRoot: s.ui.memoryRoot,
+            samplesSeeded: s.ui.samplesSeeded,
+            sampleBannerDismissed: s.ui.sampleBannerDismissed,
+          },
           skills: { meetingConfig: s.skills.meetingConfig },
         }) as unknown as Store,
       merge: (persisted, current) => {
         const p = persisted as
           | {
-              ui?: { theme?: ThemeMode; memoryRoot?: string };
+              ui?: {
+                theme?: ThemeMode;
+                memoryRoot?: string;
+                samplesSeeded?: boolean;
+                sampleBannerDismissed?: boolean;
+              };
               skills?: { meetingConfig?: MeetingConfig };
             }
           | undefined;
@@ -260,6 +283,9 @@ export const useStore = create<Store>()(
             theme,
             resolvedTheme: resolved,
             memoryRoot: p?.ui?.memoryRoot ?? current.ui.memoryRoot,
+            samplesSeeded: p?.ui?.samplesSeeded ?? current.ui.samplesSeeded,
+            sampleBannerDismissed:
+              p?.ui?.sampleBannerDismissed ?? current.ui.sampleBannerDismissed,
           },
           skills: {
             ...current.skills,

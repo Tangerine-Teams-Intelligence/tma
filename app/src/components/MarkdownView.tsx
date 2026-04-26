@@ -1,4 +1,8 @@
 import ReactMarkdown from "react-markdown";
+import { Link } from "react-router-dom";
+import { X } from "lucide-react";
+import { useStore } from "@/lib/store";
+import { parseFrontmatter } from "@/lib/memory";
 
 interface Props {
   /** Markdown body. May be null if file not found. */
@@ -12,11 +16,14 @@ interface Props {
 /**
  * Renders a memory file as styled markdown with a provenance footer.
  *
- * v1.5: provenance is empty for now since sources don't write rich metadata
- * yet. The footer is still rendered (with a stub line) so the layout +
- * docking surface for v1.6+ source provenance is in place.
+ * v1.5.5: parses frontmatter to detect `sample: true` files and shows a
+ * dismissable banner pointing the user at the Discord setup. Strips the
+ * frontmatter from the rendered body so users don't see raw YAML.
  */
 export function MarkdownView({ content, relPath, provenance }: Props) {
+  const sampleBannerDismissed = useStore((s) => s.ui.sampleBannerDismissed);
+  const dismissSampleBanner = useStore((s) => s.ui.dismissSampleBanner);
+
   if (content == null) {
     return (
       <div className="font-mono text-xs text-stone-500 dark:text-stone-400">
@@ -33,8 +40,41 @@ export function MarkdownView({ content, relPath, provenance }: Props) {
     );
   }
 
+  const fm = parseFrontmatter(content);
+  // If we successfully parsed frontmatter, render only the body. Otherwise
+  // (no leading ---), render the full content untouched.
+  const bodyToRender = fm.raw ? fm.body : content;
+  const showSampleBanner = fm.isSample && !sampleBannerDismissed;
+
   return (
     <article className="prose-tangerine">
+      {showSampleBanner && (
+        <div className="mb-6 flex items-start gap-3 rounded-md border border-[var(--ti-orange-200,#FFD9B8)] bg-[var(--ti-orange-50,#FFF5EC)] px-4 py-3 text-[12px] dark:border-stone-700 dark:bg-stone-900">
+          <span className="font-mono text-[14px]" aria-hidden>
+            📌
+          </span>
+          <p className="flex-1 text-stone-700 dark:text-stone-300">
+            This is a sample.{" "}
+            <Link
+              to="/sources/discord"
+              className="font-medium text-[var(--ti-orange-700)] underline-offset-2 hover:underline dark:text-[var(--ti-orange-500)]"
+            >
+              Set up Discord →
+            </Link>{" "}
+            to capture your own meetings, or just keep this for reference.
+          </p>
+          <button
+            type="button"
+            onClick={dismissSampleBanner}
+            className="shrink-0 rounded p-1 text-stone-400 hover:bg-stone-100 hover:text-stone-700 dark:hover:bg-stone-800 dark:hover:text-stone-200"
+            aria-label="Dismiss sample notice"
+            title="Dismiss"
+          >
+            <X size={12} />
+          </button>
+        </div>
+      )}
+
       <ReactMarkdown
         components={{
           h1: ({ children }) => (
@@ -87,7 +127,7 @@ export function MarkdownView({ content, relPath, provenance }: Props) {
           ),
         }}
       >
-        {content}
+        {bodyToRender}
       </ReactMarkdown>
 
       <footer className="mt-8 border-t border-stone-200 pt-4 dark:border-stone-800">

@@ -38,7 +38,8 @@
     "longDescription": "Tangerine AI Teams captures team voice meetings via Discord, transcribes via Whisper, and writes structured decisions back into your Claude Code project.",
     "resources": {
       "../resources/python": "resources/python",
-      "../resources/bot": "resources/bot"
+      "../resources/bot": "resources/bot",
+      "../resources/sample-memory": "resources/sample-memory"
     },
     "windows": {
       "certificateThumbprint": null,
