@@ -38,6 +38,8 @@ env/
 node_modules/
 bot/dist/
 bot/node_modules/
+mcp-server/dist/
+mcp-server/node_modules/
 
 # Tauri / desktop app build artifacts
 app/dist/
@@ -64,3 +66,8 @@ Desktop.ini
 # Local TMA state
 .tmi/
 .audit-report.md
+
+# Local planning / draft docs (not for git — CEO review only)
+README_PUBLIC_DRAFT.md
+OSS_REPO_PLAN.md
+V1_6_FEATURES.md
