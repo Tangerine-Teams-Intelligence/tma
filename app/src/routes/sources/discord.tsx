@@ -268,8 +268,8 @@ export default function MeetingSetupRoute() {
         nodePath: next.nodePath,
         team: next.team,
       });
-      pushToast("success", "Meeting set up.");
-      navigate("/meeting");
+      pushToast("success", "Discord source set up. Memory updates from now on.");
+      navigate("/memory");
     } catch (e) {
       pushToast("error", `Apply failed: ${(e as Error).message}`);
     } finally {
@@ -278,13 +278,13 @@ export default function MeetingSetupRoute() {
   }
 
   return (
-    <div className="min-h-full bg-[var(--ti-paper-100)]">
-      <header className="ti-no-select flex h-14 items-center gap-3 border-b border-[var(--ti-border-faint)] bg-[var(--ti-paper-100)] px-6">
+    <div className="min-h-full bg-stone-50 dark:bg-stone-950">
+      <header className="ti-no-select flex h-14 items-center gap-3 border-b border-stone-200 bg-stone-50 px-6 dark:border-stone-800 dark:bg-stone-950">
         <Button
           variant="ghost"
           size="icon"
           aria-label="Back"
-          onClick={() => navigate("/home")}
+          onClick={() => navigate("/memory")}
         >
           <ArrowLeft size={16} />
         </Button>
@@ -294,19 +294,23 @@ export default function MeetingSetupRoute() {
         >
           <Mic size={14} />
         </div>
-        <span className="font-display text-lg leading-none text-[var(--ti-ink-900)]">
-          Meeting
+        <span className="font-display text-lg leading-none text-stone-900 dark:text-stone-100">
+          Discord
         </span>
-        <span className="text-xs text-[var(--ti-ink-500)]">/ Set up</span>
+        <span className="font-mono text-[11px] text-stone-500 dark:text-stone-400">
+          / Source / Set up
+        </span>
       </header>
 
       <main className="mx-auto max-w-3xl p-8 pb-24">
-        <h1 className="font-display text-3xl tracking-tight text-[var(--ti-ink-900)]">
-          Set up Meeting
+        <p className="ti-section-label">Source · Discord</p>
+        <h1 className="mt-1 font-display text-3xl tracking-tight text-stone-900 dark:text-stone-100">
+          Set up the Discord source
         </h1>
-        <p className="mt-2 text-sm text-[var(--ti-ink-700)]">
-          Four sections. Fill the ones that aren't ticked. You can come back to edit any of
-          them later.
+        <p className="mt-2 text-sm text-stone-700 dark:text-stone-300">
+          Four sections. Fill the ones that aren't ticked. The Discord bot reads voice
+          channels, transcribes via local Whisper, and writes a memory file per call to
+          your memory dir.
         </p>
 
         <div className="mt-8 space-y-3">
@@ -415,7 +419,7 @@ export default function MeetingSetupRoute() {
               : `${[discordOk, transcriptionOk, claudeOk, teamOk].filter(Boolean).length} of 4 sections complete.`}
           </span>
           <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={() => navigate("/home")}>
+            <Button variant="outline" onClick={() => navigate("/memory")}>
               Cancel
             </Button>
             <Button onClick={handleSave} disabled={!allOk || saving}>

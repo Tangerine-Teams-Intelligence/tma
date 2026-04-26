@@ -32,7 +32,7 @@ export default function AuthRoute() {
         return;
       }
       setLocalOnly(false);
-      navigate("/home", { replace: true });
+      navigate("/memory", { replace: true });
     } finally {
       setBusy(false);
     }
@@ -43,7 +43,7 @@ export default function AuthRoute() {
     // Stub-mode auth lets us drop a local synthetic session so the route
     // guard in App.tsx lets us through. Email is just a label.
     void signIn("local@tangerine.local", "localmode").then(() => {
-      navigate("/home", { replace: true });
+      navigate("/memory", { replace: true });
     });
   }
 
@@ -62,11 +62,10 @@ export default function AuthRoute() {
         </div>
 
         <h1 className="font-display text-3xl tracking-tight text-[var(--ti-ink-900)]">
-          Your team's AI desktop
+          AI that follows your whole team
         </h1>
         <p className="mt-2 text-sm text-[var(--ti-ink-700)]">
-          10 tools, one login, one subscription. Meetings, wiki, tracking, reviews — all in
-          one place.
+          Meetings, docs, decisions, code, chat — your team's AI knows it all.
         </p>
 
         {isStubMode && (
@@ -132,10 +131,10 @@ export default function AuthRoute() {
             className="w-full"
             onClick={skipToLocal}
           >
-            Skip — local only mode
+            Skip — local memory only
           </Button>
           <p className="text-center text-[11px] text-[var(--ti-ink-500)]">
-            No cloud sync, nothing leaves this machine.
+            Memory dir lives on this machine. Nothing leaves until you wire a Sink.
           </p>
         </form>
 
