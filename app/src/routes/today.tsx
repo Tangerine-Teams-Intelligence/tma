@@ -14,6 +14,7 @@ import { useStore } from "@/lib/store";
 import { TangerineNotes } from "@/components/TangerineNotes";
 import { DailyBriefCard } from "@/components/DailyBriefCard";
 import { TimelineEvent } from "@/components/TimelineEvent";
+import { MEMORY_REFRESHED_EVENT } from "@/components/layout/AppShell";
 
 /**
  * /today — default landing surface for the Chief of Staff UX.
@@ -47,18 +48,31 @@ export default function TodayRoute() {
 
   useEffect(() => {
     let cancel = false;
-    void readBrief(today).then((b) => {
-      if (!cancel) setBrief(b);
-    });
-    void readTimelineToday(today).then((s) => {
-      if (!cancel) {
-        setSlice(s);
-        // Stage 2 hook: notes per route. Stage 1 always [].
-        setNotes(s.notes ?? []);
-      }
-    });
+    const refresh = () => {
+      void readBrief(today).then((b) => {
+        if (!cancel) setBrief(b);
+      });
+      void readTimelineToday(today).then((s) => {
+        if (!cancel) {
+          setSlice(s);
+          // Stage 2 hook: notes per route. Stage 1 always [].
+          setNotes(s.notes ?? []);
+        }
+      });
+    };
+    refresh();
+    // AppShell dispatches MEMORY_REFRESHED_EVENT after the first-launch
+    // sample-seed so the timeline + brief surface re-read the just-written
+    // files immediately, no page reload needed.
+    const onRefreshed = () => refresh();
+    if (typeof window !== "undefined") {
+      window.addEventListener(MEMORY_REFRESHED_EVENT, onRefreshed);
+    }
     return () => {
       cancel = true;
+      if (typeof window !== "undefined") {
+        window.removeEventListener(MEMORY_REFRESHED_EVENT, onRefreshed);
+      }
     };
   }, [today]);
 

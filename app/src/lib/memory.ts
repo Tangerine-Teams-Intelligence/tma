@@ -65,6 +65,22 @@ export const STANDARD_FOLDERS = [
 ] as const;
 
 /**
+ * Subfolders that contain user-facing markdown. These are the folders the
+ * sample-seed populates. The daemon-owned sidecars (`.tangerine/`, `timeline/`,
+ * `briefs/`) are deliberately excluded — they appear on first heartbeat even
+ * before the user has any content, and treating their presence as "the dir
+ * is not empty" is exactly the v1.7 regression we are fixing here.
+ */
+export const USER_FACING_FOLDERS = [
+  "meetings",
+  "decisions",
+  "people",
+  "projects",
+  "threads",
+  "glossary",
+] as const;
+
+/**
  * Default root when the user hasn't configured a target_repo. We don't create
  * the dir from JS — `init_memory_with_samples` (Rust) handles the first-run
  * mkdir + sample seeding so the first-paint always sees a populated tree.
@@ -385,6 +401,43 @@ export interface Frontmatter {
   body: string;
   fields: Record<string, string>;
   isSample: boolean;
+}
+
+/**
+ * True when every user-facing memory subfolder is missing, empty, or contains
+ * no markdown files. This is the v1.7 replacement for the old "is the whole
+ * memory dir empty?" check, which broke as soon as the Module A daemon wrote
+ * its `.tangerine/` and `timeline/` sidecars on first heartbeat. We deliberately
+ * scope the emptiness check to the folders the sample-seed populates so daemon
+ * sidecars never block re-seeding.
+ *
+ * Uses the existing `readMemoryTree` walk so we don't hit Tauri fs twice on
+ * boot. Outside Tauri the walk synthesizes empty STANDARD_FOLDERS, so this
+ * returns true — which is fine because the seed is a Tauri-only no-op there.
+ */
+export async function userFacingFoldersEmpty(root: string): Promise<boolean> {
+  if (!inTauri()) return true;
+  let tree: MemoryNode[];
+  try {
+    tree = await readMemoryTree(root);
+  } catch {
+    // Couldn't even walk the tree — assume empty so seed gets a chance.
+    return true;
+  }
+  for (const folder of USER_FACING_FOLDERS) {
+    const node = tree.find((n) => n.kind === "dir" && n.name === folder);
+    if (!node) continue;
+    if (hasMarkdownFile(node)) return false;
+  }
+  return true;
+}
+
+function hasMarkdownFile(node: MemoryNode): boolean {
+  if (node.kind === "file") return /\.(md|markdown|mdx)$/i.test(node.name);
+  for (const child of node.children ?? []) {
+    if (hasMarkdownFile(child)) return true;
+  }
+  return false;
 }
 
 export function parseFrontmatter(content: string): Frontmatter {

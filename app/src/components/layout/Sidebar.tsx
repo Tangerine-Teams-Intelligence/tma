@@ -26,6 +26,7 @@ import {
 } from "@/lib/memory";
 import { MemoryTree } from "@/components/MemoryTree";
 import { SyncStatusIndicator } from "@/components/SyncStatusIndicator";
+import { MEMORY_REFRESHED_EVENT } from "@/components/layout/AppShell";
 import { kbdShortcut } from "@/lib/platform";
 
 /**
@@ -56,14 +57,19 @@ export function Sidebar() {
     // Re-walk when window regains focus so files written by sources outside
     // the app (Discord bot writing to memory/meetings/) show up automatically.
     const onFocus = () => void refresh();
+    // AppShell dispatches MEMORY_REFRESHED_EVENT after a sample-seed so the
+    // tree picks up the new files immediately without waiting for focus.
+    const onRefreshed = () => void refresh();
     if (typeof window !== "undefined") {
       window.addEventListener("focus", onFocus);
+      window.addEventListener(MEMORY_REFRESHED_EVENT, onRefreshed);
     }
     return () => {
       cancel = true;
       cancelled = true;
       if (typeof window !== "undefined") {
         window.removeEventListener("focus", onFocus);
+        window.removeEventListener(MEMORY_REFRESHED_EVENT, onRefreshed);
       }
     };
     // samplesSeeded is in deps so the tree refreshes once Rust finishes the

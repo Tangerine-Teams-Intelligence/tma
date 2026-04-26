@@ -21,7 +21,8 @@ import {
 } from "@/lib/memory";
 import { MarkdownView } from "@/components/MarkdownView";
 import { SOURCES } from "@/lib/sources";
-import { openExternal, initMemoryWithSamples, resolveMemoryRoot } from "@/lib/tauri";
+import { openExternal } from "@/lib/tauri";
+import { MEMORY_REFRESHED_EVENT } from "@/components/layout/AppShell";
 
 /**
  * Default landing surface after auth: 3-pane shape.
@@ -49,9 +50,7 @@ export default function MemoryRoute() {
   const navigate = useNavigate();
   const relPath = params["*"] ?? "";
   const memoryRoot = useStore((s) => s.ui.memoryRoot);
-  const setMemoryRoot = useStore((s) => s.ui.setMemoryRoot);
   const samplesSeeded = useStore((s) => s.ui.samplesSeeded);
-  const setSamplesSeeded = useStore((s) => s.ui.setSamplesSeeded);
   const memoryConfigMode = useStore((s) => s.ui.memoryConfig.mode);
   const pushToast = useStore((s) => s.ui.pushToast);
 
@@ -81,45 +80,17 @@ export default function MemoryRoute() {
     return stats;
   }, [folderCounts]);
 
-  // First-launch seed: copy bundled samples in if the memory dir is empty.
-  // Self-healing across reinstalls — we never trust the persisted
-  // `samplesSeeded` flag alone, because on uninstall+reinstall the persisted
-  // localStorage value can survive while the on-disk memory dir is freshly
-  // empty. So we always check the actual dir state from Rust first; if the
-  // dir is empty we reseed regardless of what the flag says, and only
-  // commit the flag once seeding actually succeeded.
-  useEffect(() => {
-    let cancel = false;
-    void (async () => {
-      const info = await resolveMemoryRoot();
-      if (cancel) return;
-      if (info.path && info.path !== memoryRoot && !info.path.startsWith("~")) {
-        setMemoryRoot(info.path);
-      }
-      if (!info.is_empty) {
-        // Dir already has user content — sync the flag forward and bail.
-        if (!samplesSeeded) setSamplesSeeded(true);
-        return;
-      }
-      // Dir is empty. If the flag was true (stale persisted value from a
-      // prior install), reset it so the seeding path actually fires.
-      if (samplesSeeded) setSamplesSeeded(false);
-      const r = await initMemoryWithSamples();
-      if (cancel) return;
-      if (r.path && !r.path.startsWith("~")) {
-        setMemoryRoot(r.path);
-      }
-      // Only commit the persisted flag once seeding actually wrote files.
-      if (r.seeded || r.copied > 0) setSamplesSeeded(true);
-    })();
-    return () => {
-      cancel = true;
-    };
-  }, [memoryRoot, samplesSeeded, setMemoryRoot, setSamplesSeeded]);
+  // First-launch sample seed lives in <AppShell> now (v1.7.0-beta.2). Moved
+  // there because v1.7 changed the default landing route from /memory to
+  // /today, so a /memory-only seed effect would never fire for a fresh user
+  // who never navigates to /memory. AppShell also uses a smarter
+  // user-facing-folders-empty check that ignores daemon sidecars.
 
   // Walk the memory tree on mount + on focus so the stat cards stay accurate
   // as the Discord bot writes new files. Mirror the sidebar's focus-refresh
-  // pattern so the home + sidebar stay in sync.
+  // pattern so the home + sidebar stay in sync. Also re-walk on
+  // MEMORY_REFRESHED_EVENT so the fresh-install seed shows up here without
+  // a route nav.
   useEffect(() => {
     let cancel = false;
     const refresh = () =>
@@ -128,13 +99,16 @@ export default function MemoryRoute() {
       });
     void refresh();
     const onFocus = () => void refresh();
+    const onRefreshed = () => void refresh();
     if (typeof window !== "undefined") {
       window.addEventListener("focus", onFocus);
+      window.addEventListener(MEMORY_REFRESHED_EVENT, onRefreshed);
     }
     return () => {
       cancel = true;
       if (typeof window !== "undefined") {
         window.removeEventListener("focus", onFocus);
+        window.removeEventListener(MEMORY_REFRESHED_EVENT, onRefreshed);
       }
     };
   }, [memoryRoot, samplesSeeded]);
