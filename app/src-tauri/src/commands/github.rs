@@ -39,11 +39,11 @@ pub fn tangerine_oauth_client_id() -> String {
             return v.trim().to_string();
         }
     }
-    // CEO TODO: register a public GitHub OAuth App at
-    //   https://github.com/settings/applications/new
-    // and replace this string. Until then, the device-flow handler returns a
-    // user-facing error pointing at Settings.
-    "PLACEHOLDER_CLIENT_ID".to_string()
+    // Tangerine AI Teams OAuth App — registered 2026-04-26 by CEO.
+    // Device flow only; no client secret needed (public client).
+    // To rotate: re-register at https://github.com/settings/applications/new
+    // and update both this string + GitHub Actions secret if any.
+    "Ov23ligLHtDAlzPt48bG".to_string()
 }
 
 /// Returned by `github_device_flow_start`. The frontend renders the
@@ -63,7 +63,7 @@ pub async fn github_device_flow_start(
     state: State<'_, AppState>,
 ) -> Result<DeviceFlowStart, AppError> {
     let client_id = tangerine_oauth_client_id();
-    if client_id == "PLACEHOLDER_CLIENT_ID" {
+    if client_id == "PLACEHOLDER_CLIENT_ID" || client_id.is_empty() {
         return Err(AppError::config(
             "github_oauth_unconfigured",
             "GitHub OAuth client_id is not configured. Set TANGERINE_GH_CLIENT_ID or follow the setup link in Settings.",
@@ -115,7 +115,7 @@ pub async fn github_device_flow_poll(
     args: DevicePollArgs,
 ) -> Result<DevicePollResult, AppError> {
     let client_id = tangerine_oauth_client_id();
-    if client_id == "PLACEHOLDER_CLIENT_ID" {
+    if client_id == "PLACEHOLDER_CLIENT_ID" || client_id.is_empty() {
         return Err(AppError::config(
             "github_oauth_unconfigured",
             "GitHub OAuth client_id is not configured. Set TANGERINE_GH_CLIENT_ID or follow the setup link in Settings.",
@@ -375,10 +375,11 @@ mod tests {
     }
 
     #[test]
-    fn placeholder_client_returns_error_when_unset() {
+    fn baked_client_id_returned_when_env_unset() {
         std::env::remove_var("TANGERINE_GH_CLIENT_ID");
         let id = tangerine_oauth_client_id();
-        assert_eq!(id, "PLACEHOLDER_CLIENT_ID");
+        // Real CEO-registered OAuth App ID (Tangerine AI Teams, 2026-04-26).
+        assert_eq!(id, "Ov23ligLHtDAlzPt48bG");
     }
 
     #[test]
