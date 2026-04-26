@@ -42,7 +42,7 @@ Restart your AI tool, then ask:
 - *"what did we decide about postgres vs mongo?"*
 - *"who was in the roadmap sync meeting?"*
 
-You're querying a sample team memory baked into the npm package. To plug in your real team's memory, install the Tangerine desktop app: <https://github.com/Tangerine-Teams-Intelligence/tma>
+You're querying a sample team memory baked into the npm package. To plug in your real team's memory, install the Tangerine desktop app: <https://github.com/Tangerine-Teams-Intelligence/tangerine>
 
 ---
 
@@ -230,7 +230,7 @@ Returns (per match):
 ## Development
 
 ```bash
-git clone https://github.com/Tangerine-Teams-Intelligence/tma.git
+git clone https://github.com/Tangerine-Teams-Intelligence/tangerine.git
 cd tma/mcp-server
 npm install
 npm run build

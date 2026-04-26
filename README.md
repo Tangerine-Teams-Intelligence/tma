@@ -9,7 +9,7 @@
 <p align="center">Your team uses Cursor, Claude, ChatGPT — but each AI sees a different slice of what your team's actually doing. We align them all with one source of team workflow info. So your AIs stop giving different answers.</p>
 
 <p align="center">
-  <a href="https://github.com/Tangerine-Teams-Intelligence/tma/releases/latest"><img src="https://img.shields.io/github/v/release/Tangerine-Teams-Intelligence/tma?include_prereleases&label=download" alt="Latest release" /></a>
+  <a href="https://github.com/Tangerine-Teams-Intelligence/tangerine/releases/latest"><img src="https://img.shields.io/github/v/release/Tangerine-Teams-Intelligence/tangerine?include_prereleases&label=download" alt="Latest release" /></a>
   <a href="https://www.npmjs.com/package/tangerine-mcp"><img src="https://img.shields.io/npm/v/tangerine-mcp?label=tangerine-mcp" alt="tangerine-mcp on npm" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License" /></a>
   <img src="https://img.shields.io/badge/platform-Win%20%C2%B7%20Mac%20%C2%B7%20Linux-lightgrey" alt="Platforms" />
@@ -54,7 +54,7 @@ Your AI calls the new `query_team_memory` tool and returns answers from a sample
 
 ## Full install (Windows)
 
-[**Download `Tangerine.AI.Teams_1.6.0-beta.1_x64-setup.exe`**](https://github.com/Tangerine-Teams-Intelligence/tma/releases/latest) → right-click → Properties → Unblock → run → 5-step wizard.
+[**Download `Tangerine.AI.Teams_1.6.0-beta.1_x64-setup.exe`**](https://github.com/Tangerine-Teams-Intelligence/tangerine/releases/latest) → right-click → Properties → Unblock → run → 5-step wizard.
 
 First-run downloads the local Whisper model (~244 MB) and seeds 3 sample memory files so the Memory browser isn't empty. ~15 minutes from download to first recorded meeting. Full walkthrough in [SETUP.md](SETUP.md).
 
@@ -62,7 +62,7 @@ Requires Windows 10/11, Node 20+, Git, and a Claude Code subscription (the obser
 
 ## Browser extension (Chrome / Edge)
 
-[Download `tangerine-ext-0.1.0.zip`](https://github.com/Tangerine-Teams-Intelligence/tma/releases/latest) → unzip → `chrome://extensions` → enable Developer mode → Load unpacked. The 🍊 button appears in ChatGPT / Claude.ai / Gemini chat boxes. Web Store listing pending review.
+[Download `tangerine-ext-0.1.0.zip`](https://github.com/Tangerine-Teams-Intelligence/tangerine/releases/latest) → unzip → `chrome://extensions` → enable Developer mode → Load unpacked. The 🍊 button appears in ChatGPT / Claude.ai / Gemini chat boxes. Web Store listing pending review.
 
 ---
 
@@ -170,7 +170,7 @@ docs/, tests/    # Documentation, end-to-end tests
 
 PRs welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) for dev setup, commit format, and the CLA (required for non-trivial contributions — Apache-2.0 + DCO).
 
-Issues, bug reports, and feature requests go in [GitHub Issues](https://github.com/Tangerine-Teams-Intelligence/tma/issues). Security disclosures: [SECURITY.md](SECURITY.md).
+Issues, bug reports, and feature requests go in [GitHub Issues](https://github.com/Tangerine-Teams-Intelligence/tangerine/issues). Security disclosures: [SECURITY.md](SECURITY.md).
 
 ## License
 
