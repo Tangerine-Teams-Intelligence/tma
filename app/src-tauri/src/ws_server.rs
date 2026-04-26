@@ -22,10 +22,29 @@
 //!   client → server: `{ "op": "search", "query": "...", "limit": N }`
 //!                    `{ "op": "file",   "path":  "..." }`
 //!                    `{ "op": "ping" }`                  (alias for cheap probe)
-//!   server → client: `{ "op": "search.result", "results": [...], "tookMs": N }`
-//!                    `{ "op": "file.result", "path": "...", "content": "..." }`
+//!   server → client: `{ "op": "search.result", "results": [...], "tookMs": N,
+//!                       "envelope": { ... AGI envelope ... } }`
+//!                    `{ "op": "file.result", "path": "...", "content": "...",
+//!                       "envelope": { ... } }`
 //!                    `{ "op": "error", "code": "...", "message": "..." }`
 //!                    `{ "ok": true }`                    (ping reply)
+//!
+//! Stage 1 AGI Hook 4: every successful response carries an `envelope`
+//! field with the same shape as `mcp-server/src/envelope.ts`:
+//!
+//! ```json
+//! { "data": null,
+//!   "confidence": 1.0,
+//!   "freshness_seconds": 0,
+//!   "source_atoms": [],
+//!   "alternatives": [],
+//!   "reasoning_notes": null }
+//! ```
+//!
+//! Stage 1 always pins `confidence = 1.0`. Stage 2 will compute real
+//! confidence when the reasoning loop lands. The envelope is appended
+//! (rather than wrapping) so older clients that ignore the field continue
+//! to work — same forward-compat strategy as the MCP server.
 
 #![allow(dead_code)]
 
@@ -89,6 +108,34 @@ struct WireError<'a> {
     message: String,
 }
 
+/// Stage 1 AGI envelope (Hook 4). Mirrors `mcp-server/src/envelope.ts` and
+/// `browser-ext/src/shared/types.ts::AgiEnvelope`. Carried on every
+/// successful response so MCP/ws clients can render confidence, freshness,
+/// and source attribution from day one. Stage 2 will populate `alternatives`
+/// + `reasoning_notes` and start emitting `confidence < 1.0`.
+#[derive(Debug, Serialize, Default, Clone)]
+pub struct AgiEnvelope {
+    pub confidence: f64,
+    pub freshness_seconds: u64,
+    pub source_atoms: Vec<String>,
+    pub alternatives: Vec<serde_json::Value>,
+    pub reasoning_notes: Option<String>,
+}
+
+impl AgiEnvelope {
+    /// Stage 1 default: confident, fresh-now, no source atoms (substring
+    /// search returns files, not atoms). Stage 2 fills these.
+    pub fn stage1_default() -> Self {
+        Self {
+            confidence: 1.0,
+            freshness_seconds: 0,
+            source_atoms: Vec::new(),
+            alternatives: Vec::new(),
+            reasoning_notes: None,
+        }
+    }
+}
+
 /// Server → client search result envelope.
 #[derive(Debug, Serialize)]
 struct WireSearchResult {
@@ -96,6 +143,7 @@ struct WireSearchResult {
     results: Vec<memory_search::SearchHit>,
     #[serde(rename = "tookMs", skip_serializing_if = "Option::is_none")]
     took_ms: Option<u128>,
+    envelope: AgiEnvelope,
 }
 
 /// Server → client file result envelope.
@@ -104,6 +152,7 @@ struct WireFileResult {
     op: &'static str,
     path: String,
     content: String,
+    envelope: AgiEnvelope,
 }
 
 /// Hands the ws server everything it needs to know about the running app.
@@ -431,6 +480,7 @@ fn dispatch(ctx: &WsServerCtx, raw: &str) -> String {
                 op: "search.result",
                 results: hits,
                 took_ms: Some(started.elapsed().as_millis()),
+                envelope: AgiEnvelope::stage1_default(),
             };
             serde_json::to_string(&payload).unwrap_or_else(|e| {
                 serialize_error("internal", format!("serialize: {}", e))
@@ -461,6 +511,7 @@ fn dispatch(ctx: &WsServerCtx, raw: &str) -> String {
                         op: "file.result",
                         path: abs.to_string_lossy().to_string(),
                         content,
+                        envelope: AgiEnvelope::stage1_default(),
                     };
                     serde_json::to_string(&payload).unwrap_or_else(|e| {
                         serialize_error("internal", format!("serialize: {}", e))
@@ -588,6 +639,76 @@ mod tests {
         assert!(reply.contains("postgres"));
 
         std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn dispatch_search_includes_agi_envelope() {
+        let root = std::env::temp_dir().join(format!(
+            "tangerine_ws_envelope_search_{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("a.md"), "envelope test note").unwrap();
+        let ctx = WsServerCtx {
+            solo_root: root.clone(),
+            app_data_dir: std::env::temp_dir(),
+            team_repo_path: Arc::new(parking_lot::Mutex::new(None)),
+        };
+        let reply = dispatch(&ctx, "{\"op\":\"search\",\"query\":\"envelope\",\"limit\":5}");
+        let v: serde_json::Value = serde_json::from_str(&reply).unwrap();
+        let env = v.get("envelope").expect("envelope missing");
+        assert_eq!(env["confidence"], 1.0);
+        assert_eq!(env["freshness_seconds"], 0);
+        assert_eq!(env["source_atoms"], serde_json::json!([]));
+        assert_eq!(env["alternatives"], serde_json::json!([]));
+        assert!(env["reasoning_notes"].is_null());
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn dispatch_file_includes_agi_envelope() {
+        let root = std::env::temp_dir().join(format!(
+            "tangerine_ws_envelope_file_{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let p = root.join("note.md");
+        std::fs::write(&p, "hello envelope").unwrap();
+        let ctx = WsServerCtx {
+            solo_root: root.clone(),
+            app_data_dir: std::env::temp_dir(),
+            team_repo_path: Arc::new(parking_lot::Mutex::new(None)),
+        };
+        let reply = dispatch(&ctx, "{\"op\":\"file\",\"path\":\"note.md\"}");
+        let v: serde_json::Value = serde_json::from_str(&reply).unwrap();
+        assert_eq!(v["op"], "file.result");
+        let env = v.get("envelope").expect("envelope missing on file.result");
+        assert_eq!(env["confidence"], 1.0);
+        assert!(env["alternatives"].is_array());
+        assert!(env["reasoning_notes"].is_null());
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn agi_envelope_stage1_default_shape() {
+        let env = AgiEnvelope::stage1_default();
+        assert_eq!(env.confidence, 1.0);
+        assert_eq!(env.freshness_seconds, 0);
+        assert!(env.source_atoms.is_empty());
+        assert!(env.alternatives.is_empty());
+        assert!(env.reasoning_notes.is_none());
+        // Serializes with all 5 fields (no skip_serializing_if on this type —
+        // forward-compat with Stage 2 clients that read these fields directly).
+        let s = serde_json::to_string(&env).unwrap();
+        for k in [
+            "confidence",
+            "freshness_seconds",
+            "source_atoms",
+            "alternatives",
+            "reasoning_notes",
+        ] {
+            assert!(s.contains(k), "envelope JSON missing field {k}: {s}");
+        }
     }
 
     #[test]

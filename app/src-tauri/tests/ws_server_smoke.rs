@@ -315,6 +315,82 @@ async fn team_mode_swap_at_runtime_picked_up_on_next_request() {
     let _ = std::fs::remove_dir_all(&team_repo);
 }
 
+#[tokio::test]
+async fn search_op_carries_agi_envelope_on_wire() {
+    // Stage 1 Hook 4: every successful search.result reply carries the
+    // envelope so the browser ext + future MCP-over-ws clients can render
+    // confidence/freshness/source attribution from day one.
+    let mem_root = tmpdir("ws_smoke_envelope");
+    std::fs::write(mem_root.join("note.md"), "envelope wire test note").unwrap();
+    let ctx = ws_server::WsServerCtx {
+        solo_root: mem_root.clone(),
+        app_data_dir: tmpdir("ws_smoke_envelope_appdata"),
+        team_repo_path: Arc::new(parking_lot::Mutex::new(None)),
+    };
+    let (port, stop) = start_on_ephemeral(ctx).await;
+    let mut ws = connect(port).await;
+    ws.send(Message::Text(
+        r#"{"op":"search","query":"envelope","limit":3}"#.into(),
+    ))
+    .await
+    .expect("send");
+    let reply = tokio::time::timeout(Duration::from_secs(5), ws.next())
+        .await
+        .expect("recv timeout")
+        .expect("recv None")
+        .expect("recv err");
+    let text = match reply {
+        Message::Text(t) => t,
+        other => panic!("expected text frame, got {:?}", other),
+    };
+    let parsed: serde_json::Value = serde_json::from_str(&text).expect("json");
+    assert_eq!(parsed["op"], "search.result");
+    let env = parsed
+        .get("envelope")
+        .expect("envelope field missing on search.result");
+    assert_eq!(env["confidence"], 1.0);
+    assert_eq!(env["freshness_seconds"], 0);
+    assert!(env["source_atoms"].is_array());
+    assert!(env["alternatives"].is_array());
+    assert!(env["reasoning_notes"].is_null());
+    stop.notify_waiters();
+    let _ = std::fs::remove_dir_all(&mem_root);
+}
+
+#[tokio::test]
+async fn file_op_carries_agi_envelope_on_wire() {
+    let mem_root = tmpdir("ws_smoke_file_envelope");
+    std::fs::write(mem_root.join("a.md"), "abc").unwrap();
+    let ctx = ws_server::WsServerCtx {
+        solo_root: mem_root.clone(),
+        app_data_dir: tmpdir("ws_smoke_file_envelope_appdata"),
+        team_repo_path: Arc::new(parking_lot::Mutex::new(None)),
+    };
+    let (port, stop) = start_on_ephemeral(ctx).await;
+    let mut ws = connect(port).await;
+    ws.send(Message::Text(r#"{"op":"file","path":"a.md"}"#.into()))
+        .await
+        .expect("send");
+    let reply = tokio::time::timeout(Duration::from_secs(5), ws.next())
+        .await
+        .expect("recv timeout")
+        .expect("recv None")
+        .expect("recv err");
+    let text = match reply {
+        Message::Text(t) => t,
+        other => panic!("expected text, got {:?}", other),
+    };
+    let parsed: serde_json::Value = serde_json::from_str(&text).expect("json");
+    assert_eq!(parsed["op"], "file.result");
+    let env = parsed
+        .get("envelope")
+        .expect("envelope field missing on file.result");
+    assert_eq!(env["confidence"], 1.0);
+    assert!(env["alternatives"].is_array());
+    stop.notify_waiters();
+    let _ = std::fs::remove_dir_all(&mem_root);
+}
+
 // Silence unused import warnings on builds where individual tests are
 // disabled (e.g. `cargo test --test ws_server_smoke -- some_subset`).
 #[allow(dead_code)]
