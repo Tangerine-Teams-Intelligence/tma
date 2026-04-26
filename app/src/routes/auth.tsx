@@ -62,7 +62,7 @@ export default function AuthRoute() {
         </div>
 
         <h1 className="font-display text-3xl tracking-tight text-[var(--ti-ink-900)]">
-          Align every AI tool on your team with your team's actual work.
+          Align every AI tool on your team with your team's human workflow information.
         </h1>
         <p className="mt-2 text-sm text-[var(--ti-ink-700)]">
           Your team uses Cursor, Claude, ChatGPT — but each AI sees a different

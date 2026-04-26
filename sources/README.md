@@ -1,6 +1,6 @@
 # Tangerine Source Connectors
 
-> **Align every AI tool on your team with your team's actual work.**
+> **Align every AI tool on your team with your team's human workflow information.**
 
 Sources are the **inputs** that feed Tangerine's team-memory layer — the "team's actual work" half of the tagline. Each connector watches one external system (GitHub, Linear, Slack, Calendar, …), translates events into the canonical **atom** schema, and appends them to the user's memory tree under `<memory>/timeline/` and `<memory>/threads/`. Sinks (browser extension, MCP server) then align every AI tool on the team with that single source of truth.
 

@@ -1,6 +1,6 @@
 # Tangerine — Browser Extension (v0.1.0)
 
-> **Align every AI tool on your team with your team's actual work.**
+> **Align every AI tool on your team with your team's human workflow information.**
 
 Your team uses Cursor, Claude, ChatGPT — but each AI sees a different slice of what your team's actually doing. This extension is the Sink that aligns ChatGPT / Claude.ai / Gemini with one source of team workflow info, so your AIs stop giving different answers.
 

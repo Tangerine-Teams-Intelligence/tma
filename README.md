@@ -1,6 +1,6 @@
 # Tangerine
 
-> **Align every AI tool on your team with your team's actual work.**
+> **Align every AI tool on your team with your team's human workflow information.**
 >
 > Your team uses Cursor, Claude, ChatGPT — but each AI sees a different slice of what your team's actually doing. We align them all with one source of team workflow info. So your AIs stop giving different answers.
 

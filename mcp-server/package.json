@@ -34,7 +34,7 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Tangerine-Intelligence/tangerine-meeting-live.git",
+    "url": "https://github.com/Tangerine-Teams-Intelligence/tangerine-teams-app.git",
     "directory": "mcp-server"
   },
   "dependencies": {
