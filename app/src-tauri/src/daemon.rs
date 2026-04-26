@@ -29,7 +29,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use chrono::{Local, Timelike, Utc};
+use chrono::{DateTime, Local, Timelike, Utc};
 use parking_lot::Mutex;
 use serde::Serialize;
 use tokio::sync::Notify;
@@ -64,13 +64,31 @@ pub struct DaemonStatus {
     /// v1.8 Phase 2-D: total number of email threads written or merged
     /// across all heartbeats. Incremented after a successful fetch_recent.
     pub email_threads_total: u64,
+    /// v1.8 Phase 3-B: RFC 3339 timestamp of the last co-thinker heartbeat
+    /// (independent of the wider daemon heartbeat — the co-thinker has its
+    /// own foreground/background cadence). `None` until the first tick runs.
+    pub last_co_thinker_tick: Option<String>,
+    /// v1.8 Phase 3-B: total brain.md rewrites across all heartbeats. Skips
+    /// (atoms_seen=0) don't bump this.
+    pub co_thinker_brain_updates: u64,
+    /// v1.8 Phase 3-B: total proposals written across all heartbeats.
+    pub co_thinker_proposals_total: u64,
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct DaemonControl {
     pub status: Mutex<DaemonStatus>,
     pub stop: Arc<Notify>,
     pub kick: Arc<Notify>,
+    /// v1.8 Phase 3-B: long-lived co-thinker engine. `Some` after the first
+    /// `co_thinker_tick` initialises it; `None` on a fresh daemon. We carry
+    /// it across heartbeats so `last_heartbeat_ts` (the engine's incremental
+    /// scan cutoff) persists without round-tripping through the filesystem.
+    pub co_thinker: Mutex<Option<crate::agi::co_thinker::CoThinkerEngine>>,
+    /// v1.8 Phase 3-B: hint from the UI/window-focus event ("am I visible?").
+    /// True ⇒ 5 min cadence; false ⇒ 30 min. Defaults to false (background)
+    /// so a headless daemon doesn't burn LLM calls before the UI signals.
+    pub foreground: parking_lot::Mutex<bool>,
 }
 
 impl DaemonControl {
@@ -315,6 +333,86 @@ async fn do_heartbeat(cfg: &DaemonConfig, control: &Arc<DaemonControl>) {
             }
         }
     }
+
+    // 9. v1.8 Phase 3-B — co-thinker brain heartbeat.
+    //
+    // Cadence:
+    //   * foreground (UI window focused, signalled by `control.foreground`)
+    //     → fire every 5 min
+    //   * background → fire every 30 min
+    //   * high-priority "decision atom landed" trigger → Phase 4 (file
+    //     watcher hook). Phase 3 ships only the cadence-gated path.
+    //
+    // The co-thinker engine has its own throttle, so a long heartbeat won't
+    // pile up; a daemon tick that arrives mid-LLM-call short-circuits in
+    // the engine. We swallow errors here — co-thinker failures must never
+    // kill the daemon.
+    if let Err(e) = co_thinker_tick(cfg, control).await {
+        control.record_error("co_thinker_tick", e);
+    }
+}
+
+/// One co-thinker brain tick. Initialises the long-lived engine on first
+/// call, then runs `engine.heartbeat()` only if the elapsed-since-last-tick
+/// exceeds the cadence threshold (5 min foreground / 30 min background).
+async fn co_thinker_tick(cfg: &DaemonConfig, control: &Arc<DaemonControl>) -> Result<(), String> {
+    use crate::agi::co_thinker::{CoThinkerEngine, HeartbeatCadence};
+
+    let foreground = *control.foreground.lock();
+    let cadence = if foreground {
+        HeartbeatCadence::Foreground
+    } else {
+        HeartbeatCadence::Background
+    };
+    let cadence_threshold = if foreground {
+        Duration::from_secs(5 * 60)
+    } else {
+        Duration::from_secs(30 * 60)
+    };
+
+    // Cadence gate. Skip entirely if not enough time elapsed since the last
+    // successful tick. First-ever tick (None) always proceeds.
+    {
+        let snap = control.status.lock();
+        if let Some(last_str) = &snap.last_co_thinker_tick {
+            if let Ok(last) = DateTime::parse_from_rfc3339(last_str) {
+                let last_utc = last.with_timezone(&Utc);
+                if let Ok(elapsed) = Utc::now().signed_duration_since(last_utc).to_std() {
+                    if elapsed < cadence_threshold {
+                        return Ok(());
+                    }
+                }
+            }
+        }
+    }
+
+    // Move the engine out of the slot for the duration of the heartbeat,
+    // then put it back. Avoids holding the parking_lot mutex across await
+    // points — that would be a `Send` violation.
+    let mut engine = {
+        let mut slot = control.co_thinker.lock();
+        slot.take()
+            .unwrap_or_else(|| CoThinkerEngine::new(cfg.memory_root.clone()))
+    };
+
+    let outcome = engine
+        .heartbeat(cadence, None)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    {
+        let mut s = control.status.lock();
+        s.last_co_thinker_tick = Some(Utc::now().to_rfc3339());
+        if outcome.brain_updated {
+            s.co_thinker_brain_updates = s.co_thinker_brain_updates.saturating_add(1);
+        }
+        s.co_thinker_proposals_total = s
+            .co_thinker_proposals_total
+            .saturating_add(outcome.proposals_created as u64);
+    }
+
+    *control.co_thinker.lock() = Some(engine);
+    Ok(())
 }
 
 /// True when the daemon should run an email fetch this heartbeat. Honours

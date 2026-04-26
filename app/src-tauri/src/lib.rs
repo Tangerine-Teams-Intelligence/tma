@@ -9,6 +9,12 @@
 pub mod commands;
 pub mod daemon;
 pub mod memory_search;
+// v1.8 Phase 3 — AGI co-thinker module.
+//   * Phase 3-A (this file's owner): `agi::session_borrower` — LLM dispatch
+//     contract over MCP sampling / browser ext / Ollama.
+//   * Phase 3-B (sibling agent): `agi::co_thinker` + `agi::observations`
+//     ship later in this same module.
+pub mod agi;
 // v1.8 Phase 2 — source-side adapters.
 //   * Phase 2-A/B (sibling agents) ships writeback for github / linear and a
 //     `decisions/*.md` watcher.

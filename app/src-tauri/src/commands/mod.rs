@@ -39,6 +39,14 @@ pub mod update;
 pub mod whisper_model;
 pub mod ai_tools;
 
+// === Phase 3-A session borrowing (LLM dispatch) ===
+// v1.8 Phase 3: thin Tauri wrapper around `crate::agi::session_borrower`.
+// Sibling agents in Phase 3-B own the co-thinker brain + observations
+// extractor under `crate::agi::*`; Phase 3-C wires the React `/co-thinker`
+// route. This module only exposes the dispatch entry point.
+pub mod co_thinker_dispatch;
+// === end Phase 3-A session borrowing ===
+
 // === Phase 2-B writeback (Slack + Calendar) ===
 // v1.8 Phase 2: writeback to Slack (pre-meeting brief + decision summary)
 // and Google Calendar (append summary to event description). Sibling agents
@@ -83,6 +91,15 @@ pub mod notion;
 pub mod loom;
 pub mod zoom;
 // === end Phase 2-C real-wire ===
+
+// === Phase 3-B co-thinker engine ===
+// v1.8 Phase 3: the persistent stateful AGI brain. Tauri command surface for
+// the /co-thinker route — read/write the brain.md, manually trigger a
+// heartbeat, fetch status. The engine itself lives in `crate::agi::co_thinker`;
+// daemon-driven ticks are wired in `crate::daemon::do_heartbeat`. P3-A's
+// session-borrower dispatcher (consumed by the engine) is independent.
+pub mod co_thinker;
+// === end Phase 3-B co-thinker engine ===
 
 mod error;
 mod paths;
@@ -251,6 +268,9 @@ macro_rules! tmi_invoke_handler {
             // v1.8 Phase 1 — AI tools detection (sidebar status panel)
             $crate::commands::ai_tools::detect_ai_tools,
             $crate::commands::ai_tools::get_ai_tool_status,
+            // === Phase 3-A session borrowing (LLM dispatch) ===
+            $crate::commands::co_thinker_dispatch::co_thinker_dispatch,
+            // === end Phase 3-A session borrowing ===
             // === Phase 2-B writeback (Slack + Calendar) ===
             $crate::commands::writeback_slack_calendar::slack_writeback_brief,
             $crate::commands::writeback_slack_calendar::slack_writeback_summary,
@@ -290,6 +310,12 @@ macro_rules! tmi_invoke_handler {
             $crate::sources::voice_notes::voice_notes_record_and_transcribe,
             $crate::sources::voice_notes::voice_notes_list_recent,
             // === end Phase 2-D new sources ===
+            // === Phase 3-B co-thinker engine ===
+            $crate::commands::co_thinker::co_thinker_read_brain,
+            $crate::commands::co_thinker::co_thinker_write_brain,
+            $crate::commands::co_thinker::co_thinker_trigger_heartbeat,
+            $crate::commands::co_thinker::co_thinker_status,
+            // === end Phase 3-B co-thinker engine ===
         ]
     };
 }

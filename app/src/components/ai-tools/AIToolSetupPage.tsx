@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { loadAITools, type AIToolStatus } from "@/lib/ai-tools";
 import { getAIToolConfig, type AIToolConfig } from "@/lib/ai-tools-config";
+import { coThinkerDispatch } from "@/lib/tauri";
 
 /**
  * /ai-tools/:id — generic per-tool setup page.
@@ -303,33 +304,79 @@ function SetupSteps({ config }: { config: AIToolConfig }) {
 
 interface TestQueryRecord {
   query: string;
-  /** "loading" while the mock pretends to call upstream, "done" once we have. */
+  /** "loading" while we dispatch to the upstream tool, "done" once back. */
   state: "loading" | "done";
-  /** Mock answer once `state === "done"`. */
+  /** Final answer text once `state === "done"`. */
   answer?: string;
+  /**
+   * "real" when the answer came back from a real session-borrowed channel
+   * (Ollama HTTP / MCP-stub canned response). "mock" when the channel is
+   * not yet implemented (browser ext / IDE plugin) — we fall back to the
+   * Phase 1 canned answer with a clear disclaimer.
+   */
+  source?: "real" | "mock";
+  /** Channel reported by Rust (only set when `source === "real"`). */
+  channel?: string;
+  /** Tool id reported by Rust (only set when `source === "real"`). */
+  toolId?: string;
+  /** Round-trip latency (only set when `source === "real"`). */
+  latencyMs?: number;
 }
 
 function TestQuerySection({ config }: { config: AIToolConfig }) {
   // Per-button history. Keyed by query index so re-clicking just re-runs.
   const [results, setResults] = useState<Record<number, TestQueryRecord>>({});
 
-  const runQuery = (idx: number, query: string) => {
+  const runQuery = async (idx: number, query: string) => {
     setResults((prev) => ({
       ...prev,
       [idx]: { query, state: "loading" },
     }));
-    // TODO(Phase 3): wire to session borrower.
-    // For Phase 1 we display a fake "Tangerine: ..." answer after ~600ms.
-    window.setTimeout(() => {
+    try {
+      // v1.8 Phase 3-A: real session-borrowed dispatch. Pass the per-tool id
+      // as the primary so this Test Query button always exercises the user's
+      // intended channel (rather than whatever the global priority would
+      // resolve to).
+      const resp = await coThinkerDispatch(
+        {
+          system_prompt: "You are Tangerine, a team memory assistant.",
+          user_prompt: query,
+        },
+        config.id,
+      );
+      setResults((prev) => ({
+        ...prev,
+        [idx]: {
+          query,
+          state: "done",
+          answer: resp.text,
+          source: "real",
+          channel: resp.channel_used,
+          toolId: resp.tool_id,
+          latencyMs: resp.latency_ms,
+        },
+      }));
+    } catch (e) {
+      // Tauri returns AppError for `not_implemented` (browser ext / IDE
+      // plugin tools) and `all_channels_exhausted`. We treat the former as
+      // expected during Phase 3 and fall back to the canned mock answer
+      // with a Phase-4 disclaimer; the latter still shows the canned
+      // answer but with a more pessimistic note.
+      const msg = e instanceof Error ? e.message : String(e);
+      const isNotImplemented =
+        /not_implemented|browser_ext|wires in Phase 4/i.test(msg);
       setResults((prev) => ({
         ...prev,
         [idx]: {
           query,
           state: "done",
           answer: mockAnswer(query, config.name),
+          source: "mock",
+          channel: isNotImplemented ? "browser_ext" : undefined,
+          toolId: config.id,
         },
       }));
-    }, 600);
+    }
   };
 
   return (
@@ -402,13 +449,39 @@ function ResultCard({ record }: { record: TestQueryRecord }) {
               </span>
               {record.answer}
             </p>
-            <p className="mt-2 font-mono text-[10px] text-stone-400 dark:text-stone-500">
-              Mock response — Phase 3 wires real LLM via session borrowing.
-            </p>
+            <ResultFooter record={record} />
           </>
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * Per-result footer. Shows the borrowed-channel metadata when the dispatcher
+ * actually returned a response, or a Phase-4 disclaimer when the channel
+ * isn't implemented yet (browser ext / IDE plugin).
+ */
+function ResultFooter({ record }: { record: TestQueryRecord }) {
+  if (record.source === "real") {
+    return (
+      <p className="mt-2 font-mono text-[10px] text-stone-400 dark:text-stone-500">
+        via {record.toolId} ({record.channel}) ·{" "}
+        {record.latencyMs !== undefined ? `${record.latencyMs}ms` : "—"}
+      </p>
+    );
+  }
+  if (record.source === "mock" && record.channel === "browser_ext") {
+    return (
+      <p className="mt-2 font-mono text-[10px] text-stone-400 dark:text-stone-500">
+        Browser ext channel wires in Phase 4 polish.
+      </p>
+    );
+  }
+  return (
+    <p className="mt-2 font-mono text-[10px] text-stone-400 dark:text-stone-500">
+      Mock response — dispatcher unreachable.
+    </p>
   );
 }
 

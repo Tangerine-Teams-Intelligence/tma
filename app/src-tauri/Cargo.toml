@@ -1,6 +1,6 @@
 [package]
 name = "tangerine-meeting"
-version = "1.8.0-beta.2"
+version = "1.8.0-beta.3"
 description = "Tangerine AI Teams — desktop shell for the Tangerine Meeting Assistant CLI"
 authors = ["Tangerine Intelligence Inc."]
 license = "Apache-2.0"
@@ -99,6 +99,12 @@ uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", features = ["serde"] }
 sysinfo = "0.30"
 dirs = "5"
+
+# v1.8 Phase 3 — async traits for the co-thinker brain's `LlmDispatcher`
+# trait (P3-B). The crate is already in the lock file as a transitive dep
+# of `imap` 3.0-alpha; declaring it here makes it a first-class direct dep
+# so `agi::co_thinker` can `use async_trait::async_trait` reliably.
+async-trait = "0.1"
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["winuser", "processthreadsapi", "handleapi", "winbase"] }

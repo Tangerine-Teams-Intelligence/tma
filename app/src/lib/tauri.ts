@@ -330,6 +330,67 @@ export async function detectAITools<T>(mockFallback: T[]): Promise<T[]> {
 }
 
 // ============================================================
+// v1.8 Phase 3-A — Session borrowing (co-thinker LLM dispatch)
+// ============================================================
+//
+// Tangerine borrows the user's existing AI tool sessions instead of running
+// its own LLM. The dispatcher (Rust: `crate::agi::session_borrower::dispatch`)
+// routes a request to the right channel based on:
+//   - the user-selected primary tool from `ui.primaryAITool` (Settings)
+//   - falling back through `AI_TOOL_PRIORITY` if the primary is unreachable
+//
+// Phase 3 ships:
+//   * MCP sampling channel — STUBBED (200ms canned response per tool)
+//   * Browser-ext channel — NotImplemented (wires in Phase 4)
+//   * Ollama channel — REAL HTTP call to localhost:11434
+//
+// The AI tool setup page's "Test query" buttons are the first consumers.
+
+export interface LlmRequest {
+  system_prompt: string;
+  user_prompt: string;
+  /** Defaults to 2000 in Rust if omitted. */
+  max_tokens?: number;
+  /** Defaults to 0.4 in Rust if omitted. */
+  temperature?: number;
+}
+
+export interface LlmResponse {
+  text: string;
+  /** "mcp_sampling" | "ollama" | "browser_ext" */
+  channel_used: string;
+  /** Upstream tool that actually answered ("cursor", "ollama", ...). */
+  tool_id: string;
+  latency_ms: number;
+  tokens_estimate: number;
+}
+
+/**
+ * Dispatch one LLM request through the session borrower. Outside Tauri we
+ * return a clearly-marked mock so the AI tool setup page still renders
+ * something during `vite dev` / vitest.
+ *
+ * Throws when every channel fails (the underlying Rust returns `AppError`
+ * with code `all_channels_exhausted`).
+ */
+export async function coThinkerDispatch(
+  req: LlmRequest,
+  primaryToolId?: string,
+): Promise<LlmResponse> {
+  return safeInvoke<LlmResponse>(
+    "co_thinker_dispatch",
+    { request: req, primaryToolId: primaryToolId ?? null },
+    () => ({
+      text: `(mock) Tangerine heard "${req.user_prompt.slice(0, 80)}". Real dispatch needs the Tauri bridge.`,
+      channel_used: "mcp_sampling",
+      tool_id: primaryToolId ?? "cursor",
+      latency_ms: 0,
+      tokens_estimate: 16,
+    }),
+  );
+}
+
+// ============================================================
 // Config + secrets
 // ============================================================
 
@@ -1279,4 +1340,110 @@ export async function setWritebackWatcher(enabled: boolean): Promise<{ running: 
     { args: { enabled } },
     () => ({ running: enabled })
   );
+}
+
+// ============================================================
+// Phase 3-C: co-thinker consumers
+// ============================================================
+//
+// MERGE-WATCH: P3-B (sibling agent) owns the Rust handlers for these four
+// commands. While P3-B is in flight, the safeInvoke fallbacks below keep the
+// UI compiling and the empty/error states actionable. Once P3-B lands, the
+// real handlers take over transparently — no UI change required.
+//
+// All four commands operate on `~/.tangerine-memory/agi/co-thinker.md`,
+// the single brain doc the AGI heartbeat writes / re-reads each tick.
+
+/**
+ * Status snapshot of the co-thinker brain. `last_heartbeat_at` may be `null`
+ * on a fresh install where no heartbeat has fired yet — the UI uses that as
+ * the cue to render the "Initialize co-thinker" empty state.
+ */
+export interface CoThinkerStatus {
+  /** ISO 8601 timestamp of the most recent heartbeat write. */
+  last_heartbeat_at: string | null;
+  /** ISO 8601 timestamp of the next scheduled heartbeat. */
+  next_heartbeat_at: string | null;
+  /** Size of `co-thinker.md` on disk, in bytes. */
+  brain_doc_size: number;
+  /** Number of new atoms observed since UTC midnight. */
+  observations_today: number;
+}
+
+/**
+ * Per-heartbeat outcome. `error` is non-null when the upstream AI tool
+ * surfaced a failure (rate-limit, broker disconnect, etc.); the UI surfaces
+ * it via toast.
+ */
+export interface HeartbeatOutcome {
+  /** Atoms the brain ingested this tick (approximated from cursor delta). */
+  atoms_seen: number;
+  /** True when the brain doc was rewritten this tick. */
+  brain_updated: boolean;
+  /** Number of `proposals/` atoms the brain emitted this tick. */
+  proposals_created: number;
+  /** Channel used for the upstream call ("mcp", "browser_ext", "ide_plugin", "local_http"). */
+  channel_used: string;
+  /** Wall-clock latency of the heartbeat round trip, in milliseconds. */
+  latency_ms: number;
+  /** Surface-level error string when the heartbeat failed; null on success. */
+  error: string | null;
+}
+
+/**
+ * Read the brain doc as a single markdown string. Returns "" when the file
+ * doesn't exist yet (fresh install) — the UI uses an empty return as the
+ * empty-state trigger. P3-B handler is `co_thinker_read_brain`.
+ */
+export async function coThinkerReadBrain(): Promise<string> {
+  return safeInvoke("co_thinker_read_brain", undefined, () => "");
+}
+
+/**
+ * Persist a manual edit of the brain doc. The next heartbeat reads this
+ * back as authoritative state. P3-B handler is `co_thinker_write_brain`.
+ */
+export async function coThinkerWriteBrain(content: string): Promise<void> {
+  return safeInvoke("co_thinker_write_brain", { content }, () => {
+    // eslint-disable-next-line no-console
+    console.info("[mock] co_thinker_write_brain", `${content.length} chars`);
+  });
+}
+
+/**
+ * Manually fire a heartbeat now (out-of-band; the daemon usually owns the
+ * 5-min cadence). `primaryToolId` lets the UI pin the brain to the user's
+ * starred tool so the channel doesn't drift mid-session. P3-B handler is
+ * `co_thinker_trigger_heartbeat`.
+ */
+export async function coThinkerTriggerHeartbeat(
+  primaryToolId?: string,
+): Promise<HeartbeatOutcome> {
+  return safeInvoke(
+    "co_thinker_trigger_heartbeat",
+    { primary_tool_id: primaryToolId ?? null },
+    () => ({
+      atoms_seen: 0,
+      brain_updated: false,
+      proposals_created: 0,
+      channel_used: "(mock)",
+      latency_ms: 0,
+      error:
+        "Co-thinker bridge isn't wired yet — Phase 3 backend (P3-B) hasn't landed.",
+    }),
+  );
+}
+
+/**
+ * Read the brain status (last/next heartbeat, doc size, today's observation
+ * count). P3-B handler is `co_thinker_status`. Returns a "never-fired"
+ * snapshot in the mock path so the UI can render the empty state.
+ */
+export async function coThinkerStatus(): Promise<CoThinkerStatus> {
+  return safeInvoke("co_thinker_status", undefined, () => ({
+    last_heartbeat_at: null,
+    next_heartbeat_at: null,
+    brain_doc_size: 0,
+    observations_today: 0,
+  }));
 }

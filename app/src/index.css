@@ -115,6 +115,13 @@ body {
   50%      { transform: scale(1.1); opacity: 1; }
 }
 
+/* Phase 3-C — three-dot pulse for the co-thinker "alive" badge. The
+   dots stagger via animation-delay applied inline by HeartbeatBadge. */
+@keyframes ti-pulse {
+  0%, 100% { opacity: 0.25; }
+  50%      { opacity: 1; }
+}
+
 /* Disable text selection on chrome elements; keep it on content */
 .ti-no-select {
   -webkit-user-select: none;
