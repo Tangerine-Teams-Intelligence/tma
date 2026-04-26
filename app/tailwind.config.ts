@@ -1,7 +1,21 @@
 import type { Config } from "tailwindcss";
 
 const config: Config = {
-  darkMode: ["class", "[data-theme='dark']"],
+  // We support BOTH the .dark class AND the [data-theme="dark"] attribute as
+  // dark-mode triggers. Tailwind 3.4's `variant` strategy lets us pass an
+  // array of selectors, both of which activate the `dark:` variant. The
+  // store applies both on <html> for belt-and-suspenders coverage and to
+  // make sure WebView2 (Tauri on Windows) — which sometimes drops
+  // prefers-color-scheme propagation — still flips theme correctly.
+  darkMode: [
+    "variant",
+    [
+      "&:is(.dark *)",
+      "&:is([data-theme='dark'] *)",
+      "&:is(.dark)",
+      "&:is([data-theme='dark'])",
+    ],
+  ],
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
   theme: {
     extend: {

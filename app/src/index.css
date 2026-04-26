@@ -40,7 +40,12 @@
   --ring: var(--ti-orange-500);
 }
 
-[data-theme="dark"] {
+/* Dark theme is keyed by either `[data-theme="dark"]` OR `.dark` on <html>.
+   The store applies both for belt-and-suspenders so we don't trip over the
+   WebView2 (Tauri / Windows) edge case where `prefers-color-scheme` doesn't
+   cleanly propagate from the OS into the embedded Chromium. */
+[data-theme="dark"],
+.dark {
   --ti-paper-50: #14141C;
   --ti-paper-100: #1A1A2E;
   --ti-paper-200: #25253A;
@@ -54,6 +59,15 @@
   --background: var(--ti-paper-100);
   --foreground: var(--ti-ink-900);
   --border: var(--ti-border-default);
+
+  /* Tells the WebView form controls + scrollbars to use dark theming. */
+  color-scheme: dark;
+}
+
+/* Light is the default; explicit color-scheme avoids browser-default mixed
+   states when toggling. */
+:root {
+  color-scheme: light;
 }
 
 * {
