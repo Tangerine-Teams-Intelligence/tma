@@ -15,16 +15,32 @@ from tmi.config import (
     TeamMember,
 )
 from tmi.meeting import Meeting, Participant
+from tmi.extractor import (
+    ExtractedEntities,
+    GlossaryTerm,
+    PersonMention,
+    ProjectMention,
+    ThreadMention,
+)
 from tmi.memory import (
     decision_file_path,
     extract_decisions_from_summary,
+    glossary_file_path,
     meeting_file_path,
     meeting_filename,
+    people_file_path,
+    projects_file_path,
     render_decision_file,
     render_meeting_file,
     slugify_for_memory,
+    threads_file_path,
     write_decisions,
+    write_extracted_entities,
+    write_glossary,
     write_meeting_file,
+    write_people,
+    write_projects,
+    write_threads,
 )
 
 
@@ -273,3 +289,302 @@ def test_memory_root_falls_back_to_home_when_no_adapters(tmp_path: Path) -> None
     root = cfg.memory_root_path()
     assert root.name == ".tangerine-memory"
     assert root.parent == Path.home()
+
+
+# ----------------------------------------------------------------------
+# v1.6 entity writers — people / projects / threads / glossary
+
+
+def _other_meeting() -> Meeting:
+    return Meeting(
+        id="2026-04-26-followup",
+        title="Followup sync",
+        created_at=datetime(2026, 4, 26, 10, 0, tzinfo=SHA),
+        participants=[
+            Participant(alias="daizhe", display_name="Daizhe Zou"),
+            Participant(alias="david", display_name="David Liu"),
+        ],
+        target_adapter="default",
+    )
+
+
+def _read(p: Path) -> str:
+    return p.read_text(encoding="utf-8")
+
+
+# ----- people -----
+
+
+def test_write_people_creates_file_with_frontmatter(tmp_path: Path) -> None:
+    m = _meeting()
+    written = write_people(
+        tmp_path,
+        [PersonMention(alias="david", context="Pushed for Postgres", transcript_lines=(7,))],
+        m,
+    )
+    assert len(written) == 1
+    p = people_file_path(tmp_path, "david")
+    assert p.exists()
+    txt = _read(p)
+    # Frontmatter
+    end = txt.find("\n---\n", 4)
+    fm = yaml.safe_load(txt[4:end])
+    assert fm["alias"] == "david"
+    assert fm["last_seen"] == "2026-04-25"
+    assert fm["mention_count"] == 1
+    assert fm["sources"] == ["meeting"]
+    # Body has h1 + Mentions
+    assert "# david" in txt
+    assert "## Mentions" in txt
+    assert "<!-- mention:2026-04-25-david-roadmap-sync -->" in txt
+    assert "Pushed for Postgres" in txt
+    assert "../meetings/2026-04-25-david-roadmap-sync.md#L7" in txt
+
+
+def test_write_people_appends_new_meeting_mention(tmp_path: Path) -> None:
+    m1 = _meeting()
+    m2 = _other_meeting()
+    write_people(tmp_path, [PersonMention(alias="david", context="first")], m1)
+    write_people(tmp_path, [PersonMention(alias="david", context="second")], m2)
+    txt = _read(people_file_path(tmp_path, "david"))
+    assert "<!-- mention:2026-04-25-david-roadmap-sync -->" in txt
+    assert "<!-- mention:2026-04-26-followup -->" in txt
+    end = txt.find("\n---\n", 4)
+    fm = yaml.safe_load(txt[4:end])
+    assert fm["mention_count"] == 2
+    # last_seen = max date across mentions (2026-04-26 > 2026-04-25)
+    assert fm["last_seen"] == "2026-04-26"
+
+
+def test_write_people_idempotent_for_same_meeting(tmp_path: Path) -> None:
+    """Re-running the SAME meeting must not duplicate the mention block, and
+    must produce a byte-identical file on the second run.
+    """
+    m = _meeting()
+    mention = PersonMention(alias="david", context="Pushed for Postgres", transcript_lines=(7,))
+    write_people(tmp_path, [mention], m)
+    first = _read(people_file_path(tmp_path, "david"))
+    written2 = write_people(tmp_path, [mention], m)
+    assert written2 == []  # no-op when content unchanged
+    second = _read(people_file_path(tmp_path, "david"))
+    assert first == second
+    # Run a third time to be paranoid
+    write_people(tmp_path, [mention], m)
+    third = _read(people_file_path(tmp_path, "david"))
+    assert second == third
+    # mention_count never grew beyond 1
+    end = third.find("\n---\n", 4)
+    fm = yaml.safe_load(third[4:end])
+    assert fm["mention_count"] == 1
+    # Only one sentinel for that meeting
+    assert third.count("<!-- mention:2026-04-25-david-roadmap-sync -->") == 1
+
+
+def test_write_people_replaces_mention_when_context_changes(tmp_path: Path) -> None:
+    """Re-running same meeting with a new context replaces the block in place,
+    rather than appending a duplicate.
+    """
+    m = _meeting()
+    write_people(tmp_path, [PersonMention(alias="david", context="old context")], m)
+    write_people(tmp_path, [PersonMention(alias="david", context="new context")], m)
+    txt = _read(people_file_path(tmp_path, "david"))
+    assert "new context" in txt
+    assert "old context" not in txt
+    assert txt.count("<!-- mention:2026-04-25-david-roadmap-sync -->") == 1
+
+
+# ----- projects -----
+
+
+def test_write_projects_creates_file_with_name_in_h1(tmp_path: Path) -> None:
+    m = _meeting()
+    write_projects(
+        tmp_path,
+        [ProjectMention(slug="tmi-v16", name="TMI v1.6", context="Memory layer")],
+        m,
+    )
+    p = projects_file_path(tmp_path, "tmi-v16")
+    assert p.exists()
+    txt = _read(p)
+    assert "# TMI v1.6" in txt
+    end = txt.find("\n---\n", 4)
+    fm = yaml.safe_load(txt[4:end])
+    assert fm["slug"] == "tmi-v16"
+    assert fm["name"] == "TMI v1.6"
+
+
+def test_write_projects_idempotent(tmp_path: Path) -> None:
+    m = _meeting()
+    pm = ProjectMention(slug="x", name="X", context="ctx")
+    write_projects(tmp_path, [pm], m)
+    a = _read(projects_file_path(tmp_path, "x"))
+    written2 = write_projects(tmp_path, [pm], m)
+    assert written2 == []
+    b = _read(projects_file_path(tmp_path, "x"))
+    assert a == b
+
+
+# ----- threads -----
+
+
+def test_write_threads_includes_open_questions(tmp_path: Path) -> None:
+    m = _meeting()
+    tm = ThreadMention(
+        topic="seat-pricing",
+        title="Seat pricing",
+        summary="$20/seat 3-seat min",
+        open_questions=("Who pays for the second seat?",),
+        transcript_lines=(12,),
+    )
+    write_threads(tmp_path, [tm], m)
+    txt = _read(threads_file_path(tmp_path, "seat-pricing"))
+    assert "# Seat pricing" in txt
+    assert "$20/seat 3-seat min" in txt
+    assert "Open question: Who pays for the second seat?" in txt
+
+
+def test_write_threads_merges_across_meetings(tmp_path: Path) -> None:
+    m1 = _meeting()
+    m2 = _other_meeting()
+    write_threads(
+        tmp_path,
+        [ThreadMention(topic="x", title="X", summary="round 1")],
+        m1,
+    )
+    write_threads(
+        tmp_path,
+        [ThreadMention(topic="x", title="X", summary="round 2")],
+        m2,
+    )
+    txt = _read(threads_file_path(tmp_path, "x"))
+    assert "round 1" in txt
+    assert "round 2" in txt
+    end = txt.find("\n---\n", 4)
+    fm = yaml.safe_load(txt[4:end])
+    assert fm["mention_count"] == 2
+
+
+def test_write_threads_idempotent(tmp_path: Path) -> None:
+    m = _meeting()
+    tm = ThreadMention(topic="x", title="X", summary="s", open_questions=("q",))
+    write_threads(tmp_path, [tm], m)
+    a = _read(threads_file_path(tmp_path, "x"))
+    write_threads(tmp_path, [tm], m)
+    b = _read(threads_file_path(tmp_path, "x"))
+    assert a == b
+
+
+# ----- glossary -----
+
+
+def test_write_glossary_locks_first_seen_definition(tmp_path: Path) -> None:
+    m1 = _meeting()
+    m2 = _other_meeting()
+    write_glossary(
+        tmp_path, [GlossaryTerm(term="tmi", definition="first definition")], m1
+    )
+    write_glossary(
+        tmp_path,
+        [GlossaryTerm(term="tmi", definition="LATER definition (should NOT replace)")],
+        m2,
+    )
+    txt = _read(glossary_file_path(tmp_path, "tmi"))
+    # Preamble (above ## Mentions) should keep the first-seen definition
+    assert "**Definition**: first definition" in txt
+    assert "**Definition**: LATER" not in txt
+    # Both meeting refs are listed
+    assert "<!-- mention:2026-04-25-david-roadmap-sync -->" in txt
+    assert "<!-- mention:2026-04-26-followup -->" in txt
+    end = txt.find("\n---\n", 4)
+    fm = yaml.safe_load(txt[4:end])
+    # first_seen set on creation, last_seen updates with each mention
+    assert fm["first_seen"] == "2026-04-25"
+    assert fm["last_seen"] == "2026-04-26"
+    assert fm["mention_count"] == 2
+
+
+def test_write_glossary_idempotent(tmp_path: Path) -> None:
+    m = _meeting()
+    gt = GlossaryTerm(term="abc", definition="def", transcript_lines=(1,))
+    write_glossary(tmp_path, [gt], m)
+    a = _read(glossary_file_path(tmp_path, "abc"))
+    write_glossary(tmp_path, [gt], m)
+    b = _read(glossary_file_path(tmp_path, "abc"))
+    assert a == b
+
+
+# ----- write_extracted_entities (the "do all four" wrapper) -----
+
+
+def test_write_extracted_entities_writes_all_four(tmp_path: Path) -> None:
+    m = _meeting()
+    e = ExtractedEntities(
+        people=[PersonMention("david", "ctx")],
+        projects=[ProjectMention("p1", "P1", "ctx")],
+        threads=[ThreadMention("t1", "T1", "sum")],
+        glossary=[GlossaryTerm("g1", "def")],
+    )
+    out = write_extracted_entities(tmp_path, e, m)
+    assert len(out["people"]) == 1
+    assert len(out["projects"]) == 1
+    assert len(out["threads"]) == 1
+    assert len(out["glossary"]) == 1
+    # All four files exist
+    assert people_file_path(tmp_path, "david").exists()
+    assert projects_file_path(tmp_path, "p1").exists()
+    assert threads_file_path(tmp_path, "t1").exists()
+    assert glossary_file_path(tmp_path, "g1").exists()
+
+
+def test_write_extracted_entities_full_idempotency(tmp_path: Path) -> None:
+    """End-to-end: running the full extraction-write twice produces an
+    identical filesystem state for every entity file. No duplicates anywhere.
+    """
+    m = _meeting()
+    e = ExtractedEntities(
+        people=[
+            PersonMention("david", "Pushed for Postgres", (7,)),
+            PersonMention("daizhe", "CEO", (1,)),
+        ],
+        projects=[ProjectMention("tmi-v16", "TMI v1.6", "Memory layer", (10,))],
+        threads=[
+            ThreadMention(
+                "seat-pricing",
+                "Seat pricing",
+                "$20/seat 3-seat min",
+                ("Who pays?",),
+                (12,),
+            )
+        ],
+        glossary=[GlossaryTerm("tmi", "Tangerine Meeting Intelligence", (1,))],
+    )
+    write_extracted_entities(tmp_path, e, m)
+
+    def snapshot(root: Path) -> dict[str, str]:
+        snap: dict[str, str] = {}
+        for sub in ("people", "projects", "threads", "glossary"):
+            d = root / sub
+            if not d.exists():
+                continue
+            for f in sorted(d.iterdir()):
+                if f.is_file():
+                    snap[f"{sub}/{f.name}"] = f.read_text(encoding="utf-8")
+        return snap
+
+    before = snapshot(tmp_path)
+    # Re-run identically
+    out = write_extracted_entities(tmp_path, e, m)
+    # Every bucket should report 0 changes
+    for bucket, paths in out.items():
+        assert paths == [], f"bucket {bucket} had unexpected writes: {paths}"
+    after = snapshot(tmp_path)
+    assert before == after
+    # Run a 3rd time too
+    write_extracted_entities(tmp_path, e, m)
+    again = snapshot(tmp_path)
+    assert before == again
+    # Sanity: each file exists exactly once and has mention_count=1
+    for relpath, content in before.items():
+        end = content.find("\n---\n", 4)
+        fm = yaml.safe_load(content[4:end])
+        assert fm["mention_count"] == 1, f"{relpath}: mention_count drifted"

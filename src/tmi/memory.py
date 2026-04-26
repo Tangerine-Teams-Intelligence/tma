@@ -1,8 +1,8 @@
 """Memory-layer writers — unified ``memory/`` tree under the user's target repo.
 
-Spec: INTERFACES.md §13 (Memory Layer). v1.5 covers ``meetings/`` and
-``decisions/``. ``people/``, ``projects/``, ``threads/``, ``glossary/`` are
-deferred to v1.6+.
+Spec: INTERFACES.md §13 (Memory Layer). v1.5 covered ``meetings/`` and
+``decisions/``. v1.6 adds ``people/``, ``projects/``, ``threads/`` and
+``glossary/`` driven by the AI extractor in ``tmi.extractor``.
 
 Layout::
 
@@ -10,25 +10,46 @@ Layout::
     └── memory/
         ├── meetings/
         │   └── 2026-04-25-david-roadmap-sync.md
-        └── decisions/
-            └── postgres-over-mongo.md
+        ├── decisions/
+        │   └── postgres-over-mongo.md
+        ├── people/
+        │   └── david.md
+        ├── projects/
+        │   └── pricing.md
+        ├── threads/
+        │   └── seat-pricing.md
+        └── glossary/
+            └── tmi.md
 
 Each meeting is a single flat file (YAML frontmatter + markdown body) instead of
 a per-meeting directory. Decisions are extracted from the wrap-mode summary and
 written as standalone files with provenance pointing back to the source meeting
 file (and a transcript line anchor).
+
+The four entity writers (``write_people``, ``write_projects``, ``write_threads``,
+``write_glossary``) are airtight idempotent: re-running on the same meeting
+replaces that meeting's mention block in place rather than appending a duplicate.
 """
 
 from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import yaml
 
 from .meeting import Meeting
 from .utils import SHANGHAI, atomic_write_text
+
+if TYPE_CHECKING:
+    from .extractor import (
+        ExtractedEntities,
+        GlossaryTerm,
+        PersonMention,
+        ProjectMention,
+        ThreadMention,
+    )
 
 # ----------------------------------------------------------------------
 # Slug + path helpers
@@ -317,6 +338,420 @@ def write_decisions(
     return written
 
 
+# ----------------------------------------------------------------------
+# Entity files (v1.6+): people / projects / threads / glossary
+#
+# Shared file layout::
+#
+#     ---
+#     <key>: <value>
+#     last_seen: 2026-04-25
+#     mention_count: 12
+#     sources: [meeting]
+#     ---
+#
+#     # <display>
+#
+#     [optional preamble — for glossary, the locked definition lives here]
+#
+#     ## Mentions
+#
+#     <!-- mention:<meeting_id> -->
+#     ### 2026-04-25 — <meeting_title>
+#     - <bullet>
+#     - <bullet>
+#     [→ meeting](../meetings/<meeting_filename>.md)
+#
+#     <!-- mention:<other_meeting_id> -->
+#     ### ...
+#
+# Each mention block is sentinel-fenced by an HTML comment (``<!-- mention:<id>
+# -->``) so we can find + replace it idempotently without parsing markdown.
+
+
+_MENTION_SENTINEL_RE = re.compile(
+    r"<!-- mention:(?P<mid>[A-Za-z0-9._-]+) -->\n(?P<body>.*?)(?=\n<!-- mention:|\Z)",
+    re.DOTALL,
+)
+
+
+def people_file_path(memory_root: Path, alias: str) -> Path:
+    return memory_root / "people" / f"{slugify_for_memory(alias)}.md"
+
+
+def projects_file_path(memory_root: Path, slug: str) -> Path:
+    return memory_root / "projects" / f"{slugify_for_memory(slug)}.md"
+
+
+def threads_file_path(memory_root: Path, topic: str) -> Path:
+    return memory_root / "threads" / f"{slugify_for_memory(topic)}.md"
+
+
+def glossary_file_path(memory_root: Path, term: str) -> Path:
+    return memory_root / "glossary" / f"{slugify_for_memory(term)}.md"
+
+
+def _split_frontmatter(text: str) -> tuple[dict[str, Any], str]:
+    """Return ``(frontmatter_dict, body)``. If no frontmatter, ``({}, text)``."""
+    if not text.startswith("---\n"):
+        return {}, text
+    end = text.find("\n---\n", 4)
+    if end == -1:
+        return {}, text
+    raw = text[4:end]
+    body = text[end + 5 :].lstrip("\n")
+    try:
+        loaded = yaml.safe_load(raw) or {}
+    except yaml.YAMLError:
+        return {}, text
+    if not isinstance(loaded, dict):
+        return {}, body
+    return loaded, body
+
+
+def _parse_mentions(body: str) -> tuple[str, dict[str, str]]:
+    """Pull out every ``<!-- mention:<id> -->`` block. Returns
+    ``(preamble_above_mentions_section, {meeting_id: full_block_with_sentinel})``.
+
+    The mentions section is fenced by ``## Mentions``. Anything above stays as-is.
+    """
+    mentions_idx = body.find("\n## Mentions\n")
+    if mentions_idx == -1:
+        # Older file without a Mentions section, or file we just created.
+        if body.startswith("## Mentions\n"):
+            preamble = ""
+            rest = body[len("## Mentions\n") :]
+        else:
+            return body, {}
+    else:
+        preamble = body[: mentions_idx + 1]  # keep trailing newline
+        rest = body[mentions_idx + len("\n## Mentions\n") :]
+
+    mentions: dict[str, str] = {}
+    for m in _MENTION_SENTINEL_RE.finditer(rest):
+        mid = m.group("mid")
+        full = m.group(0).rstrip() + "\n"
+        mentions[mid] = full
+    return preamble, mentions
+
+
+def _render_entity_file(
+    *,
+    title: str,
+    fm: dict[str, Any],
+    preamble: str,
+    mentions: dict[str, str],
+) -> str:
+    """Compose frontmatter + ``# title`` + preamble + ``## Mentions`` + ordered
+    mention blocks. Mentions are sorted by meeting_id descending (newest first
+    given our YYYY-MM-DD-<slug> id format).
+    """
+    parts: list[str] = []
+    parts.append(_frontmatter(fm))
+    parts.append("")
+    parts.append(f"# {title}")
+    parts.append("")
+    if preamble.strip():
+        parts.append(preamble.rstrip())
+        parts.append("")
+    parts.append("## Mentions")
+    parts.append("")
+    for mid in sorted(mentions, reverse=True):
+        block = mentions[mid].rstrip() + "\n"
+        parts.append(block)
+    return "\n".join(parts).rstrip() + "\n"
+
+
+def _format_lines_ref(lines: tuple[int, ...] | list[int]) -> str:
+    if not lines:
+        return ""
+    return ", ".join(f"L{n}" for n in lines)
+
+
+def _meeting_link(meeting: Meeting, *, anchor_line: int | None = None) -> str:
+    fname = meeting_filename(meeting)
+    anchor = f"#L{anchor_line}" if anchor_line else ""
+    return f"[→ meeting]({Path('..') / 'meetings' / fname}{anchor})".replace("\\", "/")
+
+
+def _build_mention_block(
+    *,
+    meeting: Meeting,
+    bullets: list[str],
+    extra_first_line: int | None = None,
+) -> str:
+    """Sentinel-wrapped mention block. Bullet list + meeting link."""
+    date = meeting.created_at.astimezone(SHANGHAI).date().isoformat()
+    parts = [
+        f"<!-- mention:{meeting.id} -->",
+        f"### {date} — {meeting.title}",
+    ]
+    for b in bullets:
+        b = b.strip()
+        if not b:
+            continue
+        parts.append(f"- {b}")
+    parts.append(_meeting_link(meeting, anchor_line=extra_first_line))
+    parts.append("")  # trailing blank between blocks
+    return "\n".join(parts)
+
+
+def _upsert_entity(
+    *,
+    path: Path,
+    title: str,
+    base_fm: dict[str, Any],
+    preamble: str,
+    meeting: Meeting,
+    new_block: str,
+) -> bool:
+    """Read existing entity file (if any), replace or insert the mention block
+    for ``meeting.id``, recompute ``last_seen`` + ``mention_count``, and write
+    back atomically.
+
+    Returns ``True`` if the file was written (created or content changed),
+    ``False`` if the file was already up to date (true idempotent no-op).
+    """
+    existing = ""
+    if path.exists():
+        try:
+            existing = path.read_text(encoding="utf-8")
+        except OSError:
+            existing = ""
+
+    fm, body = _split_frontmatter(existing)
+    # Drop the leading ``# <title>\n\n`` from the body so we don't double-render
+    # it on every write. We always re-emit our own.
+    body_stripped = body
+    leading_h1 = re.match(r"^#\s+[^\n]+\n+", body_stripped)
+    if leading_h1:
+        body_stripped = body_stripped[leading_h1.end() :]
+
+    parsed_preamble, mentions = _parse_mentions(body_stripped)
+    final_preamble = preamble.strip() or parsed_preamble.strip()
+
+    mentions[meeting.id] = new_block.rstrip() + "\n"
+
+    # Recompute frontmatter — preserve user-added keys.
+    merged_fm = dict(fm)
+    merged_fm.update(base_fm)
+    dates = sorted(_extract_dates_from_mentions(mentions), reverse=True)
+    if dates:
+        merged_fm["last_seen"] = dates[0]
+    merged_fm["mention_count"] = len(mentions)
+    sources = merged_fm.get("sources")
+    if not isinstance(sources, list) or "meeting" not in sources:
+        merged_fm["sources"] = ["meeting"] if not isinstance(sources, list) else sorted(set(sources) | {"meeting"})
+
+    new_text = _render_entity_file(
+        title=title,
+        fm=merged_fm,
+        preamble=final_preamble,
+        mentions=mentions,
+    )
+    if new_text == existing:
+        return False
+    atomic_write_text(path, new_text)
+    return True
+
+
+_DATE_RE = re.compile(r"^(?P<date>\d{4}-\d{2}-\d{2})-")
+
+
+def _extract_dates_from_mentions(mentions: dict[str, str]) -> list[str]:
+    out: list[str] = []
+    for mid in mentions:
+        m = _DATE_RE.match(mid)
+        if m:
+            out.append(m.group("date"))
+    return out
+
+
+# ----------------------------------------------------------------------
+# people
+
+
+def write_people(
+    memory_root: Path,
+    mentions: list["PersonMention"],
+    meeting: Meeting,
+) -> list[Path]:
+    """Append/refresh person mentions. Returns paths written (created OR updated).
+
+    Files that were already up to date (true no-op) are NOT included — this lets
+    callers report "wrote N files" honestly. Callers who want every path should
+    look up by alias.
+    """
+    written: list[Path] = []
+    for mention in mentions:
+        path = people_file_path(memory_root, mention.alias)
+        bullets = [mention.context] if mention.context else ["Mentioned in this meeting."]
+        first_line = mention.transcript_lines[0] if mention.transcript_lines else None
+        block = _build_mention_block(
+            meeting=meeting, bullets=bullets, extra_first_line=first_line
+        )
+        changed = _upsert_entity(
+            path=path,
+            title=mention.alias,
+            base_fm={"alias": mention.alias},
+            preamble="",
+            meeting=meeting,
+            new_block=block,
+        )
+        if changed:
+            written.append(path)
+    return written
+
+
+# ----------------------------------------------------------------------
+# projects
+
+
+def write_projects(
+    memory_root: Path,
+    mentions: list["ProjectMention"],
+    meeting: Meeting,
+) -> list[Path]:
+    written: list[Path] = []
+    for mention in mentions:
+        path = projects_file_path(memory_root, mention.slug)
+        bullets = [mention.context] if mention.context else ["Mentioned in this meeting."]
+        first_line = mention.transcript_lines[0] if mention.transcript_lines else None
+        block = _build_mention_block(
+            meeting=meeting, bullets=bullets, extra_first_line=first_line
+        )
+        changed = _upsert_entity(
+            path=path,
+            title=mention.name or mention.slug,
+            base_fm={"slug": mention.slug, "name": mention.name or mention.slug},
+            preamble="",
+            meeting=meeting,
+            new_block=block,
+        )
+        if changed:
+            written.append(path)
+    return written
+
+
+# ----------------------------------------------------------------------
+# threads
+#
+# Threads are special: they MERGE — repeated topics across meetings accumulate
+# context + open questions. The preamble holds an evergreen summary line; each
+# mention block carries the per-meeting summary + open questions.
+
+
+def write_threads(
+    memory_root: Path,
+    mentions: list["ThreadMention"],
+    meeting: Meeting,
+) -> list[Path]:
+    written: list[Path] = []
+    for mention in mentions:
+        path = threads_file_path(memory_root, mention.topic)
+        bullets: list[str] = []
+        if mention.summary:
+            bullets.append(mention.summary)
+        for q in mention.open_questions:
+            bullets.append(f"Open question: {q}")
+        if not bullets:
+            bullets.append("Mentioned in this meeting.")
+        first_line = mention.transcript_lines[0] if mention.transcript_lines else None
+        block = _build_mention_block(
+            meeting=meeting, bullets=bullets, extra_first_line=first_line
+        )
+        changed = _upsert_entity(
+            path=path,
+            title=mention.title or mention.topic,
+            base_fm={"topic": mention.topic, "title": mention.title or mention.topic},
+            preamble="",
+            meeting=meeting,
+            new_block=block,
+        )
+        if changed:
+            written.append(path)
+    return written
+
+
+# ----------------------------------------------------------------------
+# glossary
+#
+# Glossary entries dedupe by term. First seen wins for the definition, but every
+# meeting's reference accumulates. The locked definition lives in the preamble.
+
+
+def write_glossary(
+    memory_root: Path,
+    terms: list["GlossaryTerm"],
+    meeting: Meeting,
+) -> list[Path]:
+    written: list[Path] = []
+    for term in terms:
+        path = glossary_file_path(memory_root, term.term)
+        # Build a one-line preamble for the definition. Only set it if missing —
+        # first-seen wins.
+        preamble = ""
+        if path.exists():
+            existing = path.read_text(encoding="utf-8")
+            _, body = _split_frontmatter(existing)
+            # Strip leading h1
+            body = re.sub(r"^#\s+[^\n]+\n+", "", body)
+            existing_pre, _ = _parse_mentions(body)
+            preamble = existing_pre.strip()
+        if not preamble and term.definition:
+            preamble = f"**Definition**: {term.definition}"
+
+        bullets: list[str] = []
+        bullets.append(f"Used in this meeting{': ' + term.definition if term.definition else ''}")
+        first_line = term.transcript_lines[0] if term.transcript_lines else None
+        block = _build_mention_block(
+            meeting=meeting, bullets=bullets, extra_first_line=first_line
+        )
+
+        date = meeting.created_at.astimezone(SHANGHAI).date().isoformat()
+        base_fm: dict[str, Any] = {
+            "term": term.term,
+        }
+        # Set first_seen only on creation.
+        if not path.exists():
+            base_fm["first_seen"] = date
+
+        changed = _upsert_entity(
+            path=path,
+            title=term.term,
+            base_fm=base_fm,
+            preamble=preamble,
+            meeting=meeting,
+            new_block=block,
+        )
+        if changed:
+            written.append(path)
+    return written
+
+
+# ----------------------------------------------------------------------
+# Convenience: write all four at once
+
+
+def write_extracted_entities(
+    memory_root: Path,
+    entities: "ExtractedEntities",
+    meeting: Meeting,
+) -> dict[str, list[Path]]:
+    """Run all four entity writers. Returns a per-bucket list of changed files.
+
+    The returned dict has the same keys as ``ExtractedEntities.counts()``::
+
+        {"people": [...], "projects": [...], "threads": [...], "glossary": [...]}
+    """
+    return {
+        "people": write_people(memory_root, entities.people, meeting),
+        "projects": write_projects(memory_root, entities.projects, meeting),
+        "threads": write_threads(memory_root, entities.threads, meeting),
+        "glossary": write_glossary(memory_root, entities.glossary, meeting),
+    }
+
+
 __all__ = [
     "slugify_for_memory",
     "meeting_filename",
@@ -327,4 +762,14 @@ __all__ = [
     "extract_decisions_from_summary",
     "render_decision_file",
     "write_decisions",
+    # Entity (v1.6+) writers
+    "people_file_path",
+    "projects_file_path",
+    "threads_file_path",
+    "glossary_file_path",
+    "write_people",
+    "write_projects",
+    "write_threads",
+    "write_glossary",
+    "write_extracted_entities",
 ]
