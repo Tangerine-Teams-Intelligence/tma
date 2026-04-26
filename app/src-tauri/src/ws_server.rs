@@ -210,6 +210,17 @@ fn persist_port(app_data_dir: &Path, port: u16) {
     }
 }
 
+/// Test-visible alias for the accept loop. Lets the integration smoke test
+/// bind an ephemeral port and drive the same loop without going through the
+/// 7780..=7790 fallback range. Not intended for production callers.
+pub async fn run_accept_loop_for_test(
+    listener: TcpListener,
+    ctx: WsServerCtx,
+    stop: Arc<Notify>,
+) {
+    run_accept_loop(listener, ctx, stop).await
+}
+
 async fn run_accept_loop(listener: TcpListener, ctx: WsServerCtx, stop: Arc<Notify>) {
     loop {
         tokio::select! {
