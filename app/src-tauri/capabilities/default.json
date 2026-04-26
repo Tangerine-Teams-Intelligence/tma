@@ -16,6 +16,20 @@
     "core:resources:default",
     "core:menu:default",
     "core:tray:default",
-    "shell:allow-open"
+    "shell:allow-open",
+    "fs:default",
+    "fs:allow-read-text-file",
+    "fs:allow-read-dir",
+    "fs:allow-exists",
+    "fs:allow-mkdir",
+    "fs:allow-stat",
+    "fs:scope-home-recursive",
+    {
+      "identifier": "fs:scope",
+      "allow": [
+        "$HOME/**",
+        "$HOME/.tangerine-memory/**"
+      ]
+    }
   ]
 }
