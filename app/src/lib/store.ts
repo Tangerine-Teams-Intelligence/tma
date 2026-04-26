@@ -106,6 +106,19 @@ interface UiSlice {
   sampleBannerDismissed: boolean;
   /** v1.6.0 team memory sync configuration. Undefined mode → first-run. */
   memoryConfig: MemoryConfig;
+  /** Current user alias used by cursor / what's-new commands. Defaults to
+   *  the discord/github login when known; falls back to "me" so the cursor
+   *  file path is always valid. Set explicitly during onboarding. */
+  currentUser: string;
+  /** Atom ids the user has dismissed locally (right-rail "x" button).
+   *  Independent of cursor.atoms_acked — that one is server-trip; this is
+   *  ephemeral filtering so the rail clears immediately. */
+  dismissedAtoms: string[];
+  /** Atom ids snoozed locally; cleared after 24h via setInterval. */
+  snoozedAtoms: Record<string, number>;
+  /** Whats-new banner state. dismissed=true hides the banner until next
+   *  cursor.last_opened_at refresh. */
+  whatsNewDismissed: boolean;
   toasts: { id: string; kind: "info" | "success" | "error"; text: string }[];
   setTheme: (t: ThemeMode) => void;
   cycleTheme: () => void;
@@ -118,6 +131,11 @@ interface UiSlice {
   dismissSampleBanner: () => void;
   setMemoryConfig: (patch: Partial<MemoryConfig>) => void;
   resetMemoryConfig: () => void;
+  setCurrentUser: (u: string) => void;
+  dismissAtom: (atomId: string) => void;
+  snoozeAtom: (atomId: string, untilMs: number) => void;
+  resetDismissals: () => void;
+  setWhatsNewDismissed: (v: boolean) => void;
   pushToast: (kind: "info" | "success" | "error", text: string) => void;
   dismissToast: (id: string) => void;
 }
@@ -197,6 +215,10 @@ export const useStore = create<Store>()(
         samplesSeeded: false,
         sampleBannerDismissed: false,
         memoryConfig: {},
+        currentUser: "me",
+        dismissedAtoms: [],
+        snoozedAtoms: {},
+        whatsNewDismissed: false,
         toasts: [],
         setTheme: (t) => {
           const resolved = resolveTheme(t);
@@ -232,6 +254,30 @@ export const useStore = create<Store>()(
           })),
         resetMemoryConfig: () =>
           set((s) => ({ ui: { ...s.ui, memoryConfig: {} } })),
+        setCurrentUser: (u) =>
+          set((s) => ({ ui: { ...s.ui, currentUser: u } })),
+        dismissAtom: (atomId) =>
+          set((s) => ({
+            ui: {
+              ...s.ui,
+              dismissedAtoms: s.ui.dismissedAtoms.includes(atomId)
+                ? s.ui.dismissedAtoms
+                : [...s.ui.dismissedAtoms, atomId],
+            },
+          })),
+        snoozeAtom: (atomId, untilMs) =>
+          set((s) => ({
+            ui: {
+              ...s.ui,
+              snoozedAtoms: { ...s.ui.snoozedAtoms, [atomId]: untilMs },
+            },
+          })),
+        resetDismissals: () =>
+          set((s) => ({
+            ui: { ...s.ui, dismissedAtoms: [], snoozedAtoms: {} },
+          })),
+        setWhatsNewDismissed: (v) =>
+          set((s) => ({ ui: { ...s.ui, whatsNewDismissed: v } })),
         pushToast: (kind, text) =>
           set((s) => ({
             ui: {
@@ -298,6 +344,9 @@ export const useStore = create<Store>()(
             samplesSeeded: s.ui.samplesSeeded,
             sampleBannerDismissed: s.ui.sampleBannerDismissed,
             memoryConfig: s.ui.memoryConfig,
+            currentUser: s.ui.currentUser,
+            dismissedAtoms: s.ui.dismissedAtoms,
+            snoozedAtoms: s.ui.snoozedAtoms,
           },
           skills: { meetingConfig: s.skills.meetingConfig },
         }) as unknown as Store,
@@ -310,6 +359,9 @@ export const useStore = create<Store>()(
                 samplesSeeded?: boolean;
                 sampleBannerDismissed?: boolean;
                 memoryConfig?: MemoryConfig;
+                currentUser?: string;
+                dismissedAtoms?: string[];
+                snoozedAtoms?: Record<string, number>;
               };
               skills?: { meetingConfig?: MeetingConfig };
             }
@@ -327,6 +379,9 @@ export const useStore = create<Store>()(
             sampleBannerDismissed:
               p?.ui?.sampleBannerDismissed ?? current.ui.sampleBannerDismissed,
             memoryConfig: p?.ui?.memoryConfig ?? current.ui.memoryConfig,
+            currentUser: p?.ui?.currentUser ?? current.ui.currentUser,
+            dismissedAtoms: p?.ui?.dismissedAtoms ?? current.ui.dismissedAtoms,
+            snoozedAtoms: p?.ui?.snoozedAtoms ?? current.ui.snoozedAtoms,
           },
           skills: {
             ...current.skills,
