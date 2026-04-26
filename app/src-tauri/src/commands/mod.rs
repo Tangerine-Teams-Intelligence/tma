@@ -38,6 +38,11 @@ pub mod external;
 pub mod update;
 pub mod whisper_model;
 
+// Stage 1 Wave 3 — view-layer commands (today / people / projects / threads
+// / alignment / inbox / cursor writes / what's-new diff). Pure read/write
+// over the .tangerine/ sidecar; no shared state.
+pub mod views;
+
 // v1.6.0 team memory sync.
 pub mod git;
 pub mod github;
@@ -192,6 +197,23 @@ macro_rules! tmi_invoke_handler {
             // v1.7.0 — RMS daemon
             $crate::commands::daemon::daemon_status,
             $crate::commands::daemon::daemon_kick,
+            // Stage 1 Wave 3 — view-layer commands
+            $crate::commands::views::read_timeline_today,
+            $crate::commands::views::read_timeline_recent,
+            $crate::commands::views::read_brief,
+            $crate::commands::views::read_alignment,
+            $crate::commands::views::read_pending_alerts,
+            $crate::commands::views::read_people_list,
+            $crate::commands::views::read_person,
+            $crate::commands::views::read_projects_list,
+            $crate::commands::views::read_project,
+            $crate::commands::views::read_threads_list,
+            $crate::commands::views::read_thread,
+            $crate::commands::views::mark_atom_viewed,
+            $crate::commands::views::mark_atom_acked,
+            $crate::commands::views::mark_user_opened,
+            $crate::commands::views::read_cursor,
+            $crate::commands::views::read_whats_new,
         ]
     };
 }
