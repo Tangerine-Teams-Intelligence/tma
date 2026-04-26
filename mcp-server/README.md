@@ -131,7 +131,7 @@ The server expects a directory of markdown files, optionally organized into the 
 ├── meetings/
 │   └── 2026-04-25-v15-scope.md
 ├── decisions/
-│   └── pricing-20-seat.md
+│   └── pricing-vercel-open-core.md
 ├── people/
 ├── projects/
 ├── threads/
@@ -142,8 +142,8 @@ Each `.md` file may have YAML frontmatter:
 
 ```markdown
 ---
-title: Pricing $20/seat 3 seat min
-date: 2026-04-25
+title: Pricing Vercel-style open core (OSS forever + Cloud $10/seat + Enterprise)
+date: 2026-04-26
 source: meeting
 ---
 
@@ -201,10 +201,10 @@ Input:
   "searched": 12,
   "hits": [
     {
-      "file": "decisions/pricing-20-seat.md",
-      "title": "Pricing $20/seat 3 seat min",
-      "frontmatter": {"date": "2026-04-25", "source": "meeting"},
-      "snippet": "...$20/seat with 3 seat min...",
+      "file": "decisions/pricing-vercel-open-core.md",
+      "title": "Pricing Vercel-style open core (OSS forever + Cloud $10/seat + Enterprise)",
+      "frontmatter": {"date": "2026-04-26", "source": "meeting"},
+      "snippet": "...Vercel-style: OSS forever, Cloud $10/seat, Enterprise custom...",
       "content_preview": "<first 4000 chars>",
       "matches": 3
     }
@@ -239,7 +239,7 @@ Decision atoms (`kind == "decision"`) in the last N days (default 7, max 365). C
 ### Resource: `team-memory://`
 
 - `team-memory://` — JSON index of every file (path, title, frontmatter)
-- `team-memory://decisions/pricing-20-seat.md` — full markdown content with frontmatter
+- `team-memory://decisions/pricing-vercel-open-core.md` — full markdown content with frontmatter
 
 ## Behavior
 
