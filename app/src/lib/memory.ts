@@ -191,6 +191,27 @@ export async function readMemoryFile(
   }
 }
 
+/**
+ * Read the `title` field from a file's frontmatter without parsing the body.
+ * Returns null on any error or when the file has no `title` field. Cheap-ish
+ * — we only read the file from disk; the parse is a one-line regex over the
+ * first KB of bytes.
+ */
+export async function readFrontmatterTitle(
+  root: string,
+  relPath: string,
+): Promise<string | null> {
+  if (!inTauri()) return null;
+  try {
+    const raw = await readTextFile(join(root, relPath));
+    const fm = parseFrontmatter(raw);
+    const t = fm.fields.title;
+    return t && t.length > 0 ? t : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Recursive collector of every .md file path under `root` (rel-paths). */
 async function collectFiles(rootAbs: string, relPath: string): Promise<string[]> {
   const abs = join(rootAbs, relPath);
@@ -212,6 +233,19 @@ async function collectFiles(rootAbs: string, relPath: string): Promise<string[]>
     }
   }
   return out;
+}
+
+/**
+ * Strip a leading YAML frontmatter block (`---\n...\n---\n?`) so the snippet
+ * window sees only the markdown body. Returns the original string when no
+ * frontmatter is present. Required by `searchMemory` so the first match for a
+ * common query like "pricing" doesn't accidentally land inside the
+ * frontmatter and render `--- date: … title: Pricing …` as the snippet.
+ */
+export function stripFrontmatter(content: string): string {
+  const m = content.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/);
+  if (!m) return content;
+  return content.slice(m[0].length);
 }
 
 /** Build a snippet around the first match (~120 chars). */
@@ -246,12 +280,16 @@ export async function searchMemory(
   for (const rel of files) {
     if (scanned >= 200) break;
     scanned++;
-    let body: string;
+    let raw: string;
     try {
-      body = await readTextFile(join(root, rel));
+      raw = await readTextFile(join(root, rel));
     } catch {
       continue;
     }
+    // Strip the YAML frontmatter before substring-matching AND before
+    // building the snippet so a hit on "pricing" centers on the body, not
+    // the title field in the frontmatter block.
+    const body = stripFrontmatter(raw);
     if (!body.toLowerCase().includes(needle)) continue;
     const name = rel.split("/").pop() ?? rel;
     hits.push({ path: rel, name, snippet: makeSnippet(body, q) });
@@ -289,6 +327,52 @@ export function emptyCoverage(): CoverageStats {
     activeSources: [],
     comingSources: [],
   };
+}
+
+/**
+ * Walk the memory tree and count files in each standard top-level folder.
+ * Used by the home stat cards. Folders that don't exist or are empty
+ * contribute 0. This counts every `.md` file recursively under each folder
+ * so nested writes (e.g. `meetings/2026/q2/foo.md`) still register.
+ */
+export function countMemoryByFolder(tree: MemoryNode[]): {
+  meetings: number;
+  decisions: number;
+  people: number;
+  projects: number;
+  threads: number;
+} {
+  const counts = { meetings: 0, decisions: 0, people: 0, projects: 0, threads: 0 };
+  function walk(nodes: MemoryNode[], bucket: keyof typeof counts | null): void {
+    for (const n of nodes) {
+      if (n.kind === "file" && bucket) counts[bucket] += 1;
+      if (n.kind === "dir") walk(n.children ?? [], bucket);
+    }
+  }
+  for (const node of tree) {
+    if (node.kind !== "dir") continue;
+    const bucket = node.name as keyof typeof counts;
+    if (bucket in counts) walk(node.children ?? [], bucket);
+  }
+  return counts;
+}
+
+/**
+ * Find the first sample meeting file under `meetings/`, used to auto-select
+ * a populated file on the home page when the user hasn't picked one yet.
+ * Returns the rel path or null if no sample meeting is present.
+ */
+export function findSampleMeetingPath(tree: MemoryNode[]): string | null {
+  const meetings = tree.find((n) => n.kind === "dir" && n.name === "meetings");
+  if (!meetings) return null;
+  for (const f of meetings.children ?? []) {
+    if (f.kind === "file" && f.name.startsWith("sample-")) return f.path;
+  }
+  // Fallback: any file in meetings/.
+  for (const f of meetings.children ?? []) {
+    if (f.kind === "file") return f.path;
+  }
+  return null;
 }
 
 /**

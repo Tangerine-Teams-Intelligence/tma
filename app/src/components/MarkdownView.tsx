@@ -47,7 +47,10 @@ export function MarkdownView({ content, relPath, provenance }: Props) {
   const showSampleBanner = fm.isSample && !sampleBannerDismissed;
 
   return (
-    <article className="prose-tangerine">
+    // tabIndex=-1 + outline-none stops the article from grabbing focus on
+    // click, which on Windows would otherwise pop the IME candidate bar
+    // when a Chinese keyboard is the active input method.
+    <article className="prose-tangerine outline-none" tabIndex={-1}>
       {showSampleBanner && (
         <div className="mb-6 flex items-start gap-3 rounded-md border border-[var(--ti-orange-200,#FFD9B8)] bg-[var(--ti-orange-50,#FFF5EC)] px-4 py-3 text-[12px] dark:border-stone-700 dark:bg-stone-900">
           <span className="font-mono text-[14px]" aria-hidden>
@@ -61,7 +64,8 @@ export function MarkdownView({ content, relPath, provenance }: Props) {
             >
               Set up Discord →
             </Link>{" "}
-            to capture your own meetings, or just keep this for reference.
+            to start capturing your real meetings — Tangerine will brief your
+            team and their AI from them.
           </p>
           <button
             type="button"

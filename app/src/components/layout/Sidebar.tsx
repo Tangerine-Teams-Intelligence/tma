@@ -7,14 +7,20 @@ import {
   Moon,
   Monitor,
   Inbox,
+  Activity,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { signOut } from "@/lib/auth";
 import { useStore } from "@/lib/store";
 import { SOURCES, type SourceDef, type SourceStatus } from "@/lib/sources";
 import { SINKS, type SinkDef, type SinkStatus } from "@/lib/sinks";
-import { readMemoryTree, type MemoryNode } from "@/lib/memory";
+import {
+  readFrontmatterTitle,
+  readMemoryTree,
+  type MemoryNode,
+} from "@/lib/memory";
 import { MemoryTree } from "@/components/MemoryTree";
+import { kbdShortcut } from "@/lib/platform";
 
 /**
  * Always-visible left rail (~240px). Two sections:
@@ -31,6 +37,7 @@ export function Sidebar() {
   const samplesSeeded = useStore((s) => s.ui.samplesSeeded);
   const togglePalette = useStore((s) => s.ui.togglePalette);
   const [tree, setTree] = useState<MemoryNode[]>([]);
+  const [titles, setTitles] = useState<Record<string, string>>({});
 
   useEffect(() => {
     let cancel = false;
@@ -56,6 +63,37 @@ export function Sidebar() {
     // samplesSeeded is in deps so the tree refreshes once Rust finishes the
     // first-launch sample copy.
   }, [memoryRoot, samplesSeeded]);
+
+  // Whenever the tree changes, fetch frontmatter `title` for every file in
+  // parallel so the tree shows human-readable names instead of truncated
+  // filenames like `sample-postgres-over-mongo...`. Misses (no title field,
+  // file gone, parse failure) silently fall back to the filename.
+  useEffect(() => {
+    let cancel = false;
+    const paths: string[] = [];
+    const collect = (nodes: MemoryNode[]): void => {
+      for (const n of nodes) {
+        if (n.kind === "file") paths.push(n.path);
+        else if (n.kind === "dir") collect(n.children ?? []);
+      }
+    };
+    collect(tree);
+    if (paths.length === 0) {
+      setTitles({});
+      return;
+    }
+    void Promise.all(
+      paths.map(async (p) => [p, await readFrontmatterTitle(memoryRoot, p)] as const),
+    ).then((rows) => {
+      if (cancel) return;
+      const next: Record<string, string> = {};
+      for (const [p, t] of rows) if (t) next[p] = t;
+      setTitles(next);
+    });
+    return () => {
+      cancel = true;
+    };
+  }, [memoryRoot, tree]);
 
   async function handleLock() {
     await signOut();
@@ -83,7 +121,7 @@ export function Sidebar() {
           aria-label="Open command palette"
           title="Search memory"
         >
-          ⌘K
+          {kbdShortcut("k")}
         </button>
       </div>
 
@@ -108,14 +146,37 @@ export function Sidebar() {
           <div className="mt-1">
             <MemoryTree
               tree={tree}
+              titles={titles}
               showNewFile
               onNewFile={() => navigate("/memory")}
             />
           </div>
+          {/* Alignment placeholder — full dashboard ships v1.6. Living under
+              MEMORY because same-screen rate is a function of memory state. */}
+          <NavLink
+            to="/alignment"
+            className={({ isActive }) =>
+              cn(
+                "mt-2 flex items-center gap-2 rounded px-2 py-1 text-[12px]",
+                isActive
+                  ? "bg-[var(--ti-orange-50)] text-[var(--ti-orange-700)] dark:bg-stone-800 dark:text-[var(--ti-orange-500)]"
+                  : "text-stone-700 hover:bg-stone-100 dark:text-stone-300 dark:hover:bg-stone-900",
+              )
+            }
+          >
+            <Activity size={12} className="shrink-0" />
+            <span className="truncate">Alignment</span>
+            <span
+              className="ml-auto font-mono text-[10px] text-stone-400 dark:text-stone-500"
+              title="Same-screen rate dashboard ships v1.6"
+            >
+              v1.6
+            </span>
+          </NavLink>
         </Section>
 
         {/* SOURCES section */}
-        <Section label="Sources">
+        <Section label="Sources" subtitle="Where team comms come in">
           <ul>
             {SOURCES.map((s) => (
               <li key={s.id}>
@@ -126,7 +187,7 @@ export function Sidebar() {
         </Section>
 
         {/* SINKS section */}
-        <Section label="Sinks">
+        <Section label="Sinks" subtitle="Where team + their AI read out">
           <ul>
             {SINKS.map((s) => (
               <li key={s.id}>
@@ -190,10 +251,13 @@ function Section({
   label,
   children,
   rightHint,
+  subtitle,
 }: {
   label: string;
   children: React.ReactNode;
   rightHint?: string;
+  /** Tiny gray one-liner under the section label, used to explain CoS roles. */
+  subtitle?: string;
 }) {
   return (
     <div className="border-b border-stone-200/60 px-2 py-3 dark:border-stone-800/60">
@@ -205,6 +269,11 @@ function Section({
           </span>
         )}
       </div>
+      {subtitle && (
+        <p className="mb-2 px-1 text-[10px] leading-tight text-stone-400 dark:text-stone-500">
+          {subtitle}
+        </p>
+      )}
       {children}
     </div>
   );

@@ -1,13 +1,23 @@
-import { useEffect, useState } from "react";
-import { useParams, Link } from "react-router-dom";
-import { Copy, ExternalLink, ChevronRight } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { useParams, useNavigate, Link } from "react-router-dom";
+import {
+  Copy,
+  ExternalLink,
+  ChevronRight,
+  Activity,
+  Calendar,
+  Sparkles,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useStore } from "@/lib/store";
 import {
+  countMemoryByFolder,
   emptyCoverage,
+  findSampleMeetingPath,
   readMemoryFile,
   readMemoryTree,
   type CoverageStats,
+  type MemoryNode,
 } from "@/lib/memory";
 import { MarkdownView } from "@/components/MarkdownView";
 import { SOURCES } from "@/lib/sources";
@@ -19,13 +29,24 @@ import { openExternal, initMemoryWithSamples, resolveMemoryRoot } from "@/lib/ta
  *   Left   sidebar (file tree, lives in <Sidebar/>)
  *   Center coverage stats when nothing is selected, or markdown render when
  *          a file is in the URL (/memory/<path>)
- *   Right  rail with "Copy to AI prompt" + "Open in editor"
+ *   Right  rail with "Copy to AI prompt" + "Open in editor" + v1.6 CoS
+ *          placeholder cards
  *
  * The route handles both /memory and /memory/<*> via a single component
  * (path comes from useParams("*")).
+ *
+ * v1.5.6 changes:
+ *   - Walk the tree on mount + on focus to keep the stat-card counts live.
+ *   - Auto-select the bundled sample meeting on first paint when no file
+ *     is in the URL — gives the user the "30-second oh shit" moment.
+ *   - Add v1.6 placeholder cards (same-screen rate, daily brief,
+ *     pre-meeting brief) so the Chief-of-Staff direction is visible.
+ *   - Drop the duplicate Sources active / Sources coming bottom strip
+ *     (sidebar already shows that).
  */
 export default function MemoryRoute() {
   const params = useParams();
+  const navigate = useNavigate();
   const relPath = params["*"] ?? "";
   const memoryRoot = useStore((s) => s.ui.memoryRoot);
   const setMemoryRoot = useStore((s) => s.ui.setMemoryRoot);
@@ -34,12 +55,21 @@ export default function MemoryRoute() {
   const pushToast = useStore((s) => s.ui.pushToast);
 
   const [content, setContent] = useState<string | null>(null);
-  const [coverage] = useState<CoverageStats>(() => {
+  const [tree, setTree] = useState<MemoryNode[]>([]);
+  const [autoSelected, setAutoSelected] = useState(false);
+
+  const folderCounts = useMemo(() => countMemoryByFolder(tree), [tree]);
+  const coverage: CoverageStats = useMemo(() => {
     const stats = emptyCoverage();
     stats.activeSources = SOURCES.filter((s) => s.status === "active").map((s) => s.title);
     stats.comingSources = SOURCES.filter((s) => s.status === "coming").map((s) => s.title);
+    stats.meetings = folderCounts.meetings;
+    stats.decisions = folderCounts.decisions;
+    stats.people = folderCounts.people;
+    stats.projects = folderCounts.projects;
+    stats.threads = folderCounts.threads;
     return stats;
-  });
+  }, [folderCounts]);
 
   // First-launch seed: if the memory dir is empty AND samples haven't been
   // seeded yet, copy bundled samples in so the user sees a populated tree
@@ -59,9 +89,9 @@ export default function MemoryRoute() {
         setSamplesSeeded(true);
         return;
       }
-      const tree = await readMemoryTree(info.path || memoryRoot);
+      const t = await readMemoryTree(info.path || memoryRoot);
       if (cancel) return;
-      const hasFiles = tree.some((n) => n.kind === "file" || (n.children && n.children.length > 0));
+      const hasFiles = t.some((n) => n.kind === "file" || (n.children && n.children.length > 0));
       if (!hasFiles) {
         const r = await initMemoryWithSamples();
         if (cancel) return;
@@ -75,6 +105,43 @@ export default function MemoryRoute() {
       cancel = true;
     };
   }, [memoryRoot, samplesSeeded, setMemoryRoot, setSamplesSeeded]);
+
+  // Walk the memory tree on mount + on focus so the stat cards stay accurate
+  // as the Discord bot writes new files. Mirror the sidebar's focus-refresh
+  // pattern so the home + sidebar stay in sync.
+  useEffect(() => {
+    let cancel = false;
+    const refresh = () =>
+      readMemoryTree(memoryRoot).then((t) => {
+        if (!cancel) setTree(t);
+      });
+    void refresh();
+    const onFocus = () => void refresh();
+    if (typeof window !== "undefined") {
+      window.addEventListener("focus", onFocus);
+    }
+    return () => {
+      cancel = true;
+      if (typeof window !== "undefined") {
+        window.removeEventListener("focus", onFocus);
+      }
+    };
+  }, [memoryRoot, samplesSeeded]);
+
+  // Auto-select the sample meeting on first landing — gives users an
+  // instantly populated app without having to discover the tree. Only fires
+  // when (a) no file in the URL, (b) samples have been seeded, (c) we
+  // haven't already auto-selected this session.
+  useEffect(() => {
+    if (autoSelected) return;
+    if (relPath) return;
+    if (!samplesSeeded) return;
+    if (tree.length === 0) return;
+    const sample = findSampleMeetingPath(tree);
+    if (!sample) return;
+    setAutoSelected(true);
+    navigate(`/memory/${sample}`, { replace: true });
+  }, [autoSelected, navigate, relPath, samplesSeeded, tree]);
 
   useEffect(() => {
     let cancel = false;
@@ -113,9 +180,11 @@ export default function MemoryRoute() {
   }
 
   return (
-    <div className="flex h-full">
-      {/* Center pane */}
-      <section className="flex-1 overflow-auto">
+    <div className="flex h-full bg-stone-50 dark:bg-stone-950">
+      {/* Center pane. tabIndex={-1} prevents the scroll container from
+          stealing focus on click, which on Windows would pop the IME
+          candidate bar for Chinese keyboard users. */}
+      <section className="flex-1 overflow-auto outline-none" tabIndex={-1}>
         <Breadcrumb relPath={relPath} memoryRoot={memoryRoot} />
 
         <div className="mx-auto max-w-3xl px-8 py-8">
@@ -128,7 +197,7 @@ export default function MemoryRoute() {
       </section>
 
       {/* Right rail */}
-      <aside className="hidden w-[260px] shrink-0 border-l border-stone-200 px-4 py-6 dark:border-stone-800 lg:block">
+      <aside className="hidden w-[260px] shrink-0 border-l border-stone-200 bg-stone-50 px-4 py-6 dark:border-stone-800 dark:bg-stone-950 lg:block">
         <p className="ti-section-label">Use this memory</p>
         <div className="mt-3 space-y-2">
           <Button
@@ -149,6 +218,21 @@ export default function MemoryRoute() {
           </Button>
         </div>
 
+        {/* v1.6 placeholder — Pre-meeting brief. Only meaningful on a file
+            view; we keep it on the home view too as a teaser. */}
+        <div className="mt-6 rounded-md border border-dashed border-stone-300 bg-stone-100/40 p-3 dark:border-stone-700 dark:bg-stone-900/40">
+          <p className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-stone-500 dark:text-stone-400">
+            Pre-meeting brief
+            <span className="rounded border border-[var(--ti-orange-500)]/40 bg-[var(--ti-orange-50)] px-1.5 py-px font-mono text-[9px] tracking-normal text-[var(--ti-orange-700)] dark:bg-stone-800 dark:text-[var(--ti-orange-500)]">
+              v1.6
+            </span>
+          </p>
+          <p className="mt-2 text-[11px] leading-relaxed text-stone-500 dark:text-stone-400">
+            Tangerine will brief you 5 min before any meeting that touches this
+            decision.
+          </p>
+        </div>
+
         <div className="mt-8">
           <p className="ti-section-label">Memory dir</p>
           <p className="mt-2 break-all font-mono text-[11px] text-stone-500 dark:text-stone-400">
@@ -159,10 +243,12 @@ export default function MemoryRoute() {
         <div className="mt-8">
           <p className="ti-section-label">How this works</p>
           <p className="mt-2 text-[11px] leading-relaxed text-stone-500 dark:text-stone-400">
-            Tangerine never runs an LLM. We capture what your team does, structure it as
-            markdown memory in your own dir, and ship that memory into the AI tools you
-            already use — Claude Pro, ChatGPT, Cursor, Claude Code. The browser extension
-            (v1.6) and MCP server (v1.6) are how memory leaves this app.
+            <strong className="text-stone-700 dark:text-stone-300">
+              Tangerine is your team's Chief of Staff
+            </strong>{" "}
+            — captures every corner of comms, briefs the team, briefs their AI.
+            We never run an LLM ourselves; your existing Claude / ChatGPT /
+            Cursor read team memory through Sinks.
           </p>
         </div>
       </aside>
@@ -173,7 +259,7 @@ export default function MemoryRoute() {
 function Breadcrumb({ relPath, memoryRoot }: { relPath: string; memoryRoot: string }) {
   const parts = relPath ? relPath.split("/").filter(Boolean) : [];
   return (
-    <div className="ti-no-select flex h-9 items-center gap-1 border-b border-stone-200 px-6 font-mono text-[11px] text-stone-500 dark:border-stone-800 dark:text-stone-400">
+    <div className="ti-no-select flex h-9 items-center gap-1 border-b border-stone-200 bg-stone-50 px-6 font-mono text-[11px] text-stone-500 dark:border-stone-800 dark:bg-stone-950 dark:text-stone-400">
       <Link to="/memory" className="hover:text-stone-900 dark:hover:text-stone-100">
         {memoryRoot}
       </Link>
@@ -196,63 +282,68 @@ function Breadcrumb({ relPath, memoryRoot }: { relPath: string; memoryRoot: stri
 }
 
 function CoverageView({ coverage }: { coverage: CoverageStats }) {
+  const navigate = useNavigate();
+  const noSourcesActive = coverage.activeSources.length === 0;
+
   return (
     <div>
       <h1 className="font-display text-3xl tracking-tight text-stone-900 dark:text-stone-100">
         Your team's memory
       </h1>
       <p className="mt-2 text-sm leading-relaxed text-stone-700 dark:text-stone-300">
-        Tangerine captures what your team does and structures it as memory your AI tools
-        can read. Pick a file from the tree, or wire a Source below to start filling it.
+        Tangerine listens in every corner of your team's comms, structures it
+        into team memory, and keeps your team — and their AI tools — on the
+        same page.
       </p>
 
-      {/* Coverage strip */}
-      <div className="mt-8 grid grid-cols-2 gap-3 md:grid-cols-5">
+      {/* CoS placeholder cards row — same-screen rate + daily brief sit
+          alongside the count cards so the v1.6 direction is unmissable. */}
+      <div className="mt-8 grid grid-cols-2 gap-3 md:grid-cols-3">
+        <ComingCard
+          icon={<Activity size={14} />}
+          label="Same-screen rate"
+          value="0%"
+          hint="Coming v1.6 — full team alignment dashboard"
+          onClick={() => navigate("/alignment")}
+        />
+        <ComingCard
+          icon={<Calendar size={14} />}
+          label="Daily brief"
+          value="—"
+          hint="Coming v1.6 — your team's morning brief, auto-generated from yesterday's captures"
+          onClick={() => navigate("/inbox")}
+        />
+        <ComingCard
+          icon={<Sparkles size={14} />}
+          label="Auto CoS"
+          value="—"
+          hint="Coming v1.6 — Tangerine briefs your team and their AI tools throughout the day"
+          onClick={() => navigate("/alignment")}
+        />
+      </div>
+
+      {/* Coverage strip — counts of files Tangerine has captured per folder. */}
+      <div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-5">
         <Stat n={coverage.meetings} label="meetings" />
         <Stat n={coverage.decisions} label="decisions" />
         <Stat n={coverage.people} label="people" />
         <Stat n={coverage.projects} label="projects" />
         <Stat n={coverage.threads} label="threads" />
       </div>
-      <p className="mt-3 font-mono text-[11px] text-stone-500 dark:text-stone-400">
-        Your AI sees {coverage.meetings} meetings · {coverage.decisions} decisions ·{" "}
-        {coverage.people} people · 0% of Slack / Linear / Notion (Sources land v1.6+).
-      </p>
-
-      {/* Sources active / coming */}
-      <div className="mt-10">
-        <p className="ti-section-label">Sources active</p>
-        {coverage.activeSources.length === 0 ? (
-          <p className="mt-2 text-sm italic text-stone-400 dark:text-stone-500">
-            None wired yet. Set up Discord in the sidebar to start.
-          </p>
-        ) : (
-          <ul className="mt-2 flex flex-wrap gap-2 font-mono text-[11px]">
-            {coverage.activeSources.map((s) => (
-              <li
-                key={s}
-                className="rounded border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-emerald-700 dark:border-emerald-700/60 dark:bg-emerald-950/40 dark:text-emerald-400"
-              >
-                {s}
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-
-      <div className="mt-6">
-        <p className="ti-section-label">Sources coming</p>
-        <ul className="mt-2 flex flex-wrap gap-2 font-mono text-[11px]">
-          {coverage.comingSources.map((s) => (
-            <li
-              key={s}
-              className="rounded border border-stone-200 bg-stone-100 px-2 py-0.5 text-stone-500 dark:border-stone-800 dark:bg-stone-900 dark:text-stone-400"
-            >
-              {s}
-            </li>
-          ))}
-        </ul>
-      </div>
+      {noSourcesActive ? (
+        <p className="mt-3 font-mono text-[11px] text-stone-500 dark:text-stone-400">
+          <strong className="text-stone-700 dark:text-stone-300">
+            Same-screen rate: 0%
+          </strong>{" "}
+          — connect a Source so your team and their AI start aligning.
+        </p>
+      ) : (
+        <p className="mt-3 font-mono text-[11px] text-stone-500 dark:text-stone-400">
+          Your AI sees {coverage.meetings} meetings · {coverage.decisions}{" "}
+          decisions · {coverage.people} people · 0% of Slack / Linear / Notion
+          (Sources land v1.6+).
+        </p>
+      )}
     </div>
   );
 }
@@ -267,5 +358,48 @@ function Stat({ n, label }: { n: number; label: string }) {
         {label}
       </p>
     </div>
+  );
+}
+
+/**
+ * Stat card for v1.6 features that don't exist yet. Same shape as <Stat/>
+ * but with a "Coming v1.6" pill badge and a click handler that navigates
+ * to a placeholder route.
+ */
+function ComingCard({
+  icon,
+  label,
+  value,
+  hint,
+  onClick,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  hint: string;
+  onClick?: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="rounded-md border border-stone-300 bg-stone-50 p-3 text-left transition-colors duration-fast hover:bg-stone-100 dark:border-stone-700 dark:bg-stone-900 dark:hover:bg-stone-800"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-stone-500 dark:text-stone-400">
+          {icon}
+          {label}
+        </span>
+        <span className="rounded border border-[var(--ti-orange-500)]/40 bg-[var(--ti-orange-50)] px-1.5 py-px font-mono text-[9px] uppercase tracking-wide text-[var(--ti-orange-700)] dark:bg-stone-800 dark:text-[var(--ti-orange-500)]">
+          v1.6
+        </span>
+      </div>
+      <p className="mt-2 font-display text-2xl tracking-tight text-stone-900 dark:text-stone-100">
+        {value}
+      </p>
+      <p className="mt-1 text-[10px] leading-tight text-stone-500 dark:text-stone-400">
+        {hint}
+      </p>
+    </button>
   );
 }

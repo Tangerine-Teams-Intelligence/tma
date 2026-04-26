@@ -42,7 +42,7 @@ export function AppShell() {
             Local memory only — sign in to sync your memory dir across machines.
           </div>
         )}
-        <main className="flex-1 overflow-auto">
+        <main className="flex-1 overflow-auto bg-stone-50 dark:bg-stone-950">
           <Outlet />
         </main>
       </div>

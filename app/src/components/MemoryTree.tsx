@@ -9,13 +9,20 @@ interface Props {
   /** When true, render a "+ new file" affordance at the bottom. */
   showNewFile?: boolean;
   onNewFile?: () => void;
+  /**
+   * Optional map of file rel-path → human title (parsed from frontmatter
+   * `title:`). When a title exists for a file we show it instead of the raw
+   * filename, while putting the filename on the `title=` tooltip so hover
+   * still reveals the underlying path.
+   */
+  titles?: Record<string, string>;
 }
 
 /**
  * Recursive memory file tree. Linear / Vercel aesthetic — mono font, tight
  * rows, no shadows. Folders expand on click; files navigate to /memory/<path>.
  */
-export function MemoryTree({ tree, showNewFile, onNewFile }: Props) {
+export function MemoryTree({ tree, showNewFile, onNewFile, titles }: Props) {
   return (
     <div className="font-mono text-[11px]">
       {tree.length === 0 ? (
@@ -23,7 +30,9 @@ export function MemoryTree({ tree, showNewFile, onNewFile }: Props) {
           (empty)
         </p>
       ) : (
-        tree.map((node) => <Node key={node.path} node={node} depth={0} />)
+        tree.map((node) => (
+          <Node key={node.path} node={node} depth={0} titles={titles} />
+        ))
       )}
       {showNewFile && (
         <button
@@ -39,7 +48,15 @@ export function MemoryTree({ tree, showNewFile, onNewFile }: Props) {
   );
 }
 
-function Node({ node, depth }: { node: MemoryNode; depth: number }) {
+function Node({
+  node,
+  depth,
+  titles,
+}: {
+  node: MemoryNode;
+  depth: number;
+  titles?: Record<string, string>;
+}) {
   const navigate = useNavigate();
   const location = useLocation();
   const [open, setOpen] = useState(depth === 0);
@@ -74,7 +91,9 @@ function Node({ node, depth }: { node: MemoryNode; depth: number }) {
                 (empty)
               </p>
             ) : (
-              children.map((c) => <Node key={c.path} node={c} depth={depth + 1} />)
+              children.map((c) => (
+                <Node key={c.path} node={c} depth={depth + 1} titles={titles} />
+              ))
             )}
           </div>
         )}
@@ -84,10 +103,16 @@ function Node({ node, depth }: { node: MemoryNode; depth: number }) {
 
   const targetUrl = `/memory/${node.path}`;
   const isActive = location.pathname === targetUrl;
+  // Prefer a frontmatter `title` for human-readable display, fall back to
+  // the filename. Always set `title=` to the raw filename so the user can
+  // hover to reveal the underlying file when titles are stripped or
+  // truncated mid-word.
+  const display = titles?.[node.path] ?? node.name;
   return (
     <button
       type="button"
       onClick={() => navigate(targetUrl)}
+      title={node.name}
       className={cn(
         "flex w-full items-center gap-1 rounded px-2 py-1 text-left",
         isActive
@@ -97,7 +122,7 @@ function Node({ node, depth }: { node: MemoryNode; depth: number }) {
       style={{ paddingLeft: padLeft + 12 }}
     >
       <FileText size={11} className="shrink-0 text-stone-400" />
-      <span className="truncate">{node.name}</span>
+      <span className="truncate">{display}</span>
     </button>
   );
 }

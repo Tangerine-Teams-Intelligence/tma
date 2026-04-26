@@ -411,9 +411,9 @@ export default function MeetingSetupRoute() {
       </main>
 
       {/* Sticky save bar */}
-      <div className="ti-no-select fixed bottom-0 left-0 right-0 border-t border-[var(--ti-border-faint)] bg-[var(--ti-paper-100)]/95 backdrop-blur">
+      <div className="ti-no-select fixed bottom-0 left-0 right-0 border-t border-stone-200 bg-stone-50/95 backdrop-blur dark:border-stone-800 dark:bg-stone-950/95">
         <div className="mx-auto flex max-w-3xl items-center justify-between gap-3 px-8 py-4">
-          <span className="text-xs text-[var(--ti-ink-500)]">
+          <span className="text-xs text-stone-500 dark:text-stone-400">
             {allOk
               ? "All sections complete."
               : `${[discordOk, transcriptionOk, claudeOk, teamOk].filter(Boolean).length} of 4 sections complete.`}
