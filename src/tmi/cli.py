@@ -552,12 +552,14 @@ def wrap(
     # under <target_repo>/memory/. Best-effort — failures here log but do not
     # break wrap.
     memory_paths: list[Path] = []
+    transcript_text_for_extract: str = ""
     try:
         from .memory import write_decisions, write_meeting_file
         from .transcript import read_all as read_transcript_all_for_memory
 
         memory_root = cfg.memory_root_path(m.target_adapter)
         transcript_text = read_transcript_all_for_memory(mdir)
+        transcript_text_for_extract = transcript_text
 
         # Strip frontmatter from the summary for the embedded body
         summary_body = result.summary_markdown
@@ -583,6 +585,24 @@ def wrap(
         )
     except (OSError, ValueError) as e:
         err.print(f"[yellow]memory write skipped: {e}[/]")
+
+    # v1.6: AI extractor — populate people/projects/threads/glossary. Best-
+    # effort. Skipped if `claude` not in PATH or if extractor errors out.
+    try:
+        if transcript_text_for_extract.strip():
+            counts = _run_extractor(
+                cfg, m, mdir, transcript_text_for_extract, mock=mock_claude
+            )
+            if counts is not None:
+                console.print(
+                    f"[green]extracted[/] "
+                    f"{counts['people']} people, "
+                    f"{counts['projects']} projects, "
+                    f"{counts['threads']} threads, "
+                    f"{counts['glossary']} glossary"
+                )
+    except Exception as e:  # noqa: BLE001 — never break wrap
+        err.print(f"[yellow]extractor skipped: {e}[/]")
 
     status = load_status(mdir)
     status.wrap.completed_at = datetime.fromisoformat(now_iso())
@@ -898,6 +918,110 @@ def status(
     table.add_row("Observer pid", str(st.observer.pid))
     table.add_row("Errors", str(len(st.errors)))
     console.print(table)
+
+
+# ----------------------------------------------------------------------
+# v1.6: extract entities (people/projects/threads/glossary)
+
+
+def _resolve_claude_cli(cfg: Config) -> Path | None:
+    """Return absolute path to claude binary, or None if not found."""
+    cli_path = cfg.claude.cli_path
+    if cli_path:
+        p = Path(cli_path).expanduser()
+        if p.exists():
+            return p
+    found = shutil.which("claude")
+    return Path(found) if found else None
+
+
+def _run_extractor(
+    cfg: Config,
+    meeting,  # type: ignore[no-untyped-def] # tmi.meeting.Meeting; avoids circular import at module load
+    meeting_dir_: Path,
+    transcript_text: str,
+    *,
+    mock: bool = False,
+) -> dict[str, int] | None:
+    """Invoke the AI extractor and persist all four entity types.
+
+    Returns a dict of per-bucket counts on success, or None if skipped (e.g.
+    no `claude` binary available, or empty transcript).
+    """
+    from .extractor import extract_from_meeting
+    from .memory import write_extracted_entities
+
+    if mock or os.environ.get("TMI_CLAUDE_MODE") == "stub":
+        # In mock/stub mode, run an offline fallback so the e2e test path is
+        # still exercised. We synthesize a tiny entity set from speaker prefixes
+        # in the transcript so downstream writers have something real to write.
+        entities = _mock_extract(transcript_text)
+    else:
+        cli = _resolve_claude_cli(cfg)
+        if cli is None:
+            err.print("[yellow]extractor: claude CLI not found in PATH; skipping[/]")
+            return None
+        entities = extract_from_meeting(meeting_dir_, transcript_text, cli)
+
+    if entities.is_empty():
+        return entities.counts()
+
+    memory_root = cfg.memory_root_path(meeting.target_adapter)
+    write_extracted_entities(memory_root, entities, meeting)
+    return entities.counts()
+
+
+def _mock_extract(transcript_text: str):  # type: ignore[no-untyped-def]
+    """Offline-only stub used when ``--mock-claude`` is set or
+    ``TMI_CLAUDE_MODE=stub``. Produces one PersonMention per unique speaker
+    prefix found in the transcript so wrap's e2e mock path writes real files
+    without shelling out to a fake binary.
+    """
+    import re as _re
+
+    from .extractor import ExtractedEntities, PersonMention
+
+    speakers: dict[str, int] = {}
+    for i, line in enumerate(transcript_text.splitlines(), start=1):
+        m = _re.match(r"^\[\d{2}:\d{2}:\d{2}\]\s+([a-z][a-z0-9_]*)\s*:", line)
+        if m:
+            alias = m.group(1)
+            speakers.setdefault(alias, i)
+    people = [
+        PersonMention(alias=a, context="Spoke in this meeting (mock).", transcript_lines=(ln,))
+        for a, ln in speakers.items()
+    ]
+    return ExtractedEntities(people=people)
+
+
+@app.command(help="Re-run the AI extractor on an existing meeting.")
+def extract(
+    meeting_id: Optional[str] = typer.Argument(None),
+    mock_claude: bool = typer.Option(False, "--mock-claude"),
+    config: Optional[Path] = typer.Option(None, "--config"),
+) -> None:
+    cfg, _ = _resolve_config(config)
+    mid = _resolve_meeting_id(cfg, meeting_id)
+    mdir = meeting_dir(cfg, mid)
+    m = load_meeting(mdir)
+
+    from .transcript import read_all as read_transcript_all_for_extract
+
+    transcript_text = read_transcript_all_for_extract(mdir)
+    if not transcript_text.strip():
+        err.print(f"[yellow]extract: transcript empty for {mid}; nothing to do[/]")
+        raise typer.Exit(0)
+
+    counts = _run_extractor(cfg, m, mdir, transcript_text, mock=mock_claude)
+    if counts is None:
+        raise typer.Exit(2)
+    console.print(
+        f"[green]extracted[/] "
+        f"{counts['people']} people, "
+        f"{counts['projects']} projects, "
+        f"{counts['threads']} threads, "
+        f"{counts['glossary']} glossary"
+    )
 
 
 # ----------------------------------------------------------------------
