@@ -1,0 +1,34 @@
+You are reviewing a team meeting transcript. Extract structured entities as JSON.
+
+For each entity type, ONLY extract things that are clearly present in the transcript. Don't infer or hallucinate.
+
+Output schema:
+{
+  "people": [
+    { "alias": "string", "context": "1-line about their role/contribution in this meeting", "transcript_lines": [int, ...] }
+  ],
+  "projects": [
+    { "slug": "kebab-case", "name": "Display Name", "context": "1-line", "transcript_lines": [int, ...] }
+  ],
+  "threads": [
+    { "topic": "kebab-case", "title": "Short title", "summary": "what was discussed", "open_questions": ["..."], "transcript_lines": [int, ...] }
+  ],
+  "glossary": [
+    { "term": "kebab-case", "definition": "what it means in this team's context", "transcript_lines": [int, ...] }
+  ]
+}
+
+Rules:
+- alias: lowercase, no spaces. Use the speaker prefix when possible (the part before ":" in "[HH:MM:SS] alias: ...").
+- slug / topic / term: kebab-case, lowercase, no spaces, ASCII only.
+- transcript_lines: 1-based line numbers from the line-numbered transcript below. Cite only lines that exist.
+- If a category has no entities, return an empty list for it.
+- Output exactly one fenced JSON block. No prose before or after.
+
+Output format:
+
+```json
+{"people": [...], "projects": [...], "threads": [...], "glossary": [...]}
+```
+
+Transcript:
