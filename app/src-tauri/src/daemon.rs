@@ -102,12 +102,14 @@ impl DaemonConfig {
     }
 }
 
-/// Starts the daemon loop on the current tokio runtime. Returns the
-/// control handle the host can use to stop the daemon and read status.
+/// Starts the daemon loop using Tauri's async runtime (works inside
+/// Tauri's `setup` hook where no tokio runtime context is active).
+/// Returns the control handle the host can use to stop the daemon and
+/// read status.
 pub fn start(cfg: DaemonConfig) -> Arc<DaemonControl> {
     let control = Arc::new(DaemonControl::default());
     let control_for_loop = control.clone();
-    tokio::spawn(async move {
+    tauri::async_runtime::spawn(async move {
         run_loop(cfg, control_for_loop).await;
     });
     control
