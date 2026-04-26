@@ -37,6 +37,7 @@ pub mod env;
 pub mod external;
 pub mod update;
 pub mod whisper_model;
+pub mod ai_tools;
 
 // Stage 1 Wave 3 — view-layer commands (today / people / projects / threads
 // / alignment / inbox / cursor writes / what's-new diff). Pure read/write
@@ -214,6 +215,9 @@ macro_rules! tmi_invoke_handler {
             $crate::commands::views::mark_user_opened,
             $crate::commands::views::read_cursor,
             $crate::commands::views::read_whats_new,
+            // v1.8 Phase 1 — AI tools detection (sidebar status panel)
+            $crate::commands::ai_tools::detect_ai_tools,
+            $crate::commands::ai_tools::get_ai_tool_status,
         ]
     };
 }
