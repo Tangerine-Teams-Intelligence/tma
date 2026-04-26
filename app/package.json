@@ -1,7 +1,7 @@
 {
   "name": "tangerine-meeting-app",
   "private": true,
-  "version": "1.5.3-beta.0",
+  "version": "1.5.4-beta.0",
   "type": "module",
   "description": "Tangerine AI Teams v1.5 desktop shell (Tauri 2.x + React 19).",
   "scripts": {
@@ -20,12 +20,14 @@
     "@supabase/supabase-js": "^2.104.1",
     "@tauri-apps/api": "^2.1.1",
     "@tauri-apps/plugin-dialog": "^2.0.1",
+    "@tauri-apps/plugin-fs": "^2.5.0",
     "@tauri-apps/plugin-shell": "^2.0.1",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
     "lucide-react": "^0.460.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "react-markdown": "^9.1.0",
     "react-router-dom": "^6.28.0",
     "tailwind-merge": "^2.5.4",
     "zustand": "^5.0.1"

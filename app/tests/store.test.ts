@@ -35,10 +35,15 @@ describe("wizard slice", () => {
 });
 
 describe("ui slice", () => {
-  it("toggleTheme flips light <-> dark", () => {
-    const before = useStore.getState().ui.theme;
-    useStore.getState().ui.toggleTheme();
-    expect(useStore.getState().ui.theme).not.toBe(before);
+  it("cycleTheme rotates system → light → dark → system", () => {
+    // Force a known starting point.
+    useStore.getState().ui.setTheme("system");
+    useStore.getState().ui.cycleTheme();
+    expect(useStore.getState().ui.theme).toBe("light");
+    useStore.getState().ui.cycleTheme();
+    expect(useStore.getState().ui.theme).toBe("dark");
+    useStore.getState().ui.cycleTheme();
+    expect(useStore.getState().ui.theme).toBe("system");
   });
 
   it("pushToast + dismissToast roundtrips", () => {

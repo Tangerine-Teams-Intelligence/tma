@@ -1,15 +1,24 @@
 /**
  * Zustand store. Slices: ui, wizard (legacy), config, skills.
  *
- * v1.5 super-app shell adds the `skills` slice for the marketplace + per-skill
- * config. The legacy `wizard` slice is kept because the field components
- * (SW1DiscordBot, SW2LocalWhisper, SW3ClaudeDetect, SW4TeamMembers) still read
- * `wizard.collected` directly — the meeting skill config form reuses those
- * components by mirroring its values into wizard.collected.
+ * v1.5.4 repositions Tangerine as a memory layer. The UI no longer thinks of
+ * itself as a 10-tool super-app — it thinks of itself as a tree of memory
+ * files plus the connectors (Sources) that feed them and the consumers (Sinks)
+ * that read them. The store reflects that:
+ *   - `ui.theme` now allows a `system` value (default).
+ *   - `ui.memoryRoot` is the on-disk path to the user's memory dir.
+ *   - The legacy `skills` slice is kept under `skills.meetingConfig` because
+ *     the Discord source reuses the meeting setup form.
+ *
+ * The `wizard` slice is still here because the field components
+ * (SW1DiscordBot, SW2LocalWhisper, SW3ClaudeDetect, SW4TeamMembers) still
+ * read `wizard.collected` directly. Those moved under
+ * components/sources/discord/ in v1.5.4 but their store contract is unchanged.
  */
 
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
+import { defaultMemoryRoot } from "./memory";
 
 // ---------- shared types ----------
 
@@ -39,19 +48,6 @@ export interface WizardData {
 
 export type WizardStep = 0 | 1 | 2 | 3 | 4 | 5;
 
-/** Skill ids. Only "meeting" is shipping in v1.5. */
-export type SkillId =
-  | "meeting"
-  | "wiki"
-  | "track"
-  | "review"
-  | "schedule"
-  | "loom"
-  | "hire"
-  | "voice"
-  | "survey"
-  | "chat";
-
 export interface MeetingConfig {
   discordToken?: string;
   guildId?: string;
@@ -65,18 +61,26 @@ export interface MeetingConfig {
   team?: TeamMember[];
 }
 
+export type ThemeMode = "light" | "dark" | "system";
+
 // ---------- slices ----------
 
 interface UiSlice {
-  theme: "light" | "dark";
+  /** "system" follows OS preference at boot; "light" / "dark" are explicit. */
+  theme: ThemeMode;
+  /** Resolved theme — what's actually applied to <html>. Recomputed on change. */
+  resolvedTheme: "light" | "dark";
+  /** Path to the user's memory dir (where source files land). */
+  memoryRoot: string;
   sidebarCollapsed: boolean;
   /** Cmd+K command palette visibility. */
   paletteOpen: boolean;
-  /** True when user chose "Skip — local only mode" on auth. */
+  /** True when user chose "Skip — local memory only" on auth. */
   localOnly: boolean;
   toasts: { id: string; kind: "info" | "success" | "error"; text: string }[];
-  setTheme: (t: "light" | "dark") => void;
-  toggleTheme: () => void;
+  setTheme: (t: ThemeMode) => void;
+  cycleTheme: () => void;
+  setMemoryRoot: (path: string) => void;
   toggleSidebar: () => void;
   setPalette: (open: boolean) => void;
   togglePalette: () => void;
@@ -103,7 +107,7 @@ interface ConfigSlice {
 }
 
 interface SkillsSlice {
-  /** Per-skill config. Only `meeting` is meaningful in v1.5. */
+  /** Per-source config. Only `meetingConfig` (Discord source) is meaningful. */
   meetingConfig: MeetingConfig;
   setMeetingConfig: (patch: Partial<MeetingConfig>) => void;
   resetMeetingConfig: () => void;
@@ -116,9 +120,9 @@ interface Store {
   skills: SkillsSlice;
 }
 
-// ---------- store ----------
+// ---------- helpers ----------
 
-/** Meeting tool is "configured" when every required field is filled. */
+/** Discord source is "configured" when every required field is filled. */
 export function isMeetingConfigured(m: MeetingConfig): boolean {
   const teamOk = !!m.team && m.team.length > 0 && m.team.every((t) => t.alias && t.displayName);
   const transcriptionOk =
@@ -127,41 +131,50 @@ export function isMeetingConfigured(m: MeetingConfig): boolean {
   return !!m.discordToken && !!m.guildId && transcriptionOk && !!m.claudeCliPath && teamOk;
 }
 
-/**
- * Legacy alias kept for components that haven't been renamed yet. Internally
- * just delegates to `isMeetingConfigured` for the meeting id.
- *
- * @deprecated use `isMeetingConfigured` instead.
- */
-export function isSkillInstalled(id: SkillId, m: MeetingConfig): boolean {
-  if (id !== "meeting") return false;
-  return isMeetingConfigured(m);
+function osPrefersDark(): boolean {
+  if (typeof window === "undefined" || !window.matchMedia) return false;
+  return window.matchMedia("(prefers-color-scheme: dark)").matches;
 }
 
-/** @deprecated use `isMeetingConfigured` instead. */
-export function listInstalledSkills(m: MeetingConfig): SkillId[] {
-  return isMeetingConfigured(m) ? (["meeting"] as SkillId[]) : [];
+function resolveTheme(t: ThemeMode): "light" | "dark" {
+  if (t === "system") return osPrefersDark() ? "dark" : "light";
+  return t;
 }
+
+function applyTheme(t: "light" | "dark"): void {
+  if (typeof document === "undefined") return;
+  const root = document.documentElement;
+  root.dataset.theme = t;
+  if (t === "dark") root.classList.add("dark");
+  else root.classList.remove("dark");
+}
+
+// ---------- store ----------
 
 export const useStore = create<Store>()(
   persist(
     (set, get) => ({
       ui: {
-        theme: "light",
+        theme: "system",
+        resolvedTheme: resolveTheme("system"),
+        memoryRoot: defaultMemoryRoot(),
         sidebarCollapsed: false,
         paletteOpen: false,
         localOnly: false,
         toasts: [],
         setTheme: (t) => {
-          set((s) => ({ ui: { ...s.ui, theme: t } }));
-          if (typeof document !== "undefined") {
-            document.documentElement.dataset.theme = t;
-          }
+          const resolved = resolveTheme(t);
+          set((s) => ({ ui: { ...s.ui, theme: t, resolvedTheme: resolved } }));
+          applyTheme(resolved);
         },
-        toggleTheme: () => {
-          const next = get().ui.theme === "light" ? "dark" : "light";
+        cycleTheme: () => {
+          const cur = get().ui.theme;
+          const next: ThemeMode =
+            cur === "system" ? "light" : cur === "light" ? "dark" : "system";
           get().ui.setTheme(next);
         },
+        setMemoryRoot: (path) =>
+          set((s) => ({ ui: { ...s.ui, memoryRoot: path } })),
         toggleSidebar: () =>
           set((s) => ({ ui: { ...s.ui, sidebarCollapsed: !s.ui.sidebarCollapsed } })),
         setPalette: (open) =>
@@ -225,13 +238,29 @@ export const useStore = create<Store>()(
       storage: createJSONStorage(() =>
         typeof window !== "undefined" ? window.localStorage : (undefined as unknown as Storage),
       ),
-      // Only persist the skills slice. UI / wizard / config are ephemeral or
-      // owned by the Tauri side.
-      partialize: (s) => ({ skills: { meetingConfig: s.skills.meetingConfig } }) as unknown as Store,
+      // Persist the meeting config + the user's theme + memory root choice.
+      partialize: (s) =>
+        ({
+          ui: { theme: s.ui.theme, memoryRoot: s.ui.memoryRoot },
+          skills: { meetingConfig: s.skills.meetingConfig },
+        }) as unknown as Store,
       merge: (persisted, current) => {
-        const p = persisted as { skills?: { meetingConfig?: MeetingConfig } } | undefined;
+        const p = persisted as
+          | {
+              ui?: { theme?: ThemeMode; memoryRoot?: string };
+              skills?: { meetingConfig?: MeetingConfig };
+            }
+          | undefined;
+        const theme = p?.ui?.theme ?? current.ui.theme;
+        const resolved = resolveTheme(theme);
         return {
           ...current,
+          ui: {
+            ...current.ui,
+            theme,
+            resolvedTheme: resolved,
+            memoryRoot: p?.ui?.memoryRoot ?? current.ui.memoryRoot,
+          },
           skills: {
             ...current.skills,
             meetingConfig: p?.skills?.meetingConfig ?? current.skills.meetingConfig,
@@ -241,6 +270,23 @@ export const useStore = create<Store>()(
     },
   ),
 );
+
+// Re-apply on hydrate so the initial paint matches the persisted theme.
+if (typeof window !== "undefined") {
+  applyTheme(resolveTheme(useStore.getState().ui.theme));
+  // Listen for OS theme changes when in "system" mode.
+  if (window.matchMedia) {
+    const mql = window.matchMedia("(prefers-color-scheme: dark)");
+    const onChange = () => {
+      if (useStore.getState().ui.theme === "system") {
+        const next = resolveTheme("system");
+        useStore.setState((s) => ({ ui: { ...s.ui, resolvedTheme: next } }));
+        applyTheme(next);
+      }
+    };
+    mql.addEventListener?.("change", onChange);
+  }
+}
 
 function cryptoRandomId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
