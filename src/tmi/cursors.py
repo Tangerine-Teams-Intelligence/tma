@@ -40,6 +40,27 @@ ATOM_ID_RE = re.compile(r"^evt-\d{4}-\d{2}-\d{2}-[a-f0-9]+$")
 
 # ----------------------------------------------------------------------
 # Schema
+#
+# Stage 2 hook §7 — preferences block. Stage 1 stores defaults. Stage 2
+# personalization trainer extension updates these from interaction patterns.
+DEFAULT_PREFERENCES: dict[str, object] = {
+    "brief_style": "default",         # Stage 2: "terse" | "detailed" | "numbers-first"
+    "brief_time": "08:00",            # Stage 2: learned from open patterns
+    "notification_channels": ["os", "email"],  # Stage 2: learned
+    "topics_of_interest": [],         # Stage 2 fills from interaction patterns
+    "topics_to_skip": [],             # Stage 2 learns from skips
+}
+
+
+def _default_preferences() -> dict[str, object]:
+    # Defensive: deep-copy mutable defaults so cursor instances don't share state.
+    return {
+        "brief_style": "default",
+        "brief_time": "08:00",
+        "notification_channels": ["os", "email"],
+        "topics_of_interest": [],
+        "topics_to_skip": [],
+    }
 
 
 @dataclass
@@ -50,6 +71,7 @@ class Cursor:
     atoms_acked: dict[str, str] = field(default_factory=dict)
     atoms_deferred: dict[str, str] = field(default_factory=dict)
     thread_cursor: dict[str, str] = field(default_factory=dict)
+    preferences: dict[str, object] = field(default_factory=_default_preferences)
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -59,11 +81,13 @@ class Cursor:
             "atoms_acked": dict(self.atoms_acked),
             "atoms_deferred": dict(self.atoms_deferred),
             "thread_cursor": dict(self.thread_cursor),
+            "preferences": dict(self.preferences),
         }
 
     @classmethod
     def from_dict(cls, raw: dict[str, object]) -> "Cursor":
         user = str(raw.get("user") or "unknown")
+        prefs = _merge_preferences(raw.get("preferences"))
         return cls(
             user=user,
             last_opened_at=_optional_str(raw.get("last_opened_at")),
@@ -71,7 +95,22 @@ class Cursor:
             atoms_acked=_str_str_map(raw.get("atoms_acked")),
             atoms_deferred=_str_str_map(raw.get("atoms_deferred")),
             thread_cursor=_str_str_map(raw.get("thread_cursor")),
+            preferences=prefs,
         )
+
+
+def _merge_preferences(raw: object) -> dict[str, object]:
+    """Take whatever's on disk + fill missing keys from defaults.
+
+    Forward-compatible: a cursor written by an older version that lacks
+    `preferences` (or has only a partial subset) gets the missing keys
+    populated. User-customised values always win.
+    """
+    out = _default_preferences()
+    if isinstance(raw, dict):
+        for k, v in raw.items():
+            out[str(k)] = v
+    return out
 
 
 def _optional_str(v: object) -> str | None:
@@ -360,6 +399,7 @@ def stale_users(
 
 __all__ = [
     "Cursor",
+    "DEFAULT_PREFERENCES",
     "cursors_dir",
     "cursor_file_path",
     "alignment_path",

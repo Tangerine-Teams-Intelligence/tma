@@ -9,18 +9,27 @@ from pathlib import Path
 import pytest
 
 from tmi.event_router import (
+    DEFAULT_AGI_FIELDS,
+    DEFAULT_VECTOR_STORE,
+    DEFAULT_WORLD_MODEL,
     Event,
     EventLifecycle,
     EventRefs,
+    clear_atom_subscribers,
     emit,
+    ensure_world_model,
     load_index,
     make_event_id,
+    on_atom,
     process,
     rebuild_index,
     sidecar_dir,
     timeline_dir,
     timeline_file_path,
     timeline_index_path,
+    validate_atom,
+    world_model_path,
+    write_sidecar_docs,
 )
 
 
@@ -218,7 +227,13 @@ def test_rebuild_index_reads_existing_files(tmp_path: Path) -> None:
 def test_rebuild_index_handles_empty_root(tmp_path: Path) -> None:
     memory = tmp_path / "memory"
     idx = rebuild_index(memory)
-    assert idx == {"version": 1, "events": [], "rebuilt_at": idx["rebuilt_at"]}
+    # vector_store slot ships in every index per Stage 2 hook §6.
+    assert idx == {
+        "version": 1,
+        "events": [],
+        "rebuilt_at": idx["rebuilt_at"],
+        "vector_store": DEFAULT_VECTOR_STORE,
+    }
 
 
 # ----------------------------------------------------------------------
@@ -399,3 +414,251 @@ def test_write_sidecar_docs_idempotent(tmp_path: Path) -> None:
     text2 = r2.read_text(encoding="utf-8")
     assert text1 == text2
     assert r1 == r2 and s1 == s2
+
+
+# ----------------------------------------------------------------------
+# Stage 2 hook §1 — atom validation (8 future-proof fields)
+
+
+def test_validate_atom_injects_all_defaults_when_absent() -> None:
+    raw: dict[str, object] = {"id": "evt-x", "ts": "2026-04-26T09:30:00+08:00"}
+    out = validate_atom(raw)
+    # Same dict mutated + returned
+    assert out is raw
+    for key, default in DEFAULT_AGI_FIELDS.items():
+        assert key in out
+        assert out[key] == default
+
+
+def test_validate_atom_preserves_existing_values() -> None:
+    raw: dict[str, object] = {
+        "id": "evt-x",
+        "embedding": [0.1, 0.2, 0.3],
+        "concepts": ["postgres", "migration"],
+        "confidence": 0.42,
+        "alternatives": [{"interpretation": "another"}],
+        "source_count": 3,
+        "reasoning_notes": "double-checked",
+        "sentiment": "neutral",
+        "importance": 0.8,
+    }
+    out = validate_atom(raw)
+    assert out["embedding"] == [0.1, 0.2, 0.3]
+    assert out["concepts"] == ["postgres", "migration"]
+    assert out["confidence"] == 0.42
+    assert out["alternatives"] == [{"interpretation": "another"}]
+    assert out["source_count"] == 3
+    assert out["reasoning_notes"] == "double-checked"
+    assert out["sentiment"] == "neutral"
+    assert out["importance"] == 0.8
+
+
+def test_validate_atom_default_lists_are_independent() -> None:
+    """Two atoms validated separately must not share the same list instance."""
+    a: dict[str, object] = {}
+    b: dict[str, object] = {}
+    validate_atom(a)
+    validate_atom(b)
+    assert isinstance(a["concepts"], list)
+    assert isinstance(b["concepts"], list)
+    a["concepts"].append("contamination")  # type: ignore[union-attr]
+    assert b["concepts"] == []
+
+
+def test_default_agi_fields_are_8() -> None:
+    """Schema must reserve exactly 8 future-proof slots per STAGE1_AGI_HOOKS.md."""
+    expected = {
+        "embedding",
+        "concepts",
+        "confidence",
+        "alternatives",
+        "source_count",
+        "reasoning_notes",
+        "sentiment",
+        "importance",
+    }
+    assert set(DEFAULT_AGI_FIELDS.keys()) == expected
+
+
+# ----------------------------------------------------------------------
+# Stage 2 hook §1 — Event dataclass exposes the 8 fields
+
+
+def test_event_dataclass_has_agi_fields_with_defaults() -> None:
+    ev = _make_event()
+    assert ev.embedding is None
+    assert ev.concepts == []
+    assert ev.confidence == 1.0
+    assert ev.alternatives == []
+    assert ev.source_count == 1
+    assert ev.reasoning_notes is None
+    assert ev.sentiment is None
+    assert ev.importance is None
+
+
+def test_emit_does_not_pollute_index_with_default_agi_fields(tmp_path: Path) -> None:
+    """Default values stay out of the index to keep it lean. Only non-defaults
+    bubble up so Stage 2 reads can detect 'has been processed' cheaply."""
+    memory = tmp_path / "memory"
+    ev = _make_event()
+    emit(memory, [ev])
+    idx = load_index(memory)
+    rec = next(e for e in idx["events"] if e["id"] == ev.id)
+    for key in DEFAULT_AGI_FIELDS:
+        assert key not in rec, f"default {key} leaked into index"
+
+
+def test_emit_serializes_non_default_agi_fields_into_index(tmp_path: Path) -> None:
+    memory = tmp_path / "memory"
+    ev = _make_event(
+        embedding=[0.1, 0.2],
+        concepts=["postgres"],
+        confidence=0.7,
+        sentiment="neutral",
+        importance=0.55,
+    )
+    emit(memory, [ev])
+    idx = load_index(memory)
+    rec = next(e for e in idx["events"] if e["id"] == ev.id)
+    assert rec["embedding"] == [0.1, 0.2]
+    assert rec["concepts"] == ["postgres"]
+    assert rec["confidence"] == 0.7
+    assert rec["sentiment"] == "neutral"
+    assert rec["importance"] == 0.55
+
+
+# ----------------------------------------------------------------------
+# Stage 2 hook §2 — on_atom subscriber API
+
+
+def test_on_atom_dispatches_to_subscribers(tmp_path: Path) -> None:
+    clear_atom_subscribers()
+    seen: list[tuple[dict[str, object], list[str]]] = []
+
+    @on_atom
+    def collect(atom: dict[str, object], paths: list[str]) -> None:
+        seen.append((atom, paths))
+
+    try:
+        memory = tmp_path / "memory"
+        ev = _make_event()
+        emit(memory, [ev])
+        assert len(seen) == 1
+        atom, paths = seen[0]
+        # Validated atom carries the AGI defaults.
+        for k in DEFAULT_AGI_FIELDS:
+            assert k in atom
+        # Fan-out paths include the timeline file at minimum.
+        assert any("timeline" in p for p in paths)
+    finally:
+        clear_atom_subscribers()
+
+
+def test_on_atom_subscriber_failure_does_not_break_ingest(tmp_path: Path) -> None:
+    clear_atom_subscribers()
+
+    @on_atom
+    def boom(atom, paths):
+        raise RuntimeError("subscriber sad")
+
+    try:
+        memory = tmp_path / "memory"
+        ev = _make_event()
+        # Should not raise.
+        emit(memory, [ev])
+        # Atom still landed in the timeline.
+        idx = load_index(memory)
+        assert any(e["id"] == ev.id for e in idx["events"])
+    finally:
+        clear_atom_subscribers()
+
+
+def test_on_atom_no_subscribers_is_silent(tmp_path: Path) -> None:
+    clear_atom_subscribers()
+    memory = tmp_path / "memory"
+    ev = _make_event()
+    res = emit(memory, [ev])
+    assert ev in res.events  # ingest still works
+
+
+# ----------------------------------------------------------------------
+# Stage 2 hook §6 — vector_store slot in index.json
+
+
+def test_load_index_seeds_vector_store_when_missing(tmp_path: Path) -> None:
+    memory = tmp_path / "memory"
+    idx = load_index(memory)
+    assert idx.get("vector_store") == DEFAULT_VECTOR_STORE
+
+
+def test_emit_persists_vector_store_block(tmp_path: Path) -> None:
+    memory = tmp_path / "memory"
+    ev = _make_event()
+    emit(memory, [ev])
+    idx = load_index(memory)
+    assert idx["vector_store"]["type"] == "none"
+    assert idx["vector_store"]["dimensions"] is None
+    assert idx["vector_store"]["model"] is None
+
+
+def test_rebuild_index_preserves_vector_store_setting(tmp_path: Path) -> None:
+    memory = tmp_path / "memory"
+    ev = _make_event()
+    emit(memory, [ev])
+    # Simulate Stage 2 flipping the flag.
+    from tmi.event_router import save_index
+
+    idx = load_index(memory)
+    idx["vector_store"] = {"type": "sqlite-vec", "dimensions": 1536, "model": "ada-3"}
+    save_index(memory, idx)
+    # Rebuild — preserved.
+    rebuilt = rebuild_index(memory)
+    assert rebuilt["vector_store"] == {
+        "type": "sqlite-vec",
+        "dimensions": 1536,
+        "model": "ada-3",
+    }
+
+
+# ----------------------------------------------------------------------
+# Stage 2 hook §8 — world_model.json
+
+
+def test_ensure_world_model_creates_file_with_defaults(tmp_path: Path) -> None:
+    memory = tmp_path / "memory"
+    p = ensure_world_model(memory)
+    assert p.exists()
+    assert p == world_model_path(memory)
+    loaded = json.loads(p.read_text(encoding="utf-8"))
+    assert loaded == DEFAULT_WORLD_MODEL
+
+
+def test_ensure_world_model_idempotent_does_not_overwrite(tmp_path: Path) -> None:
+    memory = tmp_path / "memory"
+    ensure_world_model(memory)
+    p = world_model_path(memory)
+    # Tinker with it as Stage 2 would.
+    p.write_text(json.dumps({"version": 1, "team_state": {"members": {"daizhe": {}}}}),
+                 encoding="utf-8")
+    ensure_world_model(memory)
+    # Still our content.
+    loaded = json.loads(p.read_text(encoding="utf-8"))
+    assert "members" in loaded["team_state"]
+
+
+def test_default_world_model_has_team_health_block() -> None:
+    health = DEFAULT_WORLD_MODEL["team_state"]["team_health"]  # type: ignore[index]
+    assert set(health.keys()) == {
+        "alignment",
+        "velocity",
+        "thrash_score",
+        "decision_freshness",
+    }
+    # Stage 1 starts everything null; daemon updates alignment over time.
+    assert all(v is None for v in health.values())
+
+
+def test_write_sidecar_docs_seeds_world_model(tmp_path: Path) -> None:
+    memory = tmp_path / "memory"
+    write_sidecar_docs(memory)
+    assert world_model_path(memory).exists()

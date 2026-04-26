@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from tmi.cursors import (
+    DEFAULT_PREFERENCES,
     Cursor,
     alignment_path,
     compute_alignment,
@@ -305,3 +306,88 @@ def test_stale_users_skips_users_who_never_opened(tmp_path: Path) -> None:
     emit(memory, [e1])
     save_cursor(memory, Cursor(user="ghost"))  # last_opened_at = None
     assert stale_users(memory) == []
+
+
+# ----------------------------------------------------------------------
+# Stage 2 hook §7 — preferences block on cursors
+
+
+def test_default_preferences_keys_match_spec() -> None:
+    expected = {
+        "brief_style",
+        "brief_time",
+        "notification_channels",
+        "topics_of_interest",
+        "topics_to_skip",
+    }
+    assert set(DEFAULT_PREFERENCES.keys()) == expected
+    assert DEFAULT_PREFERENCES["brief_style"] == "default"
+    assert DEFAULT_PREFERENCES["brief_time"] == "08:00"
+
+
+def test_fresh_cursor_starts_with_default_preferences() -> None:
+    cur = Cursor(user="daizhe")
+    assert cur.preferences["brief_style"] == "default"
+    assert cur.preferences["brief_time"] == "08:00"
+    assert cur.preferences["notification_channels"] == ["os", "email"]
+    assert cur.preferences["topics_of_interest"] == []
+    assert cur.preferences["topics_to_skip"] == []
+
+
+def test_cursor_preferences_persist_round_trip(tmp_path: Path) -> None:
+    memory = tmp_path / "memory"
+    cur = Cursor(user="daizhe")
+    cur.preferences["brief_style"] = "terse"
+    cur.preferences["topics_of_interest"] = ["pricing", "v1-launch"]
+    save_cursor(memory, cur)
+    re = load_cursor(memory, "daizhe")
+    assert re.preferences["brief_style"] == "terse"
+    assert re.preferences["topics_of_interest"] == ["pricing", "v1-launch"]
+
+
+def test_legacy_cursor_without_preferences_gets_defaults_on_load(tmp_path: Path) -> None:
+    """Cursor written by an older version (no preferences key) MUST upgrade
+    cleanly — Stage 2 should never crash on an old cursor file."""
+    memory = tmp_path / "memory"
+    path = cursor_file_path(memory, "olduser")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps({
+            "user": "olduser",
+            "last_opened_at": "2026-04-26T08:00:00+08:00",
+            "atoms_viewed": {},
+            "atoms_acked": {},
+            "atoms_deferred": {},
+            "thread_cursor": {},
+        }),
+        encoding="utf-8",
+    )
+    cur = load_cursor(memory, "olduser")
+    assert cur.preferences["brief_style"] == "default"
+    assert cur.preferences["topics_of_interest"] == []
+
+
+def test_partial_preferences_get_missing_keys_filled(tmp_path: Path) -> None:
+    """Cursor with some preference keys keeps user values + fills holes."""
+    memory = tmp_path / "memory"
+    path = cursor_file_path(memory, "partial")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps({
+            "user": "partial",
+            "preferences": {"brief_style": "numbers-first"},  # missing the rest
+        }),
+        encoding="utf-8",
+    )
+    cur = load_cursor(memory, "partial")
+    assert cur.preferences["brief_style"] == "numbers-first"  # user value preserved
+    assert cur.preferences["brief_time"] == "08:00"            # default filled
+    assert cur.preferences["topics_of_interest"] == []          # default filled
+
+
+def test_preferences_default_lists_are_independent_per_cursor() -> None:
+    """Two cursors must not share the same default list instance."""
+    a = Cursor(user="a")
+    b = Cursor(user="b")
+    a.preferences["topics_of_interest"].append("contamination")  # type: ignore[union-attr]
+    assert b.preferences["topics_of_interest"] == []

@@ -134,6 +134,15 @@ class Event:
     status: str = "active"
     lifecycle: EventLifecycle = field(default_factory=EventLifecycle)
     sample: bool = False
+    # === Stage 2 hooks (STAGE1_AGI_HOOKS.md §1) — defaults at Stage 1 ===
+    embedding: list[float] | None = None        # vector[N] — Stage 2 fills
+    concepts: list[str] = field(default_factory=list)  # entity list — Stage 2 NER fills
+    confidence: float = 1.0                     # 0-1 — Stage 1 raw = 1.0
+    alternatives: list[dict[str, object]] = field(default_factory=list)
+    source_count: int = 1                       # cross-source verification — Stage 2 increments
+    reasoning_notes: str | None = None          # Stage 2 reasoning loop annotations
+    sentiment: str | None = None                # tone analysis — Stage 2 fills
+    importance: float | None = None             # 0-1 — Stage 2 fills
 
     def to_index_record(self, file: Path, line: int) -> dict[str, object]:
         rec: dict[str, object] = {
@@ -160,6 +169,26 @@ class Event:
             rec["lifecycle"] = lc
         if self.sample:
             rec["sample"] = True
+        # Stage 2 hook fields — surfaced into the index so future reasoning
+        # agents can subscribe / query without re-walking timeline files.
+        # Defaults are NOT serialized to keep Stage 1 indexes lean; Stage 2
+        # writes will overwrite once they begin filling these in.
+        if self.embedding is not None:
+            rec["embedding"] = list(self.embedding)
+        if self.concepts:
+            rec["concepts"] = list(self.concepts)
+        if self.confidence != 1.0:
+            rec["confidence"] = self.confidence
+        if self.alternatives:
+            rec["alternatives"] = list(self.alternatives)
+        if self.source_count != 1:
+            rec["source_count"] = self.source_count
+        if self.reasoning_notes is not None:
+            rec["reasoning_notes"] = self.reasoning_notes
+        if self.sentiment is not None:
+            rec["sentiment"] = self.sentiment
+        if self.importance is not None:
+            rec["importance"] = self.importance
         return rec
 
 
@@ -215,13 +244,14 @@ Files:
 | Path                    | Owner / writer            | Purpose                                                     |
 |-------------------------|---------------------------|-------------------------------------------------------------|
 | `timeline.json`         | event_router + daemon     | Index of every atom (id, ts, source, refs, file pointer).   |
-| `cursors/<user>.json`   | UI / cursors API          | Per-user view/ack/defer state. One file per user.           |
+| `cursors/<user>.json`   | UI / cursors API          | Per-user view/ack/defer state + preferences. One file per user. |
 | `alignment.json`        | daemon (alignment-snapshot) | Same-screen-rate history (last 200 snapshots).            |
+| `world_model.json`      | daemon (Stage 2 reasoning)| Team state inference (Stage 1 = defaults). Stage 2 hook §8. |
 | `briefs/<YYYY-MM-DD>.md`| daemon (brief-today)      | Daily brief, generated once per day after 8 AM local.       |
 | `briefs/pending.md`     | daemon (alerts-refresh)   | Pending alerts queue (overdue, stale, review-soon).         |
 | `daemon-status.json`    | daemon                    | Last heartbeat / pull / brief / errors. Read by UI.         |
 | `daemon.log`            | daemon                    | Human-readable log (rotated by app shell).                  |
-| `SCHEMA.md`             | event_router              | Atom + timeline + cursor + alignment formal definitions.    |
+| `SCHEMA.md`             | event_router              | Atom + timeline + cursor + alignment + world_model defs.    |
 
 **git: ignored by default.** None of this is source-of-truth — `memory/` is.
 The repo's `.gitignore` should include `.tangerine/`. The team_repo bootstrap
@@ -241,6 +271,7 @@ a PR comment, a Linear ticket transition, a calendar block — flattens into:
 
 ```yaml
 ---
+# === Core fields (Stage 1 — required) ===
 id: evt-2026-04-26-aBc12dEf   # ULID-like; date-prefixed + 10 hex of content hash. Stable.
 ts: 2026-04-26T14:32:11+08:00 # RFC 3339 in source TZ; daemon canonicalises to +08:00 if missing.
 source: discord | linear | github | slack | calendar | system | meeting
@@ -260,9 +291,27 @@ lifecycle:
   due: 2026-05-01
   owner: daizhe
 sample: false                  # true → seeded fixture; never participates in alignment / briefs.
+
+# === Stage 2 AGI hooks (STAGE1_AGI_HOOKS.md §1) — Stage 1 ships defaults ===
+embedding: null                # vector[N] — Stage 2 fills (OpenAI ada / Cohere / local)
+concepts: []                   # entity list — Stage 2 NER + concept resolution
+confidence: 1.0                # 0-1 — Stage 1 raw = 1.0; Stage 2 LLM-graded
+alternatives: []               # alt interpretations when atom is ambiguous
+source_count: 1                # cross-source verification counter
+reasoning_notes: null          # Stage 2 reasoning loop annotations
+sentiment: null                # tone analysis — Stage 2 fills
+importance: null               # 0-1 priority beyond recency — Stage 2 fills
 ---
 <markdown body — first non-empty line surfaces as headline>
 ```
+
+**Validation:** every atom write goes through `validate_atom()` which injects
+the 8 future-fields if a connector forgot to populate them. No atom without
+all 8 future fields. See `tmi.event_router.DEFAULT_AGI_FIELDS`.
+
+**Subscription:** `@event_router.on_atom` registers a callback fired after
+fan-out. Stage 1 = 0 subscribers. Stage 2 = reasoning agents (concept
+extractor, conflict detector, brief composer) plug in here.
 
 ## Timeline file (`memory/timeline/<YYYY-MM-DD>.md`)
 
@@ -309,12 +358,22 @@ day_summary: null
       "body": "merged PR #47"
     }
   ],
-  "rebuilt_at": "2026-04-26T09:31:00+08:00"
+  "rebuilt_at": "2026-04-26T09:31:00+08:00",
+  "vector_store": {
+    "type": "none",         /* Stage 2 hook §6 — Stage 1 default */
+    "dimensions": null,
+    "model": null
+  }
 }
 ```
 
 Sorted by `(ts, id)` ascending. The daemon rebuilds this on every heartbeat.
 Performance target: 10K events rebuild in < 2s.
+
+Stage 2 swaps `vector_store.type` to `sqlite-vec` / `turso` / `pinecone` and
+populates from each atom's `embedding` field. Search functions check
+`vector_store.type` and fall back to substring (Stage 1) vs vector (Stage 2)
+cleanly.
 
 ## Cursors (`.tangerine/cursors/<user>.json`)
 
@@ -325,11 +384,44 @@ Performance target: 10K events rebuild in < 2s.
   "atoms_viewed": { "evt-...aBc": "2026-04-26T09:00:00+08:00" },
   "atoms_acked": { "evt-...xYz": "2026-04-26T09:01:30+08:00" },
   "atoms_deferred": { "evt-...123": "2026-04-27T00:00:00+08:00" },
-  "thread_cursor": { "pricing-debate": "evt-...last-read" }
+  "thread_cursor": { "pricing-debate": "evt-...last-read" },
+  "preferences": {
+    "brief_style": "default",                /* Stage 2: terse | detailed | numbers-first */
+    "brief_time": "08:00",                   /* Stage 2: learned from open patterns */
+    "notification_channels": ["os", "email"],/* Stage 2: learned */
+    "topics_of_interest": [],                /* Stage 2 fills */
+    "topics_to_skip": []                     /* Stage 2 learns */
+  }
 }
 ```
 
-One file per user so git merges stay sane.
+One file per user so git merges stay sane. The `preferences` block (Stage 2
+hook §7) ships with defaults at Stage 1; Stage 2 personalization trainer
+updates it from interaction patterns.
+
+## World model (`.tangerine/world_model.json`)
+
+Stage 2 hook §8. Stage 1 ships defaults; Stage 2 reasoning loop maintains
+team_state continuously.
+
+```json
+{
+  "version": 1,
+  "team_state": {
+    "members": {},                         /* Stage 2: {alias: {role, focus, load}} */
+    "active_projects": [],
+    "open_threads": [],
+    "recent_decisions": [],
+    "team_health": {
+      "alignment": null,                   /* daemon updates from cursors */
+      "velocity": null,                    /* Stage 2 fills */
+      "thrash_score": null,                /* Stage 2 fills */
+      "decision_freshness": null           /* Stage 2 fills */
+    }
+  },
+  "last_inference_at": null
+}
+```
 
 ## Alignment metric (`.tangerine/alignment.json`)
 
@@ -369,20 +461,105 @@ Refreshed by the daemon every heartbeat.
 
 Markdown. Generated once per day on the first heartbeat ≥ 8 AM local. Covers
 yesterday's events, grouped by `kind`, plus a per-user "what you missed".
+
+## AGI response envelope (Stage 1 Hook 4)
+
+Three response surfaces in the v1.7 stack — the MCP server (Cursor / Claude
+Code / Claude Desktop), the desktop app's localhost ws server (browser
+extension), and the future MCP-over-ws gateway — all wrap their successful
+payloads in this envelope:
+
+```json
+{
+  "data":              { /* tool/op-specific payload */ },
+  "confidence":        1.0,
+  "freshness_seconds": 0,
+  "source_atoms":      ["evt-2026-04-26-aBc12dEf"],
+  "alternatives":      [],
+  "reasoning_notes":   null
+}
+```
+
+Stage 1 always pins ``confidence = 1.0``, ``alternatives = []``,
+``reasoning_notes = null``. The other fields carry real values:
+
+- ``freshness_seconds`` — seconds since the freshest source atom or file
+  mtime contributing to this response. ``0`` means "right now / unknown".
+- ``source_atoms`` — atom ids that contributed (empty when the response
+  was computed directly from raw memory files, e.g. substring search).
+
+Reference implementations:
+
+- ``mcp-server/src/envelope.ts`` — TypeScript wrap helper.
+- ``app/src-tauri/src/ws_server.rs::AgiEnvelope`` — Rust counterpart.
+- ``browser-ext/src/shared/types.ts::AgiEnvelope`` — client-side type.
+
+Stage 2 will compute real ``confidence`` from the reasoning loop's trust
+grading, populate ``alternatives`` when the model surfaces competing
+interpretations, and fill ``reasoning_notes`` with a one-line explanation.
+Clients (Cursor / Claude Code / browser ext smart-chip) already render a
+small confidence badge from this field so the affordance is in place from
+day one — the badge just always says "⭐ confident" until Stage 2 ships.
 """
 
 
 def write_sidecar_docs(memory_root: Path) -> tuple[Path, Path]:
     """Materialise README.md + SCHEMA.md inside ``.tangerine/``. Idempotent —
     overwrites in place so docstring updates ship cleanly with new releases.
-    Returns the two paths written.
+    Returns the two paths written. Also seeds ``world_model.json`` (Stage 2
+    hook §8) if absent.
     """
     sd = sidecar_dir(memory_root)
     readme = sd / "README.md"
     schema = sd / "SCHEMA.md"
     atomic_write_text(readme, SIDECAR_README)
     atomic_write_text(schema, SIDECAR_SCHEMA)
+    ensure_world_model(memory_root)
     return readme, schema
+
+
+# ----------------------------------------------------------------------
+# Stage 2 hook §8 — world model
+#
+# `<root>/.tangerine/world_model.json` reserves the slot for Stage 2 team-state
+# inference (active projects, open threads, alignment, velocity, thrash).
+# Stage 1 ships defaults — alignment is already computed (real number from
+# cursors), the rest stay null until reasoning agents fill them in.
+
+DEFAULT_WORLD_MODEL: dict[str, object] = {
+    "version": 1,
+    "team_state": {
+        "members": {},               # Stage 2: {alias: {role, focus, load}}
+        "active_projects": [],
+        "open_threads": [],
+        "recent_decisions": [],
+        "team_health": {
+            "alignment": None,       # Stage 1 computes from cursors; daemon updates
+            "velocity": None,        # Stage 2 fills
+            "thrash_score": None,    # Stage 2 fills
+            "decision_freshness": None,  # Stage 2 fills
+        },
+    },
+    "last_inference_at": None,
+}
+
+
+def world_model_path(memory_root: Path) -> Path:
+    return sidecar_dir(memory_root) / "world_model.json"
+
+
+def ensure_world_model(memory_root: Path) -> Path:
+    """Create world_model.json with defaults if missing. Idempotent.
+
+    Stage 1: file exists with all team_state fields null/empty. Stage 2
+    reasoning loop maintains team_state continuously.
+    """
+    p = world_model_path(memory_root)
+    if p.exists():
+        return p
+    text = json.dumps(DEFAULT_WORLD_MODEL, ensure_ascii=False, indent=2, sort_keys=False)
+    atomic_write_text(p, text)
+    return p
 
 
 def timeline_dir(memory_root: Path) -> Path:
@@ -517,18 +694,34 @@ def _append_event_to_day(path: Path, ev: Event) -> int | None:
 # Index (.tangerine/timeline.json)
 
 
+# Stage 2 hook §6: index.json reserves a vector_store slot. Stage 1 ships
+# `type: "none"`. Stage 2 swaps to "sqlite-vec" / "turso" / "pinecone" and
+# populates from each atom's `embedding` field. Search functions check
+# `vector_store.type` and fall back to substring (Stage 1) vs vector (Stage 2).
+DEFAULT_VECTOR_STORE: dict[str, object] = {
+    "type": "none",
+    "dimensions": None,
+    "model": None,
+}
+
+
 def load_index(memory_root: Path) -> dict[str, object]:
     p = timeline_index_path(memory_root)
     if not p.exists():
-        return {"version": 1, "events": []}
+        return {"version": 1, "events": [], "vector_store": dict(DEFAULT_VECTOR_STORE)}
     try:
-        return json.loads(p.read_text(encoding="utf-8"))
+        idx = json.loads(p.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
-        return {"version": 1, "events": []}
+        return {"version": 1, "events": [], "vector_store": dict(DEFAULT_VECTOR_STORE)}
+    if isinstance(idx, dict) and "vector_store" not in idx:
+        idx["vector_store"] = dict(DEFAULT_VECTOR_STORE)
+    return idx
 
 
 def save_index(memory_root: Path, index: dict[str, object]) -> None:
     p = timeline_index_path(memory_root)
+    if "vector_store" not in index:
+        index["vector_store"] = dict(DEFAULT_VECTOR_STORE)
     text = json.dumps(index, ensure_ascii=False, indent=2, sort_keys=False)
     atomic_write_text(p, text)
 
@@ -546,6 +739,9 @@ def _upsert_index_entry(index: dict[str, object], rec: dict[str, object]) -> Non
 def rebuild_index(memory_root: Path) -> dict[str, object]:
     """Walk ``timeline/*.md`` and rebuild the index from scratch. Used by the
     daemon heartbeat. Stable order — events sorted by (ts, id) ascending.
+
+    Preserves any existing ``vector_store`` block (Stage 2 hook §6) so a
+    rebuild doesn't reset Stage 2 search backend config.
     """
     events: list[dict[str, object]] = []
     tdir = timeline_dir(memory_root)
@@ -574,7 +770,14 @@ def rebuild_index(memory_root: Path) -> dict[str, object]:
             if rec is not None:
                 events.append(rec)
     events.sort(key=lambda r: (str(r.get("ts", "")), str(r.get("id", ""))))
-    index = {"version": 1, "events": events, "rebuilt_at": _now_iso()}
+    prior = load_index(memory_root)
+    vector_store = prior.get("vector_store") if isinstance(prior, dict) else None
+    index: dict[str, object] = {
+        "version": 1,
+        "events": events,
+        "rebuilt_at": _now_iso(),
+        "vector_store": vector_store if isinstance(vector_store, dict) else dict(DEFAULT_VECTOR_STORE),
+    }
     save_index(memory_root, index)
     return index
 
@@ -758,9 +961,82 @@ class RouteResult:
         }
 
 
+# ----------------------------------------------------------------------
+# Stage 2 hooks — atom validation + on_atom subscription API
+#
+# STAGE1_AGI_HOOKS.md §1: every atom MUST have all 8 future-fields, even at
+# defaults. Stage 2 reasoning agents fill them in; Stage 1 just reserves the
+# slots so no schema migration is needed when reasoning lands.
+#
+# STAGE1_AGI_HOOKS.md §2: register subscribers via @on_atom; called after
+# fan-out is complete. Stage 1 has zero subscribers — the dispatch mechanism
+# exists so Stage 2 reasoning agents (concept extractor, conflict detector,
+# brief composer) plug in without touching event_router internals.
+
+DEFAULT_AGI_FIELDS: dict[str, object] = {
+    "embedding": None,         # vector[N] — Stage 2 fills
+    "concepts": [],            # entity list — Stage 2 fills
+    "confidence": 1.0,         # 0-1 — Stage 1 = 1.0 (raw)
+    "alternatives": [],        # alternative interpretations
+    "source_count": 1,         # cross-source verification
+    "reasoning_notes": None,   # Stage 2 reasoning loop annotations
+    "sentiment": None,         # tone analysis
+    "importance": None,        # 0-1 — Stage 2 fills
+}
+
+
+def validate_atom(atom: dict[str, object]) -> dict[str, object]:
+    """Inject Stage 2 AGI defaults if missing. Required for Stage 2 reasoning
+    agents to plug in without a schema migration.
+
+    Mutates and returns the same dict for ergonomic chaining. Existing values
+    win — defaults only fill genuinely-absent keys.
+    """
+    for k, v in DEFAULT_AGI_FIELDS.items():
+        if k not in atom:
+            # Use a fresh copy for mutable defaults so subscribers can't
+            # accidentally cross-contaminate atoms.
+            atom[k] = list(v) if isinstance(v, list) else v
+    return atom
+
+
+_atom_subscribers: list[object] = []
+
+
+def on_atom(handler):
+    """Decorator: register a callback fired after every atom write.
+
+    Stage 1: 0 subscribers. The dispatch loop runs but is a no-op.
+    Stage 2: reasoning agents subscribe — concept extractor, conflict
+    detector, brief composer, etc.
+
+    Handler signature: ``handler(atom: dict, fanout_paths: list[str]) -> None``.
+    Subscriber failures are logged but never break the ingest path.
+    """
+    _atom_subscribers.append(handler)
+    return handler
+
+
+def clear_atom_subscribers() -> None:
+    """Test-only: drop all subscribers. Production code never calls this."""
+    _atom_subscribers.clear()
+
+
+def _dispatch_atom(atom: dict[str, object], fanout_paths: list[str]) -> None:
+    for handler in list(_atom_subscribers):
+        try:
+            handler(atom, fanout_paths)  # type: ignore[operator]
+        except Exception as e:  # noqa: BLE001 — subscriber must not break ingest
+            name = getattr(handler, "__name__", repr(handler))
+            logger.warning("on_atom subscriber %s failed: %s", name, e)
+
+
 def emit(memory_root: Path, events: Iterable[Event]) -> RouteResult:
     """Low-level fan-out: take a list of events already constructed, write
     them to timeline + entity files + index. Idempotent.
+
+    Every atom passes through ``validate_atom`` (Stage 2 hook §1) and triggers
+    ``on_atom`` subscribers (Stage 2 hook §2) after fan-out completes.
     """
     result = RouteResult()
     index = load_index(memory_root)
@@ -783,7 +1059,14 @@ def emit(memory_root: Path, events: Iterable[Event]) -> RouteResult:
             result.timeline_writes.append(path)
             rec = ev.to_index_record(path, line)
             _upsert_index_entry(index, rec)
-        result.entity_writes.extend(_fan_out_entities(memory_root, ev))
+        entity_paths = _fan_out_entities(memory_root, ev)
+        result.entity_writes.extend(entity_paths)
+        # Stage 2 hook §2: dispatch to subscribers with the validated atom +
+        # the paths we just touched. No-op when no subscribers registered.
+        atom_dict = ev.to_index_record(path if line else timeline_file_path(memory_root, day), line or 0)
+        validate_atom(atom_dict)
+        fanout_paths = [_relative(p) for p in [path] + entity_paths]
+        _dispatch_atom(atom_dict, fanout_paths)
     # Stable order in index.
     events_list = index.get("events")
     if isinstance(events_list, list):
@@ -1086,4 +1369,13 @@ __all__ = [
     "timeline_file_path",
     "timeline_index_path",
     "sidecar_dir",
+    "validate_atom",
+    "on_atom",
+    "clear_atom_subscribers",
+    "DEFAULT_AGI_FIELDS",
+    "DEFAULT_VECTOR_STORE",
+    "DEFAULT_WORLD_MODEL",
+    "ensure_world_model",
+    "world_model_path",
+    "write_sidecar_docs",
 ]
