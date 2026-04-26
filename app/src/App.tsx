@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Route, Routes, Navigate, useLocation } from "react-router-dom";
+import { Route, Routes, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { AppShell } from "@/components/layout/AppShell";
 import AuthRoute from "@/routes/auth";
 import MemoryRoute from "@/routes/memory";
@@ -8,6 +8,8 @@ import SinkDetailRoute from "@/routes/sink-detail";
 import InboxRoute from "@/routes/inbox";
 import AlignmentRoute from "@/routes/alignment";
 import DiscordSourceRoute from "@/routes/sources/discord";
+import OnboardingTeamRoute from "@/routes/onboarding-team";
+import JoinTeamRoute from "@/routes/join-team";
 import MeetingDetailPage from "@/pages/meetings/detail";
 import LivePage from "@/pages/live";
 import ReviewPage from "@/pages/review";
@@ -15,12 +17,15 @@ import SettingsPage from "@/pages/settings";
 import { getConfig } from "@/lib/tauri";
 import { useStore } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
+import { onDeepLinkJoin, syncStart } from "@/lib/git";
 
 export default function App() {
   const setYaml = useStore((s) => s.config.setYaml);
   const markLoaded = useStore((s) => s.config.markLoaded);
+  const memoryConfig = useStore((s) => s.ui.memoryConfig);
   const { loading, signedIn } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
 
   // Best-effort: load any existing ~/.tmi/config.yaml so the live meeting UI
   // has the data it needs. We no longer block on it — the auth gate is the
@@ -44,6 +49,33 @@ export default function App() {
     };
   }, [setYaml, markLoaded]);
 
+  // v1.6.0: subscribe to tangerine:// deep links. The single-instance handler
+  // emits `deeplink://join` whenever the OS routes a URI into the running
+  // app — we navigate to /join with the URI in the query so JoinTeamRoute
+  // can parse + accept it.
+  useEffect(() => {
+    let unsub: (() => void) | undefined;
+    void onDeepLinkJoin((uri) => {
+      navigate(`/join?uri=${encodeURIComponent(uri)}`);
+    }).then((u) => {
+      unsub = u;
+    });
+    return () => {
+      unsub?.();
+    };
+  }, [navigate]);
+
+  // v1.6.0: when memoryConfig is in team mode but the sync ticker isn't
+  // running yet (cold launch), kick it off so the indicator goes green.
+  useEffect(() => {
+    if (memoryConfig.mode !== "team") return;
+    if (!memoryConfig.repoLocalPath || !memoryConfig.githubLogin) return;
+    void syncStart({
+      repoPath: memoryConfig.repoLocalPath,
+      login: memoryConfig.githubLogin,
+    });
+  }, [memoryConfig.mode, memoryConfig.repoLocalPath, memoryConfig.githubLogin]);
+
   if (loading) {
     return (
       <div className="flex h-full w-full items-center justify-center bg-stone-50 dark:bg-stone-950">
@@ -62,6 +94,13 @@ export default function App() {
     );
   }
 
+  // v1.6.0: deep-link landing + first-run team onboarding are full-page
+  // routes (no sidebar). We render them BEFORE the auth gate so a click on a
+  // tangerine:// link in another app (where Tangerine isn't yet signed in)
+  // still gets parsed — JoinTeamRoute redirects to /auth as needed.
+  // The team onboarding fires the first time the user reaches /memory and
+  // hasn't picked a mode; we redirect from /memory there in MemoryRoute itself.
+
   return (
     <Routes>
       {/* Auth screen still reachable when signed in, but redirects to memory. */}
@@ -76,6 +115,10 @@ export default function App() {
       {/* Old "Meeting tool" surface — Meeting was the Discord source. */}
       <Route path="/meeting" element={<Navigate to="/sources/discord" replace />} />
       <Route path="/meeting/setup" element={<DiscordSourceRoute />} />
+
+      {/* v1.6.0 — full-page routes (no sidebar). */}
+      <Route path="/onboarding-team" element={<OnboardingTeamRoute />} />
+      <Route path="/join" element={<JoinTeamRoute />} />
 
       {/* Discord source setup is a full-page form — no sidebar chrome. */}
       <Route path="/sources/discord/setup" element={<DiscordSourceRoute />} />

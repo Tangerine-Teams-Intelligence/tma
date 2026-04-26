@@ -20,6 +20,7 @@ import {
   type MemoryNode,
 } from "@/lib/memory";
 import { MemoryTree } from "@/components/MemoryTree";
+import { SyncStatusIndicator } from "@/components/SyncStatusIndicator";
 import { kbdShortcut } from "@/lib/platform";
 
 /**
@@ -219,6 +220,7 @@ export function Sidebar() {
 
       {/* Footer */}
       <div className="border-t border-stone-200 px-2 py-2 dark:border-stone-800">
+        <SyncStatusIndicator />
         <NavLink
           to="/settings"
           className={({ isActive }) =>

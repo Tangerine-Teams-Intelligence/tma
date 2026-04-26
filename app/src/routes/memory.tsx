@@ -52,11 +52,21 @@ export default function MemoryRoute() {
   const setMemoryRoot = useStore((s) => s.ui.setMemoryRoot);
   const samplesSeeded = useStore((s) => s.ui.samplesSeeded);
   const setSamplesSeeded = useStore((s) => s.ui.setSamplesSeeded);
+  const memoryConfigMode = useStore((s) => s.ui.memoryConfig.mode);
   const pushToast = useStore((s) => s.ui.pushToast);
 
   const [content, setContent] = useState<string | null>(null);
   const [tree, setTree] = useState<MemoryNode[]>([]);
   const [autoSelected, setAutoSelected] = useState(false);
+
+  // v1.6.0: gate the onboarding modal. First time the user lands here we
+  // route them through "where will your team's memory live?" instead of
+  // showing an empty memory tree.
+  useEffect(() => {
+    if (memoryConfigMode === undefined) {
+      navigate("/onboarding-team", { replace: true });
+    }
+  }, [memoryConfigMode, navigate]);
 
   const folderCounts = useMemo(() => countMemoryByFolder(tree), [tree]);
   const coverage: CoverageStats = useMemo(() => {

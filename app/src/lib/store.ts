@@ -63,6 +63,29 @@ export interface MeetingConfig {
 
 export type ThemeMode = "light" | "dark" | "system";
 
+/**
+ * v1.6.0 team memory sync config. Shape mirrors the Rust side at
+ * `commands/sync.rs::SyncStartArgs` plus the fields the React side needs
+ * to remember between launches (mode, github login, clone URL, local path).
+ *
+ * `mode === undefined` → first-run: the /memory route opens the
+ *   onboarding modal that asks the champion to pick "create new" / "use
+ *   existing" / "solo".
+ * `mode === "solo"` → the legacy `~/.tangerine-memory/` flow.
+ * `mode === "team"` → the repo at `repoLocalPath` is the source of truth.
+ *   `repoUrl` is the GitHub clone URL, `githubLogin` identifies the OAuth
+ *   token in the OS keychain (the token itself never lives in the store).
+ */
+export interface MemoryConfig {
+  mode?: "solo" | "team";
+  repoUrl?: string;
+  repoLocalPath?: string;
+  githubLogin?: string;
+  /** Filled when the champion creates a new repo so we can show the invite. */
+  inviteUri?: string;
+  inviteExpiresAt?: number;
+}
+
 // ---------- slices ----------
 
 interface UiSlice {
@@ -81,6 +104,8 @@ interface UiSlice {
   samplesSeeded: boolean;
   /** True after the user dismisses the in-content sample banner. */
   sampleBannerDismissed: boolean;
+  /** v1.6.0 team memory sync configuration. Undefined mode → first-run. */
+  memoryConfig: MemoryConfig;
   toasts: { id: string; kind: "info" | "success" | "error"; text: string }[];
   setTheme: (t: ThemeMode) => void;
   cycleTheme: () => void;
@@ -91,6 +116,8 @@ interface UiSlice {
   setLocalOnly: (v: boolean) => void;
   setSamplesSeeded: (v: boolean) => void;
   dismissSampleBanner: () => void;
+  setMemoryConfig: (patch: Partial<MemoryConfig>) => void;
+  resetMemoryConfig: () => void;
   pushToast: (kind: "info" | "success" | "error", text: string) => void;
   dismissToast: (id: string) => void;
 }
@@ -169,6 +196,7 @@ export const useStore = create<Store>()(
         localOnly: false,
         samplesSeeded: false,
         sampleBannerDismissed: false,
+        memoryConfig: {},
         toasts: [],
         setTheme: (t) => {
           const resolved = resolveTheme(t);
@@ -195,6 +223,15 @@ export const useStore = create<Store>()(
           set((s) => ({ ui: { ...s.ui, samplesSeeded: v } })),
         dismissSampleBanner: () =>
           set((s) => ({ ui: { ...s.ui, sampleBannerDismissed: true } })),
+        setMemoryConfig: (patch) =>
+          set((s) => ({
+            ui: {
+              ...s.ui,
+              memoryConfig: { ...s.ui.memoryConfig, ...patch },
+            },
+          })),
+        resetMemoryConfig: () =>
+          set((s) => ({ ui: { ...s.ui, memoryConfig: {} } })),
         pushToast: (kind, text) =>
           set((s) => ({
             ui: {
@@ -251,7 +288,8 @@ export const useStore = create<Store>()(
         typeof window !== "undefined" ? window.localStorage : (undefined as unknown as Storage),
       ),
       // Persist the meeting config + the user's theme + memory root choice
-      // + the sample-seed/banner flags so we don't re-seed every launch.
+      // + the sample-seed/banner flags + memoryConfig (v1.6.0 team mode) so
+      // we don't re-prompt the champion every launch.
       partialize: (s) =>
         ({
           ui: {
@@ -259,6 +297,7 @@ export const useStore = create<Store>()(
             memoryRoot: s.ui.memoryRoot,
             samplesSeeded: s.ui.samplesSeeded,
             sampleBannerDismissed: s.ui.sampleBannerDismissed,
+            memoryConfig: s.ui.memoryConfig,
           },
           skills: { meetingConfig: s.skills.meetingConfig },
         }) as unknown as Store,
@@ -270,6 +309,7 @@ export const useStore = create<Store>()(
                 memoryRoot?: string;
                 samplesSeeded?: boolean;
                 sampleBannerDismissed?: boolean;
+                memoryConfig?: MemoryConfig;
               };
               skills?: { meetingConfig?: MeetingConfig };
             }
@@ -286,6 +326,7 @@ export const useStore = create<Store>()(
             samplesSeeded: p?.ui?.samplesSeeded ?? current.ui.samplesSeeded,
             sampleBannerDismissed:
               p?.ui?.sampleBannerDismissed ?? current.ui.sampleBannerDismissed,
+            memoryConfig: p?.ui?.memoryConfig ?? current.ui.memoryConfig,
           },
           skills: {
             ...current.skills,
