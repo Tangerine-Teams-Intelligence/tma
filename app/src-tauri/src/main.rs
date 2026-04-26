@@ -26,6 +26,7 @@ use tauri::{Manager, RunEvent, WindowEvent};
 use tokio::sync::Notify;
 
 use tangerine_meeting_lib::commands;
+use tangerine_meeting_lib::daemon;
 use tangerine_meeting_lib::tmi_invoke_handler;
 use tangerine_meeting_lib::uri_handler;
 use tangerine_meeting_lib::ws_server;
@@ -109,6 +110,18 @@ fn main() {
                     }
                 }
             });
+            // v1.7.0: spawn the RMS daemon. Solo-mode default — the React
+            // side calls `daemon_status` / `daemon_kick` to read/poke it.
+            // Switching to team mode flips `git_pull_enabled` via a future
+            // command; the heartbeat still runs in solo mode so the index
+            // stays fresh.
+            let daemon_root = dirs::home_dir()
+                .map(|h| h.join(".tangerine-memory"))
+                .unwrap_or_else(|| std::path::PathBuf::from(".tangerine-memory"));
+            std::fs::create_dir_all(&daemon_root).ok();
+            let daemon_cfg = daemon::DaemonConfig::solo(daemon_root);
+            let daemon_control = daemon::start(daemon_cfg);
+            state.daemon.install(daemon_control);
             Ok(())
         })
         .invoke_handler(tmi_invoke_handler!())
@@ -129,6 +142,13 @@ fn main() {
                     if let Some(notify) = stop.0.lock().take() {
                         notify.notify_waiters();
                     }
+                }
+                // v1.7.0: graceful daemon shutdown. The DaemonSlot is part
+                // of AppState so it lives until the app handle drops; we
+                // proactively stop it here so the loop sees the signal
+                // before the process exits.
+                if let Some(s) = app.try_state::<commands::AppState>() {
+                    s.daemon.stop();
                 }
             }
         });
