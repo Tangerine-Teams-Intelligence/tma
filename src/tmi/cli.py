@@ -553,11 +553,13 @@ def wrap(
     # break wrap.
     memory_paths: list[Path] = []
     transcript_text_for_extract: str = ""
+    memory_root_for_router: Path | None = None
     try:
         from .memory import write_decisions, write_meeting_file
         from .transcript import read_all as read_transcript_all_for_memory
 
         memory_root = cfg.memory_root_path(m.target_adapter)
+        memory_root_for_router = memory_root
         transcript_text = read_transcript_all_for_memory(mdir)
         transcript_text_for_extract = transcript_text
 
@@ -585,6 +587,27 @@ def wrap(
         )
     except (OSError, ValueError) as e:
         err.print(f"[yellow]memory write skipped: {e}[/]")
+
+    # v1.7: Event Router fan-out. Take every memory file we just wrote and
+    # extract atomic events into the timeline. Best-effort — never break wrap.
+    if memory_root_for_router is not None and memory_paths:
+        try:
+            from .event_router import process as route_process
+            from .event_router import write_sidecar_docs
+
+            # Materialise sidecar docs (idempotent).
+            write_sidecar_docs(memory_root_for_router)
+            total_events = 0
+            for mp in memory_paths:
+                rr = route_process(memory_root_for_router, mp)
+                total_events += len(rr.events)
+            if total_events:
+                console.print(
+                    f"[green]timeline[/] routed {total_events} event(s) from "
+                    f"{len(memory_paths)} file(s)"
+                )
+        except Exception as e:  # noqa: BLE001 — wrap survives router failures
+            err.print(f"[yellow]event_router skipped: {e}[/]")
 
     # v1.6: AI extractor — populate people/projects/threads/glossary. Best-
     # effort. Skipped if `claude` not in PATH or if extractor errors out.
