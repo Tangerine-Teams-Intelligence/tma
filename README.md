@@ -1,15 +1,15 @@
 # Tangerine
 
-> AI that follows your whole team.
+> Your AI-native team's Chief of Staff.
 >
-> Meetings, docs, decisions, code, chat — your team's AI knows it all.
+> Captures every meeting, decision, PR, and ticket. Briefs your team. Briefs their AI. Keeps everyone — and every AI tool — on the same page.
 
 [![Latest Release](https://img.shields.io/github/v/release/Tangerine-Intelligence/tangerine-meeting-live?include_prereleases)](https://github.com/Tangerine-Intelligence/tangerine-meeting-live/releases/latest)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-Tangerine is a memory layer for your team. We capture what your team does — meetings, decisions, threads, code — and structure it as markdown memory in your own dir. Then the AI tools you already pay for (Claude Pro, ChatGPT, Cursor, Claude Code) read that memory through Sinks (browser extension, MCP server). We never run an LLM ourselves.
+Tangerine is the auto Chief of Staff for AI-native teams. We listen in every corner of your team's comms — meetings, decisions, threads, code — and structure it into team memory in your own dir. The AI tools you already pay for (Claude Pro, ChatGPT, Cursor, Claude Code) read that memory through Sinks (browser extension, MCP server). North star metric: **same-screen rate** — the share of your team (and their AI tools) that's working from the same up-to-date context.
 
-**Status (v1.5.4-beta)**: Sources = Discord (live). Sinks = none yet (browser extension + MCP server land v1.6). See the roadmap below.
+**Status (v1.5.6-beta)**: Sources = Discord (live). Sinks = none yet (browser extension + MCP server land v1.6). See the roadmap below.
 
 ### Roadmap
 

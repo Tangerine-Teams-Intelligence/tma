@@ -62,10 +62,12 @@ export default function AuthRoute() {
         </div>
 
         <h1 className="font-display text-3xl tracking-tight text-[var(--ti-ink-900)]">
-          AI that follows your whole team
+          Your AI-native team's Chief of Staff.
         </h1>
         <p className="mt-2 text-sm text-[var(--ti-ink-700)]">
-          Meetings, docs, decisions, code, chat — your team's AI knows it all.
+          Captures every meeting, decision, PR, and ticket. Briefs your team.
+          Briefs their AI. Keeps everyone — and every AI tool — on the same
+          page.
         </p>
 
         {isStubMode && (
@@ -131,7 +133,7 @@ export default function AuthRoute() {
             className="w-full"
             onClick={skipToLocal}
           >
-            Skip — local memory only
+            Skip — local only mode
           </Button>
           <p className="text-center text-[11px] text-[var(--ti-ink-500)]">
             Memory dir lives on this machine. Nothing leaves until you wire a Sink.

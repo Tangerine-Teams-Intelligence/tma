@@ -1,12 +1,12 @@
 # SETUP.md — Tangerine
 
-> AI that follows your whole team.
+> Your AI-native team's Chief of Staff.
 >
-> Meetings, docs, decisions, code, chat — your team's AI knows it all.
+> Captures every meeting, decision, PR, and ticket. Briefs your team. Briefs their AI. Keeps everyone — and every AI tool — on the same page.
 
 Zero-to-first-meeting in ~15 minutes. Follow top to bottom.
 
-**Status (v1.5.4-beta)**: only the Discord source is shippable. Browser extension Sink + MCP server Sink + Linear / GitHub / Slack / Notion sources land v1.6+. This guide covers Discord because that's what works today.
+**Status (v1.5.6-beta)**: only the Discord source is shippable. Browser extension Sink + MCP server Sink + Linear / GitHub / Slack / Notion sources land v1.6+. This guide covers Discord because that's what works today.
 
 If you get stuck, jump to [§7 Troubleshooting](#7-troubleshooting).
 
