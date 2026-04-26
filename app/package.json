@@ -1,7 +1,7 @@
 {
   "name": "tangerine-meeting-app",
   "private": true,
-  "version": "1.5.4-beta.0",
+  "version": "1.5.5-beta.0",
   "type": "module",
   "description": "Tangerine AI Teams v1.5 desktop shell (Tauri 2.x + React 19).",
   "scripts": {
