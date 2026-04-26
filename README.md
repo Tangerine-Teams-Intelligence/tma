@@ -132,14 +132,18 @@ Apache-2.0. Vendor-less data — your memory is markdown in *your* git repo, not
 
 ---
 
-## Pricing
+## Pricing — Vercel-style open core
 
-| Tier | Price | What you get |
-|---|---|---|
-| **OSS / self-host** | Free | Capture pipeline, Memory browser, MCP server, Browser extension, Discord source. You run it. |
-| **Cloud** | $20/seat/mo, 3-seat floor ($60/mo) | Cross-device sync, hosted Sinks, all 3rd-party Sources, daily brief delivery, support. Annual 20% off. |
+🆓 **OSS forever — Apache-2.0**
+Self-host the entire stack: desktop app, MCP server, browser ext, source connectors. No team-size limit. No commercial use restriction. Always free. You bring your own GitHub repo for memory storage + your own Claude/Cursor/ChatGPT subscription for AI inference.
 
-Cloud lands with v1.6. Annual contracts available at GA.
+☁ **Tangerine Cloud — ~$10/seat/month** (3 seats free, like Vercel Hobby)
+Team memory hosted by us (no git setup needed). AI daily brief generation (we run the LLM, included). Cross-device sync (mobile brief notifications, calendar integration). 6 source integrations OAuth managed (no Linear/Slack app registration). Coming Q3 2026.
+
+🏢 **Enterprise — Custom (~$5-15K/year)**
+SSO, audit log, SOC2 path. Dedicated support + monthly sync. Self-host with support contract. Coming Q4 2026.
+
+Why this model: Tangerine is an infrastructure layer (like a CDN), not a workspace. Vercel runs the same play — Next.js free, Hosted $20/seat, estimated $200M ARR / $3.25B valuation. We copy: tangerine-teams-app free, Tangerine Cloud $10/seat.
 
 ---
 

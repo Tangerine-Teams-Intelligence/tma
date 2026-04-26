@@ -71,7 +71,7 @@ USAGE
 
 OPTIONS
   --demo            Use the bundled sample team memory (Daizhe + David roadmap
-                    sync, $20/seat pricing decision, postgres-over-mongo).
+                    sync, Vercel-style open-core pricing decision, postgres-over-mongo).
                     Perfect for "try in 30 seconds" demos. Overrides --root.
   --root <path>     Memory root directory. Overrides $TANGERINE_MEMORY_ROOT.
                     Default: ~/.tangerine-memory
@@ -160,7 +160,7 @@ The server expects a directory of markdown files, optionally organized into the 
 ├── meetings/
 │   └── 2026-04-25-v15-scope.md
 ├── decisions/
-│   └── pricing-20-seat.md
+│   └── pricing-vercel-open-core.md
 ├── people/
 ├── projects/
 ├── threads/
@@ -171,8 +171,8 @@ Each `.md` file may have YAML frontmatter:
 
 ```markdown
 ---
-title: Pricing $20/seat 3 seat min
-date: 2026-04-25
+title: Pricing Vercel-style open core (OSS forever + Cloud $10/seat + Enterprise)
+date: 2026-04-26
 source: meeting
 ---
 
@@ -204,10 +204,10 @@ Returns (per match):
 
 ```json
 {
-  "file": "decisions/pricing-20-seat.md",
-  "title": "Pricing $20/seat 3 seat min",
-  "frontmatter": { "date": "2026-04-25", "source": "meeting" },
-  "snippet": "...lock pricing before HN launch. I'm thinking $20/seat with 3 seat min...",
+  "file": "decisions/pricing-vercel-open-core.md",
+  "title": "Pricing Vercel-style open core (OSS forever + Cloud $10/seat + Enterprise)",
+  "frontmatter": { "date": "2026-04-26", "source": "meeting" },
+  "snippet": "...lock pricing before HN launch. Going Vercel-style: OSS forever, Cloud $10/seat, Enterprise custom...",
   "content_preview": "<first 4000 chars of body>",
   "matches": 3
 }
@@ -216,7 +216,7 @@ Returns (per match):
 ### Resource: `team-memory://`
 
 - `team-memory://` — JSON index of every file (path, title, frontmatter)
-- `team-memory://decisions/pricing-20-seat.md` — full markdown content with frontmatter
+- `team-memory://decisions/pricing-vercel-open-core.md` — full markdown content with frontmatter
 
 ## Behavior
 
