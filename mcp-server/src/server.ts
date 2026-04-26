@@ -1,5 +1,5 @@
-/**
- * server.ts — MCP server setup using @modelcontextprotocol/sdk.
+﻿/**
+ * server.ts 鈥?MCP server setup using @modelcontextprotocol/sdk.
  *
  * Wires together:
  *   - tools/list, tools/call          (query_team_memory)
@@ -43,7 +43,7 @@ export function createServer(opts: ServerOptions = {}): {
   const server = new Server(
     {
       name: opts.name ?? "tangerine-mcp",
-      version: opts.version ?? "0.1.0",
+      version: opts.version ?? "0.2.0",
     },
     {
       capabilities: {

@@ -1,10 +1,52 @@
-# tangerine-mcp
+﻿# tangerine-mcp
 
 MCP server that exposes Tangerine team memory to Claude Code, Cursor, Claude Desktop, and any other MCP-compatible AI client.
 
 Once installed, your AI tool gains a `query_team_memory` tool it can call autonomously — no copy-paste, no manual injection. Ask "what did we decide about Whisper?" and the model pulls the relevant decision file straight from your local team memory.
 
-## Install
+---
+
+## Try in 30 seconds (no install, no Tangerine app needed)
+
+The package ships with a bundled sample team memory. Add this to your AI tool's MCP config:
+
+**Cursor** (`~/.cursor/mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "tangerine-demo": {
+      "command": "npx",
+      "args": ["-y", "tangerine-mcp", "--demo"]
+    }
+  }
+}
+```
+
+**Claude Code** (`~/.config/claude/config.json` on macOS/Linux, `%APPDATA%\Claude\config.json` on Windows):
+
+```json
+{
+  "mcpServers": {
+    "tangerine-demo": {
+      "command": "npx",
+      "args": ["-y", "tangerine-mcp", "--demo"]
+    }
+  }
+}
+```
+
+Restart your AI tool, then ask:
+
+- *"what's our team's pricing?"*
+- *"what did we decide about postgres vs mongo?"*
+- *"who was in the roadmap sync meeting?"*
+
+You're querying a sample team memory baked into the npm package. To plug in your real team's memory, install the Tangerine desktop app: <https://github.com/Tangerine-Teams-Intelligence/tma>
+
+---
+
+## Install for real use
 
 ```bash
 npx tangerine-mcp           # zero-config, uses ~/.tangerine-memory
@@ -20,7 +62,7 @@ tangerine-mcp --help
 ## Usage
 
 ```text
-tangerine-mcp 0.1.0
+tangerine-mcp 0.2.0
 MCP server that exposes Tangerine team memory to any MCP-compatible AI client.
 
 USAGE
@@ -28,6 +70,9 @@ USAGE
   tangerine-mcp [options]
 
 OPTIONS
+  --demo            Use the bundled sample team memory (Daizhe + David roadmap
+                    sync, $20/seat pricing decision, postgres-over-mongo).
+                    Perfect for "try in 30 seconds" demos. Overrides --root.
   --root <path>     Memory root directory. Overrides $TANGERINE_MEMORY_ROOT.
                     Default: ~/.tangerine-memory
   -h, --help        Show this help and exit.
@@ -39,7 +84,7 @@ ENVIRONMENT
 
 The server speaks MCP over stdio — `stdout` is JSONRPC, `stderr` is logs.
 
-## Add to Claude Code
+## Add to Claude Code (real team memory)
 
 Edit `~/.config/claude/config.json` (macOS/Linux) or `%APPDATA%\Claude\config.json` (Windows):
 
@@ -56,7 +101,7 @@ Edit `~/.config/claude/config.json` (macOS/Linux) or `%APPDATA%\Claude\config.js
 
 Restart Claude Code. The `query_team_memory` tool appears in the tool list. Ask Claude anything about prior decisions and it'll call the tool automatically.
 
-## Add to Cursor
+## Add to Cursor (real team memory)
 
 Edit `~/.cursor/mcp.json`:
 
@@ -175,7 +220,7 @@ Returns (per match):
 
 ## Behavior
 
-- **Memory root resolution**: `--root` flag → `$TANGERINE_MEMORY_ROOT` → `~/.tangerine-memory`
+- **Memory root resolution**: `--demo` flag → `--root` flag → `$TANGERINE_MEMORY_ROOT` → `~/.tangerine-memory`
 - **Missing root**: logs to stderr, returns empty results, doesn't crash
 - **Search**: case-insensitive substring across body (frontmatter stripped), ranked by descending match count
 - **Caps**: 1000 files, 4000-char content preview, 20 results max
@@ -185,8 +230,8 @@ Returns (per match):
 ## Development
 
 ```bash
-git clone https://github.com/Tangerine-Intelligence/tangerine-meeting-live.git
-cd tangerine-meeting-live/mcp-server
+git clone https://github.com/Tangerine-Teams-Intelligence/tma.git
+cd tma/mcp-server
 npm install
 npm run build
 npm test
