@@ -49,6 +49,12 @@ serde_yaml = "0.9"
 
 tokio = { version = "1", features = ["full"] }
 tokio-stream = "0.1"
+# v1.6.0: localhost ws server for the browser extension. Pure-Rust ws stack
+# (rustls under the hood, but we never accept TLS — bind plain ws on 127.0.0.1
+# only). `futures-util` is already pulled in transitively by tauri but we name
+# it here so the ws_server module can `use futures_util::*` directly.
+tokio-tungstenite = "0.21"
+futures-util = "0.3"
 
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
