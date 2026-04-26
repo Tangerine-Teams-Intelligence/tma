@@ -1,16 +1,45 @@
+import { useEffect, useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
-import { Settings, Lock } from "lucide-react";
-import { TOOLS, type ToolDef } from "@/lib/tools";
+import {
+  Settings,
+  Lock,
+  Sun,
+  Moon,
+  Monitor,
+  Inbox,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { signOut } from "@/lib/auth";
+import { useStore } from "@/lib/store";
+import { SOURCES, type SourceDef, type SourceStatus } from "@/lib/sources";
+import { SINKS, type SinkDef, type SinkStatus } from "@/lib/sinks";
+import { readMemoryTree, type MemoryNode } from "@/lib/memory";
+import { MemoryTree } from "@/components/MemoryTree";
 
 /**
- * Always-visible left rail. 10 tool icons, app logo on top, settings + lock
- * on bottom. Click a tool to navigate to that tool's route — every tool has
- * one, even the not-yet-shipping ones (those land on a "Coming v1.x" page).
+ * Always-visible left rail (~240px). Two sections:
+ *
+ *   MEMORY    — file tree of the user's memory dir.
+ *   SOURCES   — connectors that write to memory.
+ *   SINKS     — consumers that read from memory.
+ *
+ * Bottom: settings, theme toggle, lock, Cmd+K hint.
  */
 export function Sidebar() {
   const navigate = useNavigate();
+  const memoryRoot = useStore((s) => s.ui.memoryRoot);
+  const togglePalette = useStore((s) => s.ui.togglePalette);
+  const [tree, setTree] = useState<MemoryNode[]>([]);
+
+  useEffect(() => {
+    let cancel = false;
+    void readMemoryTree(memoryRoot).then((t) => {
+      if (!cancel) setTree(t);
+    });
+    return () => {
+      cancel = true;
+    };
+  }, [memoryRoot]);
 
   async function handleLock() {
     await signOut();
@@ -18,105 +47,244 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="ti-no-select flex h-full w-[68px] shrink-0 flex-col items-center justify-between border-r border-[var(--ti-border-faint)] bg-[var(--ti-paper-200)] py-3">
-      {/* Logo */}
-      <div className="flex flex-col items-center gap-3">
-        <NavLink
-          to="/home"
-          className="group relative"
-          aria-label="Home"
-          title="Home"
-        >
+    <aside className="ti-no-select flex h-full w-[240px] shrink-0 flex-col border-r border-stone-200 bg-stone-50 dark:border-stone-800 dark:bg-stone-950">
+      {/* Header */}
+      <div className="flex items-center justify-between border-b border-stone-200 px-3 py-3 dark:border-stone-800">
+        <NavLink to="/memory" className="flex items-center gap-2" aria-label="Memory">
           <div
-            className="h-10 w-10 rounded-lg shadow-sm transition-transform duration-fast ease-ti-out group-hover:scale-105"
+            className="h-5 w-5 rounded"
             style={{ background: "var(--ti-orange-500)" }}
             aria-hidden
           />
+          <span className="text-[13px] font-medium tracking-tight text-stone-900 dark:text-stone-100">
+            Tangerine
+          </span>
         </NavLink>
-
-        {/* Divider */}
-        <div className="my-1 h-px w-8 bg-[var(--ti-border-default)]" />
-
-        {/* 10 tools */}
-        <nav className="flex flex-col items-center gap-2">
-          {TOOLS.map((tool) => (
-            <ToolButton key={tool.id} tool={tool} />
-          ))}
-        </nav>
+        <button
+          type="button"
+          onClick={togglePalette}
+          className="rounded border border-stone-200 px-1.5 py-0.5 font-mono text-[10px] text-stone-500 hover:bg-stone-100 dark:border-stone-800 dark:text-stone-400 dark:hover:bg-stone-900"
+          aria-label="Open command palette"
+          title="Search memory"
+        >
+          ⌘K
+        </button>
       </div>
 
-      {/* Bottom: settings + lock */}
-      <div className="flex flex-col items-center gap-1.5">
+      {/* Scrollable middle */}
+      <div className="flex-1 overflow-y-auto">
+        {/* MEMORY section */}
+        <Section label="Memory" rightHint="" >
+          <NavLink
+            to="/memory"
+            end
+            className={({ isActive }) =>
+              cn(
+                "block rounded px-2 py-1 text-[11px] font-mono",
+                isActive
+                  ? "bg-[var(--ti-orange-50)] text-[var(--ti-orange-700)] dark:bg-stone-800 dark:text-[var(--ti-orange-500)]"
+                  : "text-stone-700 hover:bg-stone-100 dark:text-stone-300 dark:hover:bg-stone-900",
+              )
+            }
+          >
+            ~ /memory
+          </NavLink>
+          <div className="mt-1">
+            <MemoryTree
+              tree={tree}
+              showNewFile
+              onNewFile={() => navigate("/memory")}
+            />
+          </div>
+        </Section>
+
+        {/* SOURCES section */}
+        <Section label="Sources">
+          <ul>
+            {SOURCES.map((s) => (
+              <li key={s.id}>
+                <SourceLink def={s} />
+              </li>
+            ))}
+          </ul>
+        </Section>
+
+        {/* SINKS section */}
+        <Section label="Sinks">
+          <ul>
+            {SINKS.map((s) => (
+              <li key={s.id}>
+                <SinkLink def={s} />
+              </li>
+            ))}
+          </ul>
+        </Section>
+
+        {/* INBOX */}
+        <Section label="Inbox">
+          <NavLink
+            to="/inbox"
+            className={({ isActive }) =>
+              cn(
+                "flex items-center gap-2 rounded px-2 py-1 text-[12px]",
+                isActive
+                  ? "bg-[var(--ti-orange-50)] text-[var(--ti-orange-700)] dark:bg-stone-800 dark:text-[var(--ti-orange-500)]"
+                  : "text-stone-700 hover:bg-stone-100 dark:text-stone-300 dark:hover:bg-stone-900",
+              )
+            }
+          >
+            <Inbox size={12} className="shrink-0" />
+            <span className="truncate">Pending writes</span>
+            <StatusChip status="coming" />
+          </NavLink>
+        </Section>
+      </div>
+
+      {/* Footer */}
+      <div className="border-t border-stone-200 px-2 py-2 dark:border-stone-800">
         <NavLink
           to="/settings"
           className={({ isActive }) =>
             cn(
-              "group relative flex h-10 w-10 items-center justify-center rounded-lg transition-colors duration-fast",
+              "flex items-center gap-2 rounded px-2 py-1 text-[12px]",
               isActive
-                ? "bg-[var(--ti-orange-50)] text-[var(--ti-orange-700)]"
-                : "text-[var(--ti-ink-500)] hover:bg-[var(--ti-paper-100)] hover:text-[var(--ti-ink-900)]",
+                ? "bg-stone-100 text-stone-900 dark:bg-stone-900 dark:text-stone-100"
+                : "text-stone-600 hover:bg-stone-100 dark:text-stone-400 dark:hover:bg-stone-900",
             )
           }
-          aria-label="Settings"
-          title="Settings"
         >
-          <Settings size={18} />
-          <HoverLabel label="Settings" />
+          <Settings size={12} className="shrink-0" />
+          <span>Settings</span>
         </NavLink>
+        <ThemeToggle />
         <button
           type="button"
           onClick={handleLock}
-          className="group relative flex h-10 w-10 items-center justify-center rounded-lg text-[var(--ti-ink-500)] transition-colors duration-fast hover:bg-[var(--ti-paper-100)] hover:text-[var(--ti-ink-900)]"
-          aria-label="Sign out"
-          title="Sign out"
+          className="mt-0.5 flex w-full items-center gap-2 rounded px-2 py-1 text-left text-[12px] text-stone-600 hover:bg-stone-100 dark:text-stone-400 dark:hover:bg-stone-900"
         >
-          <Lock size={18} />
-          <HoverLabel label="Sign out" />
+          <Lock size={12} className="shrink-0" />
+          <span>Sign out</span>
         </button>
       </div>
     </aside>
   );
 }
 
-function ToolButton({ tool }: { tool: ToolDef }) {
-  const Icon = tool.icon;
-  const coming = !!tool.comingIn;
+function Section({
+  label,
+  children,
+  rightHint,
+}: {
+  label: string;
+  children: React.ReactNode;
+  rightHint?: string;
+}) {
+  return (
+    <div className="border-b border-stone-200/60 px-2 py-3 dark:border-stone-800/60">
+      <div className="mb-1 flex items-center justify-between px-1">
+        <span className="ti-section-label">{label}</span>
+        {rightHint && (
+          <span className="font-mono text-[10px] text-stone-400 dark:text-stone-500">
+            {rightHint}
+          </span>
+        )}
+      </div>
+      {children}
+    </div>
+  );
+}
 
+function SourceLink({ def }: { def: SourceDef }) {
+  const Icon = def.icon;
   return (
     <NavLink
-      to={tool.path}
+      to={`/sources/${def.id}`}
       className={({ isActive }) =>
         cn(
-          "group relative flex h-10 w-10 items-center justify-center rounded-lg transition-colors duration-fast ease-ti-out",
+          "flex items-center gap-2 rounded px-2 py-1 text-[12px]",
           isActive
-            ? "bg-[var(--ti-orange-500)] text-white shadow-sm"
-            : coming
-              ? "text-[var(--ti-ink-300)] hover:bg-[var(--ti-paper-100)] hover:text-[var(--ti-ink-700)]"
-              : "text-[var(--ti-ink-700)] hover:bg-[var(--ti-paper-100)] hover:text-[var(--ti-ink-900)]",
+            ? "bg-[var(--ti-orange-50)] text-[var(--ti-orange-700)] dark:bg-stone-800 dark:text-[var(--ti-orange-500)]"
+            : "text-stone-700 hover:bg-stone-100 dark:text-stone-300 dark:hover:bg-stone-900",
         )
       }
-      aria-label={tool.title}
-      title={tool.title}
     >
-      <Icon size={18} />
-      {coming && (
-        <span
-          className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-[var(--ti-ink-300)] group-hover:bg-[var(--ti-orange-500)]"
-          aria-hidden
-        />
-      )}
-      <HoverLabel label={tool.title} sub={tool.comingIn ? `Coming ${tool.comingIn}` : undefined} />
+      <Icon size={12} className="shrink-0" />
+      <span className="truncate">{def.title}</span>
+      <StatusChip status={def.status} comingIn={def.comingIn} />
     </NavLink>
   );
 }
 
-function HoverLabel({ label, sub }: { label: string; sub?: string }) {
+function SinkLink({ def }: { def: SinkDef }) {
+  const Icon = def.icon;
   return (
-    <span className="pointer-events-none absolute left-full top-1/2 z-50 ml-3 -translate-y-1/2 whitespace-nowrap rounded-md border border-[var(--ti-border-default)] bg-[var(--ti-paper-50)] px-2.5 py-1 text-xs font-medium text-[var(--ti-ink-900)] opacity-0 shadow-md transition-opacity duration-fast ease-ti-out group-hover:opacity-100">
-      {label}
-      {sub && (
-        <span className="ml-1.5 text-[10px] font-normal text-[var(--ti-ink-500)]">{sub}</span>
-      )}
+    <NavLink
+      to={`/sinks/${def.id}`}
+      className={({ isActive }) =>
+        cn(
+          "flex items-center gap-2 rounded px-2 py-1 text-[12px]",
+          isActive
+            ? "bg-[var(--ti-orange-50)] text-[var(--ti-orange-700)] dark:bg-stone-800 dark:text-[var(--ti-orange-500)]"
+            : "text-stone-700 hover:bg-stone-100 dark:text-stone-300 dark:hover:bg-stone-900",
+        )
+      }
+    >
+      <Icon size={12} className="shrink-0" />
+      <span className="truncate">{def.title}</span>
+      <StatusChip status={def.status} comingIn={def.comingIn} />
+    </NavLink>
+  );
+}
+
+function StatusChip({
+  status,
+  comingIn,
+}: {
+  status: SourceStatus | SinkStatus;
+  comingIn?: string;
+}) {
+  if (status === "active") {
+    return (
+      <span className="ml-auto inline-flex items-center gap-1 font-mono text-[10px] text-emerald-600 dark:text-emerald-400">
+        <span className="ti-live-dot h-1.5 w-1.5" />
+        on
+      </span>
+    );
+  }
+  if (status === "disconnected") {
+    return (
+      <span className="ml-auto font-mono text-[10px] text-rose-600 dark:text-rose-400">
+        off
+      </span>
+    );
+  }
+  return (
+    <span
+      className="ml-auto font-mono text-[10px] text-stone-400 dark:text-stone-500"
+      title={comingIn ? `Coming ${comingIn}` : "Coming soon"}
+    >
+      {comingIn ?? "soon"}
     </span>
+  );
+}
+
+function ThemeToggle() {
+  const theme = useStore((s) => s.ui.theme);
+  const cycle = useStore((s) => s.ui.cycleTheme);
+  const Icon = theme === "light" ? Sun : theme === "dark" ? Moon : Monitor;
+  const label = theme === "light" ? "Light" : theme === "dark" ? "Dark" : "System";
+  return (
+    <button
+      type="button"
+      onClick={cycle}
+      className="mt-0.5 flex w-full items-center gap-2 rounded px-2 py-1 text-left text-[12px] text-stone-600 hover:bg-stone-100 dark:text-stone-400 dark:hover:bg-stone-900"
+      title="Cycle theme: system → light → dark"
+    >
+      <Icon size={12} className="shrink-0" />
+      <span>Theme</span>
+      <span className="ml-auto font-mono text-[10px] text-stone-400 dark:text-stone-500">
+        {label}
+      </span>
+    </button>
   );
 }
