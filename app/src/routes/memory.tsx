@@ -71,35 +71,36 @@ export default function MemoryRoute() {
     return stats;
   }, [folderCounts]);
 
-  // First-launch seed: if the memory dir is empty AND samples haven't been
-  // seeded yet, copy bundled samples in so the user sees a populated tree
-  // immediately. Idempotent — Rust no-ops if dir is non-empty.
+  // First-launch seed: copy bundled samples in if the memory dir is empty.
+  // Self-healing across reinstalls — we never trust the persisted
+  // `samplesSeeded` flag alone, because on uninstall+reinstall the persisted
+  // localStorage value can survive while the on-disk memory dir is freshly
+  // empty. So we always check the actual dir state from Rust first; if the
+  // dir is empty we reseed regardless of what the flag says, and only
+  // commit the flag once seeding actually succeeded.
   useEffect(() => {
-    if (samplesSeeded) return;
     let cancel = false;
     void (async () => {
-      // Resolve real path from Rust if we still have the placeholder.
       const info = await resolveMemoryRoot();
       if (cancel) return;
       if (info.path && info.path !== memoryRoot && !info.path.startsWith("~")) {
         setMemoryRoot(info.path);
       }
       if (!info.is_empty) {
-        // Dir already has user content — skip sample seeding entirely.
-        setSamplesSeeded(true);
+        // Dir already has user content — sync the flag forward and bail.
+        if (!samplesSeeded) setSamplesSeeded(true);
         return;
       }
-      const t = await readMemoryTree(info.path || memoryRoot);
+      // Dir is empty. If the flag was true (stale persisted value from a
+      // prior install), reset it so the seeding path actually fires.
+      if (samplesSeeded) setSamplesSeeded(false);
+      const r = await initMemoryWithSamples();
       if (cancel) return;
-      const hasFiles = t.some((n) => n.kind === "file" || (n.children && n.children.length > 0));
-      if (!hasFiles) {
-        const r = await initMemoryWithSamples();
-        if (cancel) return;
-        if (r.path && !r.path.startsWith("~")) {
-          setMemoryRoot(r.path);
-        }
+      if (r.path && !r.path.startsWith("~")) {
+        setMemoryRoot(r.path);
       }
-      setSamplesSeeded(true);
+      // Only commit the persisted flag once seeding actually wrote files.
+      if (r.seeded || r.copied > 0) setSamplesSeeded(true);
     })();
     return () => {
       cancel = true;
