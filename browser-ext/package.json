@@ -1,0 +1,25 @@
+{
+  "name": "tangerine-browser-ext",
+  "version": "0.1.0",
+  "description": "Tangerine — Team memory for any AI. Inject your team's memory into ChatGPT, Claude, Gemini.",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite build --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "zip": "node scripts/zip.mjs",
+    "lint": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@crxjs/vite-plugin": "^2.0.0-beta.27",
+    "@types/chrome": "^0.0.270",
+    "@types/node": "^20.14.10",
+    "archiver": "^7.0.1",
+    "typescript": "^5.5.3",
+    "vite": "^5.4.0",
+    "vitest": "^2.0.5"
+  }
+}

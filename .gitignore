@@ -40,6 +40,9 @@ bot/dist/
 bot/node_modules/
 mcp-server/dist/
 mcp-server/node_modules/
+browser-ext/node_modules/
+browser-ext/dist/
+browser-ext/*.zip
 
 # Tauri / desktop app build artifacts
 app/dist/
