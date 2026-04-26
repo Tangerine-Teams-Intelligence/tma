@@ -1,0 +1,50 @@
+{
+  "name": "@tangerine/source-github",
+  "version": "0.1.0",
+  "description": "Tangerine source connector for GitHub — ingests PRs, issues, comments, reviews into the team-memory atom stream.",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "tangerine-github": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/cli.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint src --ext .ts"
+  },
+  "keywords": [
+    "tangerine",
+    "github",
+    "team-memory",
+    "ingest"
+  ],
+  "author": "Tangerine Intelligence",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Tangerine-Intelligence/tangerine-meeting-live.git",
+    "directory": "sources/github"
+  },
+  "dependencies": {
+    "@octokit/core": "^5.1.0",
+    "@octokit/plugin-paginate-rest": "^9.1.5",
+    "@octokit/plugin-rest-endpoint-methods": "^10.4.0",
+    "@octokit/request-error": "^5.0.1",
+    "keytar": "^7.9.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "typescript": "^5.3.0",
+    "vitest": "^1.2.0"
+  }
+}

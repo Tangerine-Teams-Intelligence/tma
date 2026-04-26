@@ -43,6 +43,8 @@ mcp-server/node_modules/
 browser-ext/node_modules/
 browser-ext/dist/
 browser-ext/*.zip
+sources/*/node_modules/
+sources/*/dist/
 
 # Tauri / desktop app build artifacts
 app/dist/
