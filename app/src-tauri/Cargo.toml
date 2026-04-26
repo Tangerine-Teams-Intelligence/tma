@@ -1,6 +1,6 @@
 [package]
 name = "tangerine-meeting"
-version = "1.5.6-beta.0"
+version = "1.5.7-beta.0"
 description = "Tangerine AI Teams — desktop shell for the Tangerine Meeting Assistant CLI"
 authors = ["Tangerine Intelligence Inc."]
 license = "Apache-2.0"
