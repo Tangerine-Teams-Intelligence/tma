@@ -4,9 +4,9 @@
 
 <h1 align="center">Tangerine</h1>
 
-<p align="center"><strong>Your AI-native team's Chief of Staff.</strong></p>
+<p align="center"><strong>Align every AI tool on your team with your team's actual work.</strong></p>
 
-<p align="center">Captures every meeting, decision, PR, and ticket. Briefs your team. Briefs their AI. Keeps everyone — and every AI tool — on the same page.</p>
+<p align="center">Your team uses Cursor, Claude, ChatGPT — but each AI sees a different slice of what your team's actually doing. We align them all with one source of team workflow info. So your AIs stop giving different answers.</p>
 
 <p align="center">
   <a href="https://github.com/Tangerine-Teams-Intelligence/tma/releases/latest"><img src="https://img.shields.io/github/v/release/Tangerine-Teams-Intelligence/tma?include_prereleases&label=v1.5.6-beta" alt="Release" /></a>
@@ -14,7 +14,7 @@
   <img src="https://img.shields.io/badge/platform-Windows-lightgrey" alt="Windows" />
 </p>
 
-Tangerine is the auto Chief of Staff for AI-native teams. It listens in every corner of your team's comms — meetings, threads, PRs, tickets — and structures what happened into a markdown memory layer in your own repo. The AI tools you already pay for (Claude, ChatGPT, Cursor, Claude Code) read that memory through Sinks (browser extension, MCP server) so every human and every agent on the team works from the same up-to-date context.
+We're sometimes called the team's Auto Chief of Staff — same idea, this is what it means specifically: Tangerine listens in every corner of your team's comms (meetings, threads, PRs, tickets) and structures what happened into a markdown memory layer in your own repo. The AI tools you already pay for (Claude, ChatGPT, Cursor, Claude Code) read that memory through Sinks (browser extension, MCP server), so every human and every AI tool on the team operates from the same up-to-date context.
 
 North star: **same-screen rate** — the share of your team (and their AI tools) that's working from current shared context, not stale snapshots.
 
