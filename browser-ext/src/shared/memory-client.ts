@@ -10,6 +10,7 @@
  */
 
 import type {
+  AgiEnvelope,
   ClientRequest,
   ErrorResponse,
   FileRequest,
@@ -24,6 +25,12 @@ export interface SearchOk {
   ok: true;
   results: MemoryResult[];
   tookMs?: number;
+  /**
+   * Stage 1 AGI envelope from the desktop app (Hook 4). Optional — older
+   * desktop apps don't include it. UI surfaces confidence as a small badge
+   * ("⭐ confident" Stage 1 always, "🤔 uncertain" Stage 2 when < threshold).
+   */
+  envelope?: AgiEnvelope;
 }
 
 export interface SearchErr {
@@ -84,6 +91,7 @@ export class MemoryClient {
         ok: true,
         results: out.response.results ?? [],
         tookMs: out.response.tookMs,
+        envelope: out.response.envelope,
       };
     }
     if (out.response.op === 'error') {
@@ -226,6 +234,20 @@ export class MemoryClient {
       });
     });
   }
+}
+
+/**
+ * Render the confidence value from an AGI envelope as a tiny badge string.
+ * Stage 1 always returns "⭐ confident" because the desktop app pins
+ * confidence at 1.0. Stage 2 will start emitting < 1.0 and we'll surface
+ * "🤔 uncertain" / hide the chip below threshold.
+ */
+export function confidenceBadge(envelope: AgiEnvelope | undefined): string {
+  if (!envelope) return '';
+  const c = typeof envelope.confidence === 'number' ? envelope.confidence : 1.0;
+  if (c >= 0.8) return '⭐ confident';
+  if (c >= 0.5) return '· likely';
+  return '🤔 uncertain';
 }
 
 /**

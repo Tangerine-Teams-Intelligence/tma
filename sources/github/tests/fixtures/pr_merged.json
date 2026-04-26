@@ -1,0 +1,16 @@
+{
+  "number": 47,
+  "title": "[v1] postgres-migration",
+  "body": "merged at last",
+  "state": "closed",
+  "user": { "login": "ericfromgithub" },
+  "base": { "ref": "main" },
+  "head": { "ref": "eric/pg-migration" },
+  "labels": [{ "name": "project:v1-launch" }],
+  "html_url": "https://github.com/myorg/api/pull/47",
+  "created_at": "2026-04-26T09:00:00Z",
+  "updated_at": "2026-04-26T11:00:00Z",
+  "merged_at": "2026-04-26T10:55:00Z",
+  "merge_commit_sha": "abc123def456789012",
+  "merged_by": { "login": "ericfromgithub" }
+}

@@ -1,0 +1,47 @@
+{
+  "name": "@tangerine/source-linear",
+  "version": "0.1.0",
+  "description": "Tangerine source connector for Linear — ingests issues, comments, project status changes into the team-memory atom stream.",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "tangerine-linear": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/cli.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint src --ext .ts"
+  },
+  "keywords": [
+    "tangerine",
+    "linear",
+    "team-memory",
+    "ingest"
+  ],
+  "author": "Tangerine Intelligence",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Tangerine-Intelligence/tangerine-meeting-live.git",
+    "directory": "sources/linear"
+  },
+  "dependencies": {
+    "@linear/sdk": "^25.0.0",
+    "keytar": "^7.9.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "typescript": "^5.3.0",
+    "vitest": "^1.2.0"
+  }
+}

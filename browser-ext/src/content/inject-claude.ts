@@ -8,6 +8,7 @@
 
 import { watchForTextarea } from './overlay';
 import { bridgePing, bridgeSearch, setEditorValue } from './inject-shared';
+import { bootSmartInject } from './boot-smart';
 
 function findTextarea(): HTMLElement | null {
   const candidates: (HTMLElement | null)[] = [
@@ -37,3 +38,5 @@ watchForTextarea(findTextarea, {
   inject,
   readTextarea,
 });
+
+bootSmartInject(findTextarea, inject, readTextarea);

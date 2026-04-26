@@ -120,3 +120,41 @@ body {
   -webkit-user-select: none;
   user-select: none;
 }
+
+/* ============================================================
+   Dark mode safety net (Stage 1 Wave 3 fix).
+   Tailwind classes with no `dark:` variant fall through to the
+   light value, which historically left the main pane bright while
+   the sidebar darkened. This block back-stops any plain
+   `bg-stone-50/100/200` and `text-stone-900/700/500` so the entire
+   surface flips when `<html>` carries `.dark` or
+   [data-theme="dark"]`.
+   ============================================================ */
+.dark .bg-stone-50:not([class*="dark:bg-"]),
+[data-theme="dark"] .bg-stone-50:not([class*="dark:bg-"]) {
+  background-color: var(--ti-paper-100);
+}
+.dark .bg-stone-100:not([class*="dark:bg-"]),
+[data-theme="dark"] .bg-stone-100:not([class*="dark:bg-"]) {
+  background-color: var(--ti-paper-200);
+}
+.dark .bg-stone-200:not([class*="dark:bg-"]),
+[data-theme="dark"] .bg-stone-200:not([class*="dark:bg-"]) {
+  background-color: var(--ti-paper-200);
+}
+.dark .bg-white:not([class*="dark:bg-"]),
+[data-theme="dark"] .bg-white:not([class*="dark:bg-"]) {
+  background-color: var(--ti-paper-100);
+}
+.dark .text-stone-900:not([class*="dark:text-"]),
+[data-theme="dark"] .text-stone-900:not([class*="dark:text-"]) {
+  color: var(--ti-ink-900);
+}
+.dark .text-stone-700:not([class*="dark:text-"]),
+[data-theme="dark"] .text-stone-700:not([class*="dark:text-"]) {
+  color: var(--ti-ink-700);
+}
+.dark .border-stone-200:not([class*="dark:border-"]),
+[data-theme="dark"] .border-stone-200:not([class*="dark:border-"]) {
+  border-color: var(--ti-border-default);
+}

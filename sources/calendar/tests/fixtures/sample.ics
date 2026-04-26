@@ -1,0 +1,27 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Tangerine Test//EN
+CALSCALE:GREGORIAN
+BEGIN:VEVENT
+UID:past-event-001@tangerine.test
+DTSTAMP:20260101T000000Z
+DTSTART:20260415T140000Z
+DTEND:20260415T150000Z
+SUMMARY:[v1-launch] Postgres migration sync
+DESCRIPTION:Walk through the migration script and rollback plan.
+LOCATION:Zoom
+ORGANIZER;CN=Eric:mailto:eric@acme.test
+ATTENDEE;CN=Daizhe:mailto:daizhe@acme.test
+ATTENDEE;CN=Hongyu:mailto:hongyu@acme.test
+END:VEVENT
+BEGIN:VEVENT
+UID:upcoming-event-001@tangerine.test
+DTSTAMP:20260101T000000Z
+DTSTART:20300601T160000Z
+DTEND:20300601T170000Z
+SUMMARY:Investor pitch — Acme Ventures
+DESCRIPTION:Final deck review with the partner.
+ORGANIZER;CN=Daizhe:mailto:daizhe@acme.test
+ATTENDEE;CN=Eric:mailto:eric@acme.test
+END:VEVENT
+END:VCALENDAR

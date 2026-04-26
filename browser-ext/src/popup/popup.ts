@@ -13,6 +13,7 @@ const els = {
   gemini: () => $<HTMLInputElement>('site-gemini'),
   limit: () => $<HTMLInputElement>('limit'),
   autoprefill: () => $<HTMLInputElement>('autoprefill'),
+  smartinject: () => $<HTMLInputElement>('smartinject'),
   status: () => $<HTMLDivElement>('status'),
   save: () => $<HTMLButtonElement>('btn-save'),
   test: () => $<HTMLButtonElement>('btn-test'),
@@ -41,6 +42,7 @@ function paint(s: ExtensionSettings) {
   els.gemini().checked = s.enabledSites.gemini;
   els.limit().value = String(s.resultLimit);
   els.autoprefill().checked = s.autoPrefill;
+  els.smartinject().checked = s.smartInject;
 }
 
 function harvest(): ExtensionSettings {
@@ -53,6 +55,7 @@ function harvest(): ExtensionSettings {
     },
     resultLimit: Math.max(1, Math.min(20, Number(els.limit().value) || 5)),
     autoPrefill: els.autoprefill().checked,
+    smartInject: els.smartinject().checked,
   };
 }
 

@@ -26,6 +26,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, Runtime};
 
 pub mod config;
+pub mod daemon;
 pub mod meetings;
 pub mod memory;
 pub mod tmi;
@@ -36,6 +37,11 @@ pub mod env;
 pub mod external;
 pub mod update;
 pub mod whisper_model;
+
+// Stage 1 Wave 3 — view-layer commands (today / people / projects / threads
+// / alignment / inbox / cursor writes / what's-new diff). Pure read/write
+// over the .tangerine/ sidecar; no shared state.
+pub mod views;
 
 // v1.6.0 team memory sync.
 pub mod git;
@@ -75,6 +81,10 @@ pub struct AppState {
     /// if the default was busy). `None` until the server is up. The
     /// `get_ws_port` Tauri command reads this so the frontend can debug.
     pub ws_port: Arc<parking_lot::Mutex<Option<u16>>>,
+    /// v1.7.0: handle for the background RMS daemon (heartbeat that
+    /// rebuilds the timeline index, refreshes pending alerts, generates
+    /// daily briefs). Installed by `main.rs` after the AppState is built.
+    pub daemon: Arc<daemon::DaemonSlot>,
 }
 
 impl AppState {
@@ -93,6 +103,7 @@ impl AppState {
             sync: Arc::new(sync::SyncControl::default()),
             ws_team_repo: Arc::new(parking_lot::Mutex::new(None)),
             ws_port: Arc::new(parking_lot::Mutex::new(None)),
+            daemon: Arc::new(daemon::DaemonSlot::default()),
         })
     }
 }
@@ -183,6 +194,26 @@ macro_rules! tmi_invoke_handler {
             $crate::commands::invite::parse_invite,
             // v1.6.0 — ws server (browser extension bridge)
             $crate::commands::ws::get_ws_port,
+            // v1.7.0 — RMS daemon
+            $crate::commands::daemon::daemon_status,
+            $crate::commands::daemon::daemon_kick,
+            // Stage 1 Wave 3 — view-layer commands
+            $crate::commands::views::read_timeline_today,
+            $crate::commands::views::read_timeline_recent,
+            $crate::commands::views::read_brief,
+            $crate::commands::views::read_alignment,
+            $crate::commands::views::read_pending_alerts,
+            $crate::commands::views::read_people_list,
+            $crate::commands::views::read_person,
+            $crate::commands::views::read_projects_list,
+            $crate::commands::views::read_project,
+            $crate::commands::views::read_threads_list,
+            $crate::commands::views::read_thread,
+            $crate::commands::views::mark_atom_viewed,
+            $crate::commands::views::mark_atom_acked,
+            $crate::commands::views::mark_user_opened,
+            $crate::commands::views::read_cursor,
+            $crate::commands::views::read_whats_new,
         ]
     };
 }

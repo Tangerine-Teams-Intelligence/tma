@@ -32,7 +32,7 @@ export default function AuthRoute() {
         return;
       }
       setLocalOnly(false);
-      navigate("/memory", { replace: true });
+      navigate("/today", { replace: true });
     } finally {
       setBusy(false);
     }
@@ -43,7 +43,7 @@ export default function AuthRoute() {
     // Stub-mode auth lets us drop a local synthetic session so the route
     // guard in App.tsx lets us through. Email is just a label.
     void signIn("local@tangerine.local", "localmode").then(() => {
-      navigate("/memory", { replace: true });
+      navigate("/today", { replace: true });
     });
   }
 
@@ -62,12 +62,13 @@ export default function AuthRoute() {
         </div>
 
         <h1 className="font-display text-3xl tracking-tight text-[var(--ti-ink-900)]">
-          Your AI-native team's Chief of Staff.
+          Align every AI tool on your team with your team's human workflow information.
         </h1>
         <p className="mt-2 text-sm text-[var(--ti-ink-700)]">
-          Captures every meeting, decision, PR, and ticket. Briefs your team.
-          Briefs their AI. Keeps everyone — and every AI tool — on the same
-          page.
+          Your team uses Cursor, Claude, ChatGPT — but each AI sees a different
+          slice of what your team's actually doing. We align them all with one
+          source of team workflow info, so your AIs stop giving different
+          answers.
         </p>
 
         {isStubMode && (

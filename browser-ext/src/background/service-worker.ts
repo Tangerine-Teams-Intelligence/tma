@@ -69,7 +69,11 @@ async function handleMessage(msg: BridgeMessage): Promise<BridgeResponse> {
     case 'memory.search': {
       const { query, limit } = (msg.payload ?? {}) as { query: string; limit?: number };
       const out = await c.search(query, limit ?? cachedSettings.resultLimit);
-      if (out.ok) return { ok: true, data: out.results };
+      if (out.ok) {
+        // Forward the AGI envelope alongside results so the smart-chip UI
+        // can render confidence (Hook 4 of STAGE1_AGI_HOOKS.md).
+        return { ok: true, data: { results: out.results, envelope: out.envelope } };
+      }
       return { ok: false, error: `${out.code}: ${out.message}` };
     }
     case 'memory.file': {

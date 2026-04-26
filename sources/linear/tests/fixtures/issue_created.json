@@ -1,0 +1,32 @@
+{
+  "id": "uuid-issue-eng-123",
+  "identifier": "ENG-123",
+  "title": "[v1] Add postgres migration",
+  "description": "We need to migrate the events table from sqlite to postgres. @daizhe — thoughts?",
+  "url": "https://linear.app/myorg/issue/ENG-123",
+  "priority": 2,
+  "createdAt": "2026-04-26T09:00:00.000Z",
+  "updatedAt": "2026-04-26T09:00:00.000Z",
+  "completedAt": null,
+  "canceledAt": null,
+  "team": { "id": "uuid-team-eng", "key": "ENG" },
+  "state": { "id": "uuid-state-todo", "name": "Todo", "type": "unstarted" },
+  "creator": {
+    "id": "user-eric",
+    "name": "Eric Wang",
+    "email": "eric@example.com",
+    "displayName": "Eric"
+  },
+  "assignee": null,
+  "labels": {
+    "nodes": [
+      { "id": "label-1", "name": "project:v1-launch" },
+      { "id": "label-2", "name": "backend" }
+    ]
+  },
+  "project": {
+    "id": "uuid-project-1",
+    "name": "Launch v1",
+    "state": "started"
+  }
+}

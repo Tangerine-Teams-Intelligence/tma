@@ -1,0 +1,19 @@
+{
+  "id": "uuid-comment-988",
+  "body": "We decided to ship it on TimescaleDB. Conclusion: partition by month.",
+  "url": "https://linear.app/myorg/issue/ENG-123#comment-988",
+  "createdAt": "2026-04-26T10:00:00.000Z",
+  "updatedAt": "2026-04-26T10:00:00.000Z",
+  "user": {
+    "id": "user-daizhe",
+    "name": "Daizhe Zou",
+    "email": "daizhe@example.com",
+    "displayName": "Daizhe"
+  },
+  "issue": {
+    "id": "uuid-issue-eng-123",
+    "identifier": "ENG-123",
+    "title": "[v1] Add postgres migration",
+    "team": { "key": "ENG" }
+  }
+}

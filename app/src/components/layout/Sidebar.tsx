@@ -8,6 +8,11 @@ import {
   Monitor,
   Inbox,
   Activity,
+  Calendar,
+  CalendarRange,
+  Users,
+  FolderKanban,
+  MessageCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { signOut } from "@/lib/auth";
@@ -128,8 +133,19 @@ export function Sidebar() {
 
       {/* Scrollable middle */}
       <div className="flex-1 overflow-y-auto">
+        {/* VIEWS — primary nav for the Chief of Staff surface */}
+        <Section label="Views" subtitle="Today / week / people / projects">
+          <ViewLink to="/today" icon={Calendar} label="Today" />
+          <ViewLink to="/this-week" icon={CalendarRange} label="This week" />
+          <ViewLink to="/people" icon={Users} label="People" />
+          <ViewLink to="/projects" icon={FolderKanban} label="Projects" />
+          <ViewLink to="/threads" icon={MessageCircle} label="Threads" />
+          <ViewLink to="/alignment" icon={Activity} label="Alignment" />
+          <ViewLink to="/inbox" icon={Inbox} label="Inbox" />
+        </Section>
+
         {/* MEMORY section */}
-        <Section label="Memory" rightHint="" >
+        <Section label="Memory" rightHint="">
           <NavLink
             to="/memory"
             end
@@ -152,28 +168,6 @@ export function Sidebar() {
               onNewFile={() => navigate("/memory")}
             />
           </div>
-          {/* Alignment placeholder — full dashboard ships v1.6. Living under
-              MEMORY because same-screen rate is a function of memory state. */}
-          <NavLink
-            to="/alignment"
-            className={({ isActive }) =>
-              cn(
-                "mt-2 flex items-center gap-2 rounded px-2 py-1 text-[12px]",
-                isActive
-                  ? "bg-[var(--ti-orange-50)] text-[var(--ti-orange-700)] dark:bg-stone-800 dark:text-[var(--ti-orange-500)]"
-                  : "text-stone-700 hover:bg-stone-100 dark:text-stone-300 dark:hover:bg-stone-900",
-              )
-            }
-          >
-            <Activity size={12} className="shrink-0" />
-            <span className="truncate">Alignment</span>
-            <span
-              className="ml-auto font-mono text-[10px] text-stone-400 dark:text-stone-500"
-              title="Same-screen rate dashboard ships v1.6"
-            >
-              v1.6
-            </span>
-          </NavLink>
         </Section>
 
         {/* SOURCES section */}
@@ -196,25 +190,6 @@ export function Sidebar() {
               </li>
             ))}
           </ul>
-        </Section>
-
-        {/* INBOX */}
-        <Section label="Inbox">
-          <NavLink
-            to="/inbox"
-            className={({ isActive }) =>
-              cn(
-                "flex items-center gap-2 rounded px-2 py-1 text-[12px]",
-                isActive
-                  ? "bg-[var(--ti-orange-50)] text-[var(--ti-orange-700)] dark:bg-stone-800 dark:text-[var(--ti-orange-500)]"
-                  : "text-stone-700 hover:bg-stone-100 dark:text-stone-300 dark:hover:bg-stone-900",
-              )
-            }
-          >
-            <Inbox size={12} className="shrink-0" />
-            <span className="truncate">Pending writes</span>
-            <StatusChip status="coming" />
-          </NavLink>
         </Section>
       </div>
 
@@ -278,6 +253,33 @@ function Section({
       )}
       {children}
     </div>
+  );
+}
+
+function ViewLink({
+  to,
+  icon: Icon,
+  label,
+}: {
+  to: string;
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+  label: string;
+}) {
+  return (
+    <NavLink
+      to={to}
+      className={({ isActive }) =>
+        cn(
+          "flex items-center gap-2 rounded px-2 py-1 text-[12px]",
+          isActive
+            ? "bg-[var(--ti-orange-50)] text-[var(--ti-orange-700)] dark:bg-stone-800 dark:text-[var(--ti-orange-500)]"
+            : "text-stone-700 hover:bg-stone-100 dark:text-stone-300 dark:hover:bg-stone-900",
+        )
+      }
+    >
+      <Icon size={12} className="shrink-0" />
+      <span className="truncate">{label}</span>
+    </NavLink>
   );
 }
 

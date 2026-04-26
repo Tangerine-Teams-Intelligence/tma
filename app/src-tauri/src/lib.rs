@@ -7,6 +7,7 @@
 //! download_whisper_model, cancel_whisper_download in commands::whisper_model).
 
 pub mod commands;
+pub mod daemon;
 pub mod memory_search;
 pub mod uri_handler;
 pub mod ws_server;

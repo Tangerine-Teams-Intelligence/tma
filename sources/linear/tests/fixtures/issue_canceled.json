@@ -1,0 +1,23 @@
+{
+  "id": "uuid-issue-eng-99",
+  "identifier": "ENG-99",
+  "title": "Spike: try graphql federation",
+  "description": "Pivoting away from this.",
+  "url": "https://linear.app/myorg/issue/ENG-99",
+  "priority": 0,
+  "createdAt": "2026-04-26T08:00:00.000Z",
+  "updatedAt": "2026-04-26T10:30:00.000Z",
+  "completedAt": null,
+  "canceledAt": "2026-04-26T10:30:00.000Z",
+  "team": { "id": "uuid-team-eng", "key": "ENG" },
+  "state": { "id": "uuid-state-canceled", "name": "Canceled", "type": "canceled" },
+  "creator": {
+    "id": "user-eric",
+    "name": "Eric Wang",
+    "email": "eric@example.com",
+    "displayName": "Eric"
+  },
+  "assignee": null,
+  "labels": { "nodes": [] },
+  "project": null
+}
