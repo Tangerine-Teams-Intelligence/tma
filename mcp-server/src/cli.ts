@@ -44,8 +44,30 @@ CONFIG (Cursor, ~/.cursor/mcp.json)
   }
 
 The server speaks MCP over stdio. Logs go to stderr; stdout is reserved
-for JSONRPC traffic. Tool exposed: query_team_memory. Resource exposed:
-team-memory:// (list + read individual files).
+for JSONRPC traffic.
+
+TOOLS EXPOSED (all responses wrapped in the AGI envelope —
+{ data, confidence, freshness_seconds, source_atoms, alternatives, reasoning_notes }):
+
+  - query_team_memory(query, limit?)
+      Substring search across the memory root.
+  - get_today_brief()
+      Today's daily brief from .tangerine/briefs/<today>.md, or
+      synthesised from the timeline if the daemon hasn't generated it yet.
+  - get_my_pending(user)
+      Open action items where lifecycle.owner==user AND lifecycle.closed is null.
+  - get_for_person(name)
+      Recent atoms (last 30 days, limit 20) involving the named person.
+  - get_for_project(slug)
+      Recent atoms (last 30 days, limit 20) belonging to a project slug.
+  - get_thread_state(topic)
+      Chronological atoms attached to a thread + status + decisions resolved.
+  - get_recent_decisions(days?)
+      Decision atoms in the last N days (default 7, max 50 results).
+
+RESOURCE EXPOSED:
+  team-memory://             — JSON index of every memory file
+  team-memory://<rel/path>   — full markdown content
 `;
 
 interface ParsedArgs {

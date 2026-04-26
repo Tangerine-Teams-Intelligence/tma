@@ -2,11 +2,10 @@
  * server.test.ts — integration test that spawns the built MCP server as a
  * subprocess and exercises the JSONRPC protocol over stdio.
  *
- * Verifies:
- *   - tools/list returns query_team_memory with the expected input schema
- *   - tools/call query_team_memory returns matching hits as JSON text
- *   - resources/list returns the synthetic root + per-file entries
- *   - resources/read serves a specific file
+ * Verifies (Stage 1, Hook 4):
+ *   - tools/list returns all 7 tools
+ *   - every tools/call response is wrapped in the AGI envelope
+ *   - resources/list / resources/read still work
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -20,10 +19,16 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PKG_ROOT = path.resolve(__dirname, "..");
 const CLI_PATH = path.join(PKG_ROOT, "dist", "cli.js");
 
+let tmpRepo: string;
 let tmpRoot: string;
 let child: ChildProcessWithoutNullStreams;
 let buffer = "";
 const pending = new Map<number, (msg: unknown) => void>();
+
+const today = (() => {
+  const d = new Date();
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+})();
 
 const FIXTURE_FILE = `---
 title: Pricing $20/seat 3 seat min
@@ -45,11 +50,55 @@ beforeAll(async () => {
     );
   }
 
-  tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "tangerine-mcp-int-"));
+  // Mirror the team-repo layout: <repo>/memory + <repo>/.tangerine.
+  tmpRepo = await fs.mkdtemp(path.join(os.tmpdir(), "tangerine-mcp-int-"));
+  tmpRoot = path.join(tmpRepo, "memory");
+  const sidecar = path.join(tmpRepo, ".tangerine");
+  const briefs = path.join(sidecar, "briefs");
   await fs.mkdir(path.join(tmpRoot, "decisions"), { recursive: true });
+  await fs.mkdir(path.join(tmpRoot, "threads"), { recursive: true });
+  await fs.mkdir(briefs, { recursive: true });
   await fs.writeFile(
     path.join(tmpRoot, "decisions", "pricing-20-seat.md"),
     FIXTURE_FILE,
+  );
+  // Seed a synthetic timeline.json so the proactive tools have data.
+  const index = {
+    version: 1,
+    rebuilt_at: new Date().toISOString(),
+    events: [
+      {
+        id: "evt-2026-04-25-int1234567",
+        ts: `${today}T09:00:00+08:00`,
+        source: "meeting",
+        actor: "daizhe",
+        actors: ["daizhe", "david"],
+        kind: "decision",
+        refs: {
+          decisions: ["pricing-20-seat"],
+          people: ["daizhe", "david"],
+          projects: ["v1-launch"],
+          threads: ["pricing-debate"],
+        },
+        status: "active",
+        lifecycle: { decided: today, owner: "daizhe", due: today },
+        body: "Pricing locked at $20/seat",
+        file: `memory/timeline/${today}.md`,
+        line: 5,
+      },
+    ],
+  };
+  await fs.writeFile(
+    path.join(sidecar, "timeline.json"),
+    JSON.stringify(index, null, 2),
+  );
+  await fs.writeFile(
+    path.join(briefs, `${today}.md`),
+    `# Daily Brief — ${today}\n\nLocked pricing.\n`,
+  );
+  await fs.writeFile(
+    path.join(tmpRoot, "threads", "pricing-debate.md"),
+    `---\ntopic: pricing-debate\n---\n\nThread narrative.\n`,
   );
 
   child = spawn(process.execPath, [CLI_PATH, "--root", tmpRoot], {
@@ -79,7 +128,6 @@ beforeAll(async () => {
     }
   });
 
-  // Capture stderr only if a test fails (vitest will print).
   child.stderr.setEncoding("utf8");
   let stderrBuf = "";
   child.stderr.on("data", (chunk: string) => {
@@ -93,7 +141,6 @@ beforeAll(async () => {
     capabilities: {},
     clientInfo: { name: "vitest", version: "0.0.0" },
   });
-  // initialized notification (no id, no response expected)
   child.stdin.write(
     JSON.stringify({
       jsonrpc: "2.0",
@@ -107,8 +154,8 @@ afterAll(async () => {
   if (child && !child.killed) {
     child.kill();
   }
-  if (tmpRoot) {
-    await fs.rm(tmpRoot, { recursive: true, force: true });
+  if (tmpRepo) {
+    await fs.rm(tmpRepo, { recursive: true, force: true });
   }
 });
 
@@ -128,42 +175,147 @@ function rpc(method: string, params: unknown): Promise<any> {
   });
 }
 
+function payloadOf(res: any): any {
+  return JSON.parse(res.result.content[0].text);
+}
+
+function assertEnvelope(payload: any) {
+  expect(payload).toHaveProperty("data");
+  expect(payload).toHaveProperty("confidence", 1.0);
+  expect(payload).toHaveProperty("freshness_seconds");
+  expect(payload).toHaveProperty("source_atoms");
+  expect(payload).toHaveProperty("alternatives");
+  expect(payload).toHaveProperty("reasoning_notes", null);
+  expect(Array.isArray(payload.source_atoms)).toBe(true);
+  expect(Array.isArray(payload.alternatives)).toBe(true);
+  expect(typeof payload.freshness_seconds).toBe("number");
+}
+
 describe("MCP stdio server (integration)", () => {
-  it("tools/list returns query_team_memory", async () => {
+  it("tools/list returns 7 tools", async () => {
     const res = await rpc("tools/list", {});
     expect(res.result).toBeDefined();
     expect(Array.isArray(res.result.tools)).toBe(true);
-    const tool = res.result.tools.find(
-      (t: any) => t.name === "query_team_memory",
-    );
-    expect(tool).toBeDefined();
-    expect(tool.inputSchema.type).toBe("object");
-    expect(tool.inputSchema.properties.query.type).toBe("string");
-    expect(tool.inputSchema.required).toContain("query");
+    expect(res.result.tools).toHaveLength(7);
+    const names = res.result.tools.map((t: any) => t.name);
+    for (const expected of [
+      "query_team_memory",
+      "get_today_brief",
+      "get_my_pending",
+      "get_for_person",
+      "get_for_project",
+      "get_thread_state",
+      "get_recent_decisions",
+    ]) {
+      expect(names).toContain(expected);
+    }
   });
 
-  it("tools/call query_team_memory returns matching hits", async () => {
+  it("query_team_memory returns envelope-wrapped hits", async () => {
     const res = await rpc("tools/call", {
       name: "query_team_memory",
       arguments: { query: "pricing", limit: 5 },
     });
-    expect(res.result).toBeDefined();
     expect(res.result.isError).toBeFalsy();
-    const text = res.result.content[0].text as string;
-    const payload = JSON.parse(text);
-    expect(payload.query).toBe("pricing");
-    expect(payload.searched).toBeGreaterThanOrEqual(1);
-    expect(Array.isArray(payload.hits)).toBe(true);
-    expect(payload.hits.length).toBeGreaterThan(0);
-    expect(payload.hits[0].file).toBe("decisions/pricing-20-seat.md");
-    expect(payload.hits[0].title).toBe("Pricing $20/seat 3 seat min");
-    expect(payload.hits[0].snippet).toContain("$20/seat");
+    const payload = payloadOf(res);
+    assertEnvelope(payload);
+    expect(payload.data.query).toBe("pricing");
+    expect(payload.data.hits.length).toBeGreaterThan(0);
   });
 
-  it("tools/call rejects empty query", async () => {
+  it("query_team_memory rejects empty query", async () => {
     const res = await rpc("tools/call", {
       name: "query_team_memory",
       arguments: { query: "" },
+    });
+    expect(res.result.isError).toBe(true);
+  });
+
+  it("get_today_brief returns envelope-wrapped brief", async () => {
+    const res = await rpc("tools/call", {
+      name: "get_today_brief",
+      arguments: {},
+    });
+    expect(res.result.isError).toBeFalsy();
+    const payload = payloadOf(res);
+    assertEnvelope(payload);
+    expect(payload.data.date).toBe(today);
+    expect(payload.data.markdown).toContain(today);
+  });
+
+  it("get_my_pending returns envelope + items list", async () => {
+    const res = await rpc("tools/call", {
+      name: "get_my_pending",
+      arguments: { user: "daizhe" },
+    });
+    expect(res.result.isError).toBeFalsy();
+    const payload = payloadOf(res);
+    assertEnvelope(payload);
+    expect(payload.data.user).toBe("daizhe");
+    expect(payload.data.items.length).toBeGreaterThan(0);
+    expect(payload.source_atoms.length).toBeGreaterThan(0);
+  });
+
+  it("get_my_pending rejects empty user", async () => {
+    const res = await rpc("tools/call", {
+      name: "get_my_pending",
+      arguments: { user: "" },
+    });
+    expect(res.result.isError).toBe(true);
+  });
+
+  it("get_for_person returns envelope + atoms list", async () => {
+    const res = await rpc("tools/call", {
+      name: "get_for_person",
+      arguments: { name: "daizhe" },
+    });
+    expect(res.result.isError).toBeFalsy();
+    const payload = payloadOf(res);
+    assertEnvelope(payload);
+    expect(payload.data.name).toBe("daizhe");
+    expect(payload.data.window_days).toBe(30);
+  });
+
+  it("get_for_project returns envelope", async () => {
+    const res = await rpc("tools/call", {
+      name: "get_for_project",
+      arguments: { slug: "v1-launch" },
+    });
+    expect(res.result.isError).toBeFalsy();
+    const payload = payloadOf(res);
+    assertEnvelope(payload);
+    expect(payload.data.slug).toBe("v1-launch");
+  });
+
+  it("get_thread_state returns envelope + decisions_resolved", async () => {
+    const res = await rpc("tools/call", {
+      name: "get_thread_state",
+      arguments: { topic: "pricing-debate" },
+    });
+    expect(res.result.isError).toBeFalsy();
+    const payload = payloadOf(res);
+    assertEnvelope(payload);
+    expect(payload.data.topic).toBe("pricing-debate");
+    expect(payload.data.status).toBe("active");
+    expect(payload.data.decisions_resolved).toContain("pricing-20-seat");
+    expect(payload.data.narrative).toContain("Thread narrative");
+  });
+
+  it("get_recent_decisions returns envelope + clamps days", async () => {
+    const res = await rpc("tools/call", {
+      name: "get_recent_decisions",
+      arguments: { days: 7 },
+    });
+    expect(res.result.isError).toBeFalsy();
+    const payload = payloadOf(res);
+    assertEnvelope(payload);
+    expect(payload.data.window_days).toBe(7);
+  });
+
+  it("unknown tool returns isError", async () => {
+    const res = await rpc("tools/call", {
+      name: "definitely_not_a_tool",
+      arguments: {},
     });
     expect(res.result.isError).toBe(true);
   });

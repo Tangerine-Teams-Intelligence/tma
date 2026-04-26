@@ -2,9 +2,10 @@
  * server.ts — MCP server setup using @modelcontextprotocol/sdk.
  *
  * Wires together:
- *   - tools/list, tools/call          (query_team_memory)
+ *   - tools/list, tools/call          (7 tools — see tools.ts)
  *   - resources/list, resources/read  (team-memory://)
  *
+ * Every tool response is wrapped in the AGI envelope (see envelope.ts).
  * All logging goes to stderr. Stdout is reserved for JSONRPC frames.
  */
 
@@ -19,10 +20,15 @@ import {
 
 import { resolveMemoryRoot } from "./memory.js";
 import {
-  QUERY_TOOL_DEFINITION,
-  QUERY_TOOL_NAME,
+  ALL_TOOL_DEFINITIONS,
+  TOOL_NAMES,
   runQueryTeamMemory,
-  type QueryArgs,
+  runGetTodayBrief,
+  runGetMyPending,
+  runGetForPerson,
+  runGetForProject,
+  runGetThreadState,
+  runGetRecentDecisions,
 } from "./tools.js";
 import { listResources, readResource } from "./resources.js";
 
@@ -54,39 +60,79 @@ export function createServer(opts: ServerOptions = {}): {
   );
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {
-    return { tools: [QUERY_TOOL_DEFINITION] };
+    return { tools: ALL_TOOL_DEFINITIONS };
   });
 
   server.setRequestHandler(CallToolRequestSchema, async (req) => {
-    if (req.params.name !== QUERY_TOOL_NAME) {
-      return {
-        isError: true,
-        content: [
-          { type: "text", text: `Unknown tool: ${req.params.name}` },
-        ],
-      };
+    const args = (req.params.arguments ?? {}) as Record<string, unknown>;
+    const name = req.params.name;
+    try {
+      switch (name) {
+        case TOOL_NAMES.QUERY: {
+          if (typeof args.query !== "string" || args.query.trim().length === 0) {
+            return errorResult(
+              "query_team_memory requires a non-empty 'query' string.",
+            );
+          }
+          const env = await runQueryTeamMemory(root, {
+            query: args.query,
+            limit: typeof args.limit === "number" ? args.limit : undefined,
+          });
+          return jsonResult(env);
+        }
+        case TOOL_NAMES.TODAY_BRIEF: {
+          const env = await runGetTodayBrief(root);
+          return jsonResult(env);
+        }
+        case TOOL_NAMES.MY_PENDING: {
+          if (typeof args.user !== "string" || args.user.trim().length === 0) {
+            return errorResult(
+              "get_my_pending requires a non-empty 'user' string.",
+            );
+          }
+          const env = await runGetMyPending(root, args.user);
+          return jsonResult(env);
+        }
+        case TOOL_NAMES.FOR_PERSON: {
+          if (typeof args.name !== "string" || args.name.trim().length === 0) {
+            return errorResult(
+              "get_for_person requires a non-empty 'name' string.",
+            );
+          }
+          const env = await runGetForPerson(root, args.name);
+          return jsonResult(env);
+        }
+        case TOOL_NAMES.FOR_PROJECT: {
+          if (typeof args.slug !== "string" || args.slug.trim().length === 0) {
+            return errorResult(
+              "get_for_project requires a non-empty 'slug' string.",
+            );
+          }
+          const env = await runGetForProject(root, args.slug);
+          return jsonResult(env);
+        }
+        case TOOL_NAMES.THREAD_STATE: {
+          if (typeof args.topic !== "string" || args.topic.trim().length === 0) {
+            return errorResult(
+              "get_thread_state requires a non-empty 'topic' string.",
+            );
+          }
+          const env = await runGetThreadState(root, args.topic);
+          return jsonResult(env);
+        }
+        case TOOL_NAMES.RECENT_DECISIONS: {
+          const days = typeof args.days === "number" ? args.days : undefined;
+          const env = await runGetRecentDecisions(root, days);
+          return jsonResult(env);
+        }
+        default:
+          return errorResult(`Unknown tool: ${name}`);
+      }
+    } catch (err) {
+      const msg = (err as Error).stack ?? (err as Error).message ?? String(err);
+      process.stderr.write(`[tangerine-mcp] tool ${name} threw: ${msg}\n`);
+      return errorResult(`Internal error in ${name}: ${(err as Error).message}`);
     }
-    const args = (req.params.arguments ?? {}) as Partial<QueryArgs>;
-    if (typeof args.query !== "string" || args.query.trim().length === 0) {
-      return {
-        isError: true,
-        content: [
-          {
-            type: "text",
-            text: "query_team_memory requires a non-empty 'query' string.",
-          },
-        ],
-      };
-    }
-    const result = await runQueryTeamMemory(root, {
-      query: args.query,
-      limit: args.limit,
-    });
-    return {
-      content: [
-        { type: "text", text: JSON.stringify(result, null, 2) },
-      ],
-    };
   });
 
   server.setRequestHandler(ListResourcesRequestSchema, async () => {
@@ -112,6 +158,19 @@ export function createServer(opts: ServerOptions = {}): {
   });
 
   return { server, root };
+}
+
+function jsonResult(payload: unknown) {
+  return {
+    content: [{ type: "text", text: JSON.stringify(payload, null, 2) }],
+  };
+}
+
+function errorResult(message: string) {
+  return {
+    isError: true,
+    content: [{ type: "text", text: message }],
+  };
 }
 
 /**
