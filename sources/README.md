@@ -1,6 +1,8 @@
 # Tangerine Source Connectors
 
-Sources are the **inputs** that feed Tangerine's team-memory layer. Each connector watches one external system (GitHub, Linear, Slack, Calendar, …), translates events into the canonical **atom** schema, and appends them to the user's memory tree under `<memory>/timeline/` and `<memory>/threads/`.
+> **Align every AI tool on your team with your team's actual work.**
+
+Sources are the **inputs** that feed Tangerine's team-memory layer — the "team's actual work" half of the tagline. Each connector watches one external system (GitHub, Linear, Slack, Calendar, …), translates events into the canonical **atom** schema, and appends them to the user's memory tree under `<memory>/timeline/` and `<memory>/threads/`. Sinks (browser extension, MCP server) then align every AI tool on the team with that single source of truth.
 
 A source is a self-contained npm package living under `sources/<name>/`. It ships its own CLI, has its own tests, and never imports from any other source. The contract a source must honor is documented in this file — implementing the contract is enough to add a new source.
 

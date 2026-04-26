@@ -1,6 +1,8 @@
 # tangerine-mcp
 
-MCP server that exposes Tangerine team memory to Claude Code, Cursor, Claude Desktop, and any other MCP-compatible AI client.
+> **Align every AI tool on your team with your team's actual work.**
+
+Your team uses Cursor, Claude, ChatGPT — but each AI sees a different slice of what your team's actually doing. This MCP server is the Sink that aligns them: it exposes Tangerine team memory to Claude Code, Cursor, Claude Desktop, and any other MCP-compatible AI client.
 
 Once installed, your AI tool gains 7 tools it can call autonomously — no copy-paste, no manual injection:
 

@@ -1,6 +1,8 @@
 # Tangerine — Browser Extension (v0.1.0)
 
-Inject your team's memory into ChatGPT, Claude, and Gemini with one click.
+> **Align every AI tool on your team with your team's actual work.**
+
+Your team uses Cursor, Claude, ChatGPT — but each AI sees a different slice of what your team's actually doing. This extension is the Sink that aligns ChatGPT / Claude.ai / Gemini with one source of team workflow info, so your AIs stop giving different answers.
 
 A small Chrome extension (Manifest V3) that adds a 🍊 button next to your prompt
 input on the major chat AIs. Click it, search your local Tangerine memory, and
