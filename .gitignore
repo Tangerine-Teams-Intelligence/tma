@@ -1,0 +1,76 @@
+# Runtime meeting artifacts (should not be committed by accident)
+# Exception: demo/** is the curated sample, force-tracked below.
+transcript.md
+summary.md
+advice.md
+observations.md
+knowledge-diff.md
+status.yaml
+intents/
+*.wav
+*.mp3
+*.m4a
+recordings/
+
+# Force-include curated demo
+!demo/
+!demo/**
+
+# Smoke test artifacts
+smoke.log
+smoke.err
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+.env
+*.egg-info/
+.coverage
+.pytest_cache/
+
+# Node
+node_modules/
+bot/dist/
+bot/node_modules/
+mcp-server/dist/
+mcp-server/node_modules/
+browser-ext/node_modules/
+browser-ext/dist/
+browser-ext/*.zip
+
+# Tauri / desktop app build artifacts
+app/dist/
+app/src-tauri/target/
+app/src-tauri/gen/
+app/playwright-report/
+app/test-results/
+app/resources/python/
+app/resources/bot/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# macOS
+.DS_Store
+
+# Local TMA state
+.tmi/
+.audit-report.md
+
+# Local planning / draft docs (not for git — CEO review only)
+README_PUBLIC_DRAFT.md
+OSS_REPO_PLAN.md
+V1_6_FEATURES.md
