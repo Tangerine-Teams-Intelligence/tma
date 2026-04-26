@@ -11,7 +11,7 @@ A source is a self-contained npm package living under `sources/<name>/`. It ship
 | GitHub   | v1.6   | `sources/github`                | `tangerine-github`   |
 | Slack    | v1.8   | `sources/slack`                 | `tangerine-slack`    |
 | Calendar | v1.7   | `sources/calendar`              | `tangerine-calendar` |
-| Linear   | planned (v1.6) | `sources/linear`         | `tangerine-linear`   |
+| Linear   | v1.7   | `sources/linear`                | `tangerine-linear`   |
 
 Discord predates the source-connector pattern and lives at `bot/`. New sources MUST follow the `sources/<name>/` layout — Discord will be migrated once it has a quiet release window.
 

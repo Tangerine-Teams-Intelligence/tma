@@ -1,0 +1,19 @@
+{
+  "id": "uuid-comment-987",
+  "body": "@daizhe — should we also add time-series tables here?",
+  "url": "https://linear.app/myorg/issue/ENG-123#comment-987",
+  "createdAt": "2026-04-26T09:30:00.000Z",
+  "updatedAt": "2026-04-26T09:30:00.000Z",
+  "user": {
+    "id": "user-eric",
+    "name": "Eric Wang",
+    "email": "eric@example.com",
+    "displayName": "Eric"
+  },
+  "issue": {
+    "id": "uuid-issue-eng-123",
+    "identifier": "ENG-123",
+    "title": "[v1] Add postgres migration",
+    "team": { "key": "ENG" }
+  }
+}
