@@ -37,13 +37,13 @@
   ],
   "author": "Tangerine Intelligence",
   "license": "Apache-2.0",
-  "homepage": "https://github.com/Tangerine-Teams-Intelligence/tma#readme",
+  "homepage": "https://github.com/Tangerine-Teams-Intelligence/tangerine-teams-app#readme",
   "bugs": {
-    "url": "https://github.com/Tangerine-Teams-Intelligence/tma/issues"
+    "url": "https://github.com/Tangerine-Teams-Intelligence/tangerine-teams-app/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Tangerine-Teams-Intelligence/tma.git",
+    "url": "git+https://github.com/Tangerine-Teams-Intelligence/tangerine-teams-app.git",
     "directory": "mcp-server"
   },
   "dependencies": {
