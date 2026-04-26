@@ -13,6 +13,8 @@ import {
   Users,
   FolderKanban,
   MessageCircle,
+  Layers,
+  Brain,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { signOut } from "@/lib/auth";
@@ -26,15 +28,24 @@ import {
 } from "@/lib/memory";
 import { MemoryTree } from "@/components/MemoryTree";
 import { SyncStatusIndicator } from "@/components/SyncStatusIndicator";
+import { AIToolsSection } from "@/components/ai-tools/AIToolsSection";
 import { MEMORY_REFRESHED_EVENT } from "@/components/layout/AppShell";
 import { kbdShortcut } from "@/lib/platform";
 
 /**
- * Always-visible left rail (~240px). Two sections:
+ * Always-visible left rail (~240px). v1.8 Phase 1 layout:
  *
+ *   VIEWS     — Today / Week / People / Projects / Threads / Alignment / Inbox
+ *               + new Canvas (Phase 4) + Co-thinker (Phase 3) entries.
  *   MEMORY    — file tree of the user's memory dir.
- *   SOURCES   — connectors that write to memory.
- *   SINKS     — consumers that read from memory.
+ *   SOURCES   — 10 connectors that write to memory (Discord, Slack, GitHub,
+ *               Linear, Notion, Calendar, Loom, Zoom, Email, Voice notes).
+ *   AI TOOLS  — first-class section: Cursor / Claude Code / ChatGPT etc with
+ *               live install-status detected via the Rust `detect_ai_tools`
+ *               command. ⭐ marks the user's primary tool.
+ *   ADVANCED  — formerly SINKS: Browser ext, MCP server, Local WS server.
+ *               These are mechanism, not a user-facing feature — demoted from
+ *               the user's mental model in v1.8.
  *
  * Bottom: settings, theme toggle, lock, Cmd+K hint.
  */
@@ -148,6 +159,9 @@ export function Sidebar() {
           <ViewLink to="/threads" icon={MessageCircle} label="Threads" />
           <ViewLink to="/alignment" icon={Activity} label="Alignment" />
           <ViewLink to="/inbox" icon={Inbox} label="Inbox" />
+          {/* v1.8 Phase 1 — Phase 3 / Phase 4 placeholder surfaces. */}
+          <ViewLink to="/canvas" icon={Layers} label="Canvas" />
+          <ViewLink to="/co-thinker" icon={Brain} label="Co-thinker" />
         </Section>
 
         {/* MEMORY section */}
@@ -187,8 +201,18 @@ export function Sidebar() {
           </ul>
         </Section>
 
-        {/* SINKS section */}
-        <Section label="Sinks" subtitle="Where team + their AI read out">
+        {/* AI TOOLS section — v1.8 Phase 1. Live status from Rust
+            detect_ai_tools; the section component owns its own loader. */}
+        <Section
+          label="AI tools"
+          subtitle="Where you read team memory back out"
+        >
+          <AIToolsSection />
+        </Section>
+
+        {/* ADVANCED section (formerly Sinks) — mechanism, demoted from the
+            user's mental model. Each row links to its sink-detail page. */}
+        <Section label="Advanced" subtitle="Underlying mechanism (read-only)">
           <ul>
             {SINKS.map((s) => (
               <li key={s.id}>

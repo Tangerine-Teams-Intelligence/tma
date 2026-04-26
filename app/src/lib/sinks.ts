@@ -6,12 +6,14 @@
  * AI tools (Claude Pro / ChatGPT / Cursor / Claude Code) so those tools can
  * see what the team has been doing.
  *
- * v1.5 ships none. They land v1.6+.
+ * v1.8 Phase 1: this section is rendered as "Advanced" in the sidebar (the
+ * AI Tools section is now the first-class surface for end users — sinks are
+ * the underlying mechanism, demoted to expert-mode status rows).
  */
 
-import { Globe, Plug, Code2 } from "lucide-react";
+import { Globe, Plug, Radio } from "lucide-react";
 
-export type SinkId = "browser" | "mcp" | "api";
+export type SinkId = "browser" | "mcp" | "local-ws";
 
 export type SinkStatus = "active" | "coming" | "disconnected";
 
@@ -52,15 +54,15 @@ export const SINKS: SinkDef[] = [
     comingIn: "v1.6",
   },
   {
-    id: "api",
-    title: "Public API",
-    produces: "REST + token auth, query memory programmatically",
-    blurb: "Read your team's memory from anything that speaks HTTP.",
+    id: "local-ws",
+    title: "Local WS server",
+    produces: "ws://127.0.0.1:7860 — local-only event stream",
+    blurb: "Stream memory events to local agents over WebSocket.",
     longBlurb:
-      "Generate an API token in Settings, hit the public Tangerine API with a query, get the matching memory chunks back as JSON. Use it from internal tools, n8n / Zapier flows, or your own agents.",
-    icon: Code2,
+      "When enabled, Tangerine binds a WebSocket on localhost so locally-running agents (Ollama-backed assistants, custom scripts, Raycast extensions, etc) can subscribe to the live memory event stream without going through a sink. Localhost only — never exposed to the network.",
+    icon: Radio,
     status: "coming",
-    comingIn: "v1.7",
+    comingIn: "v1.9",
   },
 ];
 

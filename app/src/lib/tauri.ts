@@ -314,6 +314,22 @@ export async function pollDiscordBotPresence(token: string): Promise<{ guilds: D
 }
 
 // ============================================================
+// v1.8 Phase 1 — AI tools detection
+// ============================================================
+
+/**
+ * Wraps the Rust `detect_ai_tools` command. Generic over the row shape so
+ * the canonical `AIToolStatus` type can live in `lib/ai-tools.ts` (UI-side
+ * concerns) without forcing a circular import here.
+ *
+ * `mockFallback` is required: it's the fixture used in browser-dev / vitest
+ * (no Tauri bridge) so the sidebar still renders during local development.
+ */
+export async function detectAITools<T>(mockFallback: T[]): Promise<T[]> {
+  return safeInvoke<T[]>("detect_ai_tools", undefined, () => mockFallback);
+}
+
+// ============================================================
 // Config + secrets
 // ============================================================
 

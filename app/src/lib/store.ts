@@ -119,6 +119,11 @@ interface UiSlice {
   /** Whats-new banner state. dismissed=true hides the banner until next
    *  cursor.last_opened_at refresh. */
   whatsNewDismissed: boolean;
+  /** v1.8 Phase 1 — id of the user's "primary" AI tool (the one with the ⭐
+   *  in the sidebar). `null` until first launch's auto-pick runs. The pick
+   *  itself happens in components/ai-tools/AIToolsSection.tsx after
+   *  `detect_ai_tools` returns; this field is the persisted choice. */
+  primaryAITool: string | null;
   toasts: { id: string; kind: "info" | "success" | "error"; text: string }[];
   setTheme: (t: ThemeMode) => void;
   cycleTheme: () => void;
@@ -136,6 +141,7 @@ interface UiSlice {
   snoozeAtom: (atomId: string, untilMs: number) => void;
   resetDismissals: () => void;
   setWhatsNewDismissed: (v: boolean) => void;
+  setPrimaryAITool: (id: string | null) => void;
   pushToast: (kind: "info" | "success" | "error", text: string) => void;
   dismissToast: (id: string) => void;
 }
@@ -219,6 +225,7 @@ export const useStore = create<Store>()(
         dismissedAtoms: [],
         snoozedAtoms: {},
         whatsNewDismissed: false,
+        primaryAITool: null,
         toasts: [],
         setTheme: (t) => {
           const resolved = resolveTheme(t);
@@ -278,6 +285,8 @@ export const useStore = create<Store>()(
           })),
         setWhatsNewDismissed: (v) =>
           set((s) => ({ ui: { ...s.ui, whatsNewDismissed: v } })),
+        setPrimaryAITool: (id) =>
+          set((s) => ({ ui: { ...s.ui, primaryAITool: id } })),
         pushToast: (kind, text) =>
           set((s) => ({
             ui: {
@@ -347,6 +356,7 @@ export const useStore = create<Store>()(
             currentUser: s.ui.currentUser,
             dismissedAtoms: s.ui.dismissedAtoms,
             snoozedAtoms: s.ui.snoozedAtoms,
+            primaryAITool: s.ui.primaryAITool,
           },
           skills: { meetingConfig: s.skills.meetingConfig },
         }) as unknown as Store,
@@ -362,6 +372,7 @@ export const useStore = create<Store>()(
                 currentUser?: string;
                 dismissedAtoms?: string[];
                 snoozedAtoms?: Record<string, number>;
+                primaryAITool?: string | null;
               };
               skills?: { meetingConfig?: MeetingConfig };
             }
@@ -382,6 +393,7 @@ export const useStore = create<Store>()(
             currentUser: p?.ui?.currentUser ?? current.ui.currentUser,
             dismissedAtoms: p?.ui?.dismissedAtoms ?? current.ui.dismissedAtoms,
             snoozedAtoms: p?.ui?.snoozedAtoms ?? current.ui.snoozedAtoms,
+            primaryAITool: p?.ui?.primaryAITool ?? current.ui.primaryAITool,
           },
           skills: {
             ...current.skills,

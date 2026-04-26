@@ -1,9 +1,12 @@
 /**
- * ST-0 Settings — tabbed: General / Team / Adapters / Advanced.
+ * ST-0 Settings — tabbed: General / AI tools / Team / Adapters / Advanced.
  *
  * Spec mentions Discord/Whisper/Claude tabs too; we collapse those into
  * "Adapters" + "Advanced" to keep ST-0 lean. T1 may split them later if user
  * feedback wants it.
+ *
+ * v1.8 adds the "AI tools" tab — the user picks a primary external AI tool
+ * (Cursor / Claude Code / etc.) for the co-thinker brain to think through.
  */
 import { useEffect, useState } from "react";
 
@@ -12,9 +15,11 @@ import { GeneralSettings } from "./GeneralSettings";
 import { TeamSettings } from "./TeamSettings";
 import { AdaptersSettings } from "./AdaptersSettings";
 import { AdvancedSettings } from "./AdvancedSettings";
+import { AIToolsSettings } from "./AIToolsSettings";
 
 const TABS = [
   { id: "general", label: "General" },
+  { id: "ai-tools", label: "AI tools" },
   { id: "team", label: "Team" },
   { id: "adapters", label: "Adapters" },
   { id: "advanced", label: "Advanced" },
@@ -102,6 +107,7 @@ export default function Settings() {
 
       <section className="flex-1 overflow-auto">
         {tab === "general" && <GeneralSettings draft={draft} update={update} />}
+        {tab === "ai-tools" && <AIToolsSettings />}
         {tab === "team" && <TeamSettings draft={draft} update={update} />}
         {tab === "adapters" && <AdaptersSettings draft={draft} update={update} />}
         {tab === "advanced" && <AdvancedSettings draft={draft} update={update} />}

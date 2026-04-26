@@ -23,6 +23,11 @@ import ProjectsListRoute from "@/routes/projects";
 import ProjectDetailRoute from "@/routes/projects/detail";
 import ThreadsListRoute from "@/routes/threads";
 import ThreadDetailRoute from "@/routes/threads/detail";
+// v1.8 Phase 1 — per-tool setup pages for the AI Tools sidebar section.
+import AIToolSetupRoute from "@/routes/ai-tools/[id]";
+// v1.8 Phase 1 — Canvas + Co-thinker placeholder routes (Phase 4 / Phase 3).
+import CanvasRoute from "@/routes/canvas";
+import CoThinkerRoute from "@/routes/co-thinker";
 import { getConfig } from "@/lib/tauri";
 import { useStore } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
@@ -148,6 +153,12 @@ export default function App() {
         <Route path="threads" element={<ThreadsListRoute />} />
         <Route path="threads/:topic" element={<ThreadDetailRoute />} />
 
+        {/* v1.8 Phase 1 — Canvas + Co-thinker placeholder surfaces. Real
+            implementations land in Phase 4 (Canvas, AGI peer ideation) and
+            Phase 3 (Co-thinker, persistent agent transcript). */}
+        <Route path="canvas" element={<CanvasRoute />} />
+        <Route path="co-thinker" element={<CoThinkerRoute />} />
+
         {/* MEMORY — file tree + viewer (still reachable, no longer default) */}
         <Route path="memory" element={<MemoryRoute />} />
         <Route path="memory/*" element={<MemoryRoute />} />
@@ -157,6 +168,9 @@ export default function App() {
 
         {/* SINKS */}
         <Route path="sinks/:id" element={<SinkDetailRoute />} />
+
+        {/* AI TOOLS — v1.8 Phase 1: per-tool setup + Test Query buttons. */}
+        <Route path="ai-tools/:id" element={<AIToolSetupRoute />} />
 
         {/* INBOX — real implementation; reads briefs/pending.md */}
         <Route path="inbox" element={<InboxRoute />} />

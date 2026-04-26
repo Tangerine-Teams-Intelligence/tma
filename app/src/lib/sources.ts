@@ -18,17 +18,21 @@ import {
   Github,
   Video,
   Disc,
+  Mail,
+  Mic,
 } from "lucide-react";
 
 export type SourceId =
   | "discord"
-  | "linear"
   | "slack"
+  | "github"
+  | "linear"
   | "notion"
   | "cal"
-  | "github"
   | "loom"
-  | "zoom";
+  | "zoom"
+  | "email"
+  | "voice-notes";
 
 export type SourceStatus = "active" | "coming" | "disconnected";
 
@@ -47,6 +51,12 @@ export interface SourceDef {
   comingIn?: string;
 }
 
+/**
+ * Render order in the sidebar — chosen to put the most-used team comm
+ * surfaces (Discord / Slack / GitHub) on top, project-tracking next
+ * (Linear / Notion / Calendar), and asynchronous capture sources last
+ * (Loom / Zoom / Email / Voice notes).
+ */
 export const SOURCES: SourceDef[] = [
   {
     id: "discord",
@@ -59,17 +69,6 @@ export const SOURCES: SourceDef[] = [
     status: "active",
   },
   {
-    id: "linear",
-    title: "Linear",
-    produces: "memory/threads/linear-*.md, memory/decisions/*.md",
-    blurb: "Pulls issues, comments, and project state into memory.",
-    longBlurb:
-      "When connected, every Linear issue + comment + status change becomes part of your team's memory. Decisions in issue threads are extracted as decision records. Read-only in v1.6 — write-back (Tangerine commenting on issues) is gated behind /inbox approval in v1.7.",
-    icon: GitBranch,
-    status: "coming",
-    comingIn: "v1.6",
-  },
-  {
     id: "slack",
     title: "Slack",
     produces: "memory/threads/slack-*.md",
@@ -79,6 +78,28 @@ export const SOURCES: SourceDef[] = [
     icon: Hash,
     status: "coming",
     comingIn: "v1.8",
+  },
+  {
+    id: "github",
+    title: "GitHub",
+    produces: "memory/threads/pr-*.md, memory/decisions/*.md",
+    blurb: "Pulls PR threads, review decisions, commit log.",
+    longBlurb:
+      "Watches the repos you authorize. PR threads, review comments, and merge decisions become memory. The commit message + files-changed summary feeds your AI tools so they know what shipped without you re-explaining.",
+    icon: Github,
+    status: "coming",
+    comingIn: "v1.6",
+  },
+  {
+    id: "linear",
+    title: "Linear",
+    produces: "memory/threads/linear-*.md, memory/decisions/*.md",
+    blurb: "Pulls issues, comments, and project state into memory.",
+    longBlurb:
+      "When connected, every Linear issue + comment + status change becomes part of your team's memory. Decisions in issue threads are extracted as decision records. Read-only in v1.6 — write-back (Tangerine commenting on issues) is gated behind /inbox approval in v1.7.",
+    icon: GitBranch,
+    status: "coming",
+    comingIn: "v1.6",
   },
   {
     id: "notion",
@@ -103,17 +124,6 @@ export const SOURCES: SourceDef[] = [
     comingIn: "v1.7",
   },
   {
-    id: "github",
-    title: "GitHub",
-    produces: "memory/threads/pr-*.md, memory/decisions/*.md",
-    blurb: "Pulls PR threads, review decisions, commit log.",
-    longBlurb:
-      "Watches the repos you authorize. PR threads, review comments, and merge decisions become memory. The commit message + files-changed summary feeds your AI tools so they know what shipped without you re-explaining.",
-    icon: Github,
-    status: "coming",
-    comingIn: "v1.6",
-  },
-  {
     id: "loom",
     title: "Loom",
     produces: "memory/threads/loom-*.md",
@@ -134,6 +144,28 @@ export const SOURCES: SourceDef[] = [
     icon: MessageSquare,
     status: "coming",
     comingIn: "v1.9",
+  },
+  {
+    id: "email",
+    title: "Email",
+    produces: "memory/threads/email-*.md",
+    blurb: "Reads team mailboxes; surfaces decisions and threads.",
+    longBlurb:
+      "Connects via OAuth (Gmail / Outlook). Threads with decisions, action items, or external commitments become memory entries. Tangerine never sends mail — read-only.",
+    icon: Mail,
+    status: "coming",
+    comingIn: "v1.8",
+  },
+  {
+    id: "voice-notes",
+    title: "Voice notes",
+    produces: "memory/threads/voice-*.md",
+    blurb: "Drop a voice note, get a transcribed memory entry.",
+    longBlurb:
+      "Record a voice note from your phone or desktop and Tangerine transcribes it via local Whisper, attaches it to the relevant thread, and writes a memory entry. Useful for capturing ideas between meetings without typing.",
+    icon: Mic,
+    status: "coming",
+    comingIn: "v1.8",
   },
 ];
 

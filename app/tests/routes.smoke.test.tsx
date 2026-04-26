@@ -12,6 +12,8 @@ import ThreadsListRoute from "../src/routes/threads";
 import ThreadDetailRoute from "../src/routes/threads/detail";
 import AlignmentRoute from "../src/routes/alignment";
 import InboxRoute from "../src/routes/inbox";
+import CanvasRoute from "../src/routes/canvas";
+import CoThinkerRoute from "../src/routes/co-thinker";
 
 import * as views from "../src/lib/views";
 
@@ -118,5 +120,22 @@ describe("Stage 1 Wave 3 routes — smoke", () => {
     renderRoute("/inbox", <InboxRoute />);
     expect(await screen.findByText(/Pending alerts/i)).toBeInTheDocument();
     expect(await screen.findByText(/Nothing pending/i)).toBeInTheDocument();
+  });
+
+  // v1.8 Phase 1 — placeholder surfaces. Real impls land Phase 4 / Phase 3.
+  it("/canvas renders the placeholder", async () => {
+    renderRoute("/canvas", <CanvasRoute />);
+    expect(
+      await screen.findByRole("heading", { level: 1, name: /Canvas/i }),
+    ).toBeInTheDocument();
+    expect(await screen.findByText(/Coming in Phase 4/i)).toBeInTheDocument();
+  });
+
+  it("/co-thinker renders the placeholder", async () => {
+    renderRoute("/co-thinker", <CoThinkerRoute />);
+    expect(
+      await screen.findByRole("heading", { level: 1, name: /Co-thinker/i }),
+    ).toBeInTheDocument();
+    expect(await screen.findByText(/Coming in Phase 3/i)).toBeInTheDocument();
   });
 });
