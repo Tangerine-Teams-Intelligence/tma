@@ -4,9 +4,9 @@
 
 <h1 align="center">Tangerine</h1>
 
-<p align="center"><strong>Align every AI tool on your team with your team''s actual work.</strong></p>
+<p align="center"><strong>Align every AI tool on your team with your team's actual work.</strong></p>
 
-<p align="center">Your team uses Cursor, Claude, ChatGPT — but each AI sees a different slice of what your team''s actually doing. We align them all with one source of team workflow info. So your AIs stop giving different answers.</p>
+<p align="center">Your team uses Cursor, Claude, ChatGPT — but each AI sees a different slice of what your team's actually doing. We align them all with one source of team workflow info. So your AIs stop giving different answers.</p>
 
 <p align="center">
   <a href="https://github.com/Tangerine-Teams-Intelligence/tma/releases/latest"><img src="https://img.shields.io/github/v/release/Tangerine-Teams-Intelligence/tma?include_prereleases&label=download" alt="Latest release" /></a>
@@ -21,7 +21,7 @@
 
 The MCP server ships with a sample team memory baked in. Works on Mac / Windows / Linux, no Tangerine app needed.
 
-**1. Add this block to your AI tool''s MCP config:**
+**1. Add this block to your AI tool's MCP config:**
 
 Cursor (`~/.cursor/mcp.json`):
 
@@ -42,13 +42,13 @@ Claude Code (`~/.config/claude/config.json` on macOS/Linux, `%APPDATA%\Claude\co
 
 **3. Ask it:**
 
-- *"what''s our team''s pricing?"*
+- *"what's our team's pricing?"*
 - *"what did we decide about postgres vs mongo?"*
 - *"who was in the roadmap sync meeting?"*
 
 Your AI calls the new `query_team_memory` tool and returns answers from a sample team memory bundled in the npm package. Drop in your own team memory by pointing `--root /path/to/your/memory` at any directory of markdown files, or install the desktop app below to capture meetings automatically.
 
-> Don''t see the tool? Make sure you actually restarted your AI client — MCP tools register on startup. Confirm `npx tangerine-mcp@latest --version` prints `0.2.0` first.
+> Don't see the tool? Make sure you actually restarted your AI client — MCP tools register on startup. Confirm `npx tangerine-mcp@latest --version` prints `0.2.0` first.
 
 ---
 
@@ -56,7 +56,7 @@ Your AI calls the new `query_team_memory` tool and returns answers from a sample
 
 [**Download `Tangerine.AI.Teams_1.6.0-beta.1_x64-setup.exe`**](https://github.com/Tangerine-Teams-Intelligence/tma/releases/latest) → right-click → Properties → Unblock → run → 5-step wizard.
 
-First-run downloads the local Whisper model (~244 MB) and seeds 3 sample memory files so the Memory browser isn''t empty. ~15 minutes from download to first recorded meeting. Full walkthrough in [SETUP.md](SETUP.md).
+First-run downloads the local Whisper model (~244 MB) and seeds 3 sample memory files so the Memory browser isn't empty. ~15 minutes from download to first recorded meeting. Full walkthrough in [SETUP.md](SETUP.md).
 
 Requires Windows 10/11, Node 20+, Git, and a Claude Code subscription (the observer/synthesizer runs against your `claude` CLI). macOS and Linux installers land after v1.6.
 
@@ -68,9 +68,9 @@ Requires Windows 10/11, Node 20+, Git, and a Claude Code subscription (the obser
 
 ## What it does
 
-We''re sometimes called the team''s Auto Chief of Staff — same idea, this is what it means specifically: Tangerine listens in every corner of your team''s comms (meetings, threads, PRs, tickets) and structures what happened into a markdown memory layer in your own repo. The AI tools you already pay for (Claude, ChatGPT, Cursor, Claude Code) read that memory through Sinks (browser extension, MCP server), so every human and every AI tool on the team operates from the same up-to-date context.
+We're sometimes called the team's Auto Chief of Staff — same idea, this is what it means specifically: Tangerine listens in every corner of your team's comms (meetings, threads, PRs, tickets) and structures what happened into a markdown memory layer in your own repo. The AI tools you already pay for (Claude, ChatGPT, Cursor, Claude Code) read that memory through Sinks (browser extension, MCP server), so every human and every AI tool on the team operates from the same up-to-date context.
 
-North star: **same-screen rate** — the share of your team (and their AI tools) that''s working from current shared context, not stale snapshots.
+North star: **same-screen rate** — the share of your team (and their AI tools) that's working from current shared context, not stale snapshots.
 
 Five verbs: **Capture · Memory · Search · Inject · Writeback**.
 
@@ -100,7 +100,7 @@ Five verbs: **Capture · Memory · Search · Inject · Writeback**.
 | **v1.8** | planned | Slack source · Notion source |
 | **v1.9** | planned | Cal.com source · Loom source |
 
-We don''t ship roadmaps we don''t intend to build. If a version slips, this table changes.
+We don't ship roadmaps we don't intend to build. If a version slips, this table changes.
 
 ---
 
@@ -118,7 +118,7 @@ We don''t ship roadmaps we don''t intend to build. If a version slips, this tabl
    Cal/Loom  ─▶└───────────┘           └──────────────┘         └──────────────────┘
                                               │
                                               ▼
-                                  user''s git repo (markdown)
+                                  user's git repo (markdown)
                                   truth lives here, not in our cloud
 ```
 
@@ -147,7 +147,7 @@ Cloud lands with v1.6. Annual contracts available at GA.
 
 | | Tangerine | Granola / Otter | Mem0 / Hermes / Letta | Notion AI |
 |---|---|---|---|---|
-| Memory subject | The **team** | One human''s notes | One **agent**''s context | One workspace''s pages |
+| Memory subject | The **team** | One human's notes | One **agent**'s context | One workspace's pages |
 | Output | Markdown in your git repo | Hosted notes page | Vector store API | Notion DB |
 | Reads through | Browser ext + MCP into your existing AI | The notes app itself | Your own agent code | Notion AI only |
 
