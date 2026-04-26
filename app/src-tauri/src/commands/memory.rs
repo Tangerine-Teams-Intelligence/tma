@@ -82,12 +82,33 @@ pub async fn init_memory_with_samples<R: Runtime>(
         });
     }
 
-    // Only seed if dir is empty — never overwrite the user's own files.
-    let already_populated = match std::fs::read_dir(&root) {
-        Ok(mut it) => it.next().is_some(),
-        Err(_) => false,
-    };
-    if already_populated {
+    // Only seed if user-facing folders are all empty/missing — never overwrite
+    // the user's own files. We check ONLY the user-facing memory folders
+    // (meetings, decisions, people, projects, threads, glossary), NOT sidecar
+    // dirs (.tangerine, timeline) which the daemon writes on first heartbeat.
+    // Without this, the daemon racing the seed effect would pre-populate
+    // those sidecars and cause us to skip the actual sample seeding.
+    const USER_FACING: &[&str] = &[
+        "meetings",
+        "decisions",
+        "people",
+        "projects",
+        "threads",
+        "glossary",
+    ];
+    let mut user_dirs_have_content = false;
+    for folder in USER_FACING {
+        let p = root.join(folder);
+        if p.is_dir() {
+            if let Ok(mut it) = std::fs::read_dir(&p) {
+                if it.next().is_some() {
+                    user_dirs_have_content = true;
+                    break;
+                }
+            }
+        }
+    }
+    if user_dirs_have_content {
         return Ok(InitMemoryResult {
             path: path_str,
             seeded: false,
