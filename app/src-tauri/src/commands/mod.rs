@@ -42,6 +42,7 @@ pub mod git;
 pub mod github;
 pub mod sync;
 pub mod invite;
+pub mod ws;
 
 mod error;
 mod paths;
@@ -65,6 +66,15 @@ pub struct AppState {
     /// Lives in `commands::sync`; held here so commands can reach it via
     /// `state.sync.dirty.notify_waiters()` without juggling globals.
     pub sync: Arc<sync::SyncControl>,
+    /// v1.6.0: shared with the localhost ws_server so it can resolve the
+    /// live memory root. `Some(repo)` ⇒ team mode (ws server reads
+    /// `<repo>/memory`); `None` ⇒ solo mode (ws server falls back to
+    /// `<home>/.tangerine-memory`). Mutated by `sync_start`/`sync_stop`.
+    pub ws_team_repo: Arc<parking_lot::Mutex<Option<PathBuf>>>,
+    /// v1.6.0: port the ws_server actually bound to (may differ from 7780
+    /// if the default was busy). `None` until the server is up. The
+    /// `get_ws_port` Tauri command reads this so the frontend can debug.
+    pub ws_port: Arc<parking_lot::Mutex<Option<u16>>>,
 }
 
 impl AppState {
@@ -81,6 +91,8 @@ impl AppState {
                 .build()
                 .map_err(|e| AppError::internal("http_init", e.to_string()))?,
             sync: Arc::new(sync::SyncControl::default()),
+            ws_team_repo: Arc::new(parking_lot::Mutex::new(None)),
+            ws_port: Arc::new(parking_lot::Mutex::new(None)),
         })
     }
 }
@@ -169,6 +181,8 @@ macro_rules! tmi_invoke_handler {
             // v1.6.0 — invite link codec
             $crate::commands::invite::generate_invite,
             $crate::commands::invite::parse_invite,
+            // v1.6.0 — ws server (browser extension bridge)
+            $crate::commands::ws::get_ws_port,
         ]
     };
 }

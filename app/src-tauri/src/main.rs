@@ -20,11 +20,15 @@
 //!   • cancel_whisper_download      (commands::whisper_model)
 //! All three are part of the full handler set returned by tmi_invoke_handler.
 
-use tauri::{Manager, WindowEvent};
+use std::sync::Arc;
+
+use tauri::{Manager, RunEvent, WindowEvent};
+use tokio::sync::Notify;
 
 use tangerine_meeting_lib::commands;
 use tangerine_meeting_lib::tmi_invoke_handler;
 use tangerine_meeting_lib::uri_handler;
+use tangerine_meeting_lib::ws_server;
 
 fn main() {
     // Single-instance plugin: when a second `tangerine-meeting.exe` is launched
@@ -68,6 +72,43 @@ fn main() {
                     uri_handler::emit_deeplink(&handle, uri);
                 });
             }
+            // v1.6.0: start the localhost ws server for the browser extension.
+            // Solo-mode root: <home>/.tangerine-memory (mirrors
+            // commands::memory::resolve_memory_root).
+            // Team-mode override: state.ws_team_repo, mutated by
+            // sync_start/sync_stop.
+            // App-data dir: holds the .tangerine-port discovery dropfile.
+            let state = app.state::<commands::AppState>();
+            let solo_root = dirs::home_dir()
+                .map(|h| h.join(".tangerine-memory"))
+                .unwrap_or_else(|| std::path::PathBuf::from(".tangerine-memory"));
+            let app_data_dir = state.paths.user_data.clone();
+            let team_hint = state.ws_team_repo.clone();
+            let port_slot = state.ws_port.clone();
+            let ctx = ws_server::WsServerCtx {
+                solo_root,
+                app_data_dir,
+                team_repo_path: team_hint,
+            };
+            // Stash a Notify in app state so the RunEvent::Exit hook can flip it.
+            let stop_holder: Arc<parking_lot::Mutex<Option<Arc<Notify>>>> =
+                Arc::new(parking_lot::Mutex::new(None));
+            app.manage(WsStopHandle(stop_holder.clone()));
+            tauri::async_runtime::spawn(async move {
+                match ws_server::start(ctx).await {
+                    Ok(handle) => {
+                        *port_slot.lock() = Some(handle.bound_port);
+                        *stop_holder.lock() = Some(handle.stop);
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            error = %e,
+                            "ws_server failed to bind any port in 7780..=7790; \
+                             browser extension will not be reachable"
+                        );
+                    }
+                }
+            });
             Ok(())
         })
         .invoke_handler(tmi_invoke_handler!())
@@ -77,6 +118,23 @@ fn main() {
                 // Default close behavior is fine for the shell.
             }
         })
-        .run(tauri::generate_context!())
-        .expect("error while running Tangerine AI Teams");
+        .build(tauri::generate_context!())
+        .expect("error while building Tangerine AI Teams")
+        .run(|app, event| {
+            if let RunEvent::Exit | RunEvent::ExitRequested { .. } = event {
+                // v1.6.0: tell the ws_server accept loop to stop. Best-effort —
+                // if start() never resolved (port bind failed) the holder is
+                // None and there's nothing to do.
+                if let Some(stop) = app.try_state::<WsStopHandle>() {
+                    if let Some(notify) = stop.0.lock().take() {
+                        notify.notify_waiters();
+                    }
+                }
+            }
+        });
 }
+
+/// Owner of the ws_server shutdown notify. Stashed in Tauri's state container
+/// so the RunEvent::Exit hook (which only sees `&AppHandle`) can fish it out
+/// and flip it.
+struct WsStopHandle(Arc<parking_lot::Mutex<Option<Arc<Notify>>>>);

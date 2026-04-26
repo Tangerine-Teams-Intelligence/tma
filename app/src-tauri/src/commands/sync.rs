@@ -203,6 +203,9 @@ pub async fn sync_start<R: Runtime>(
         s.login = Some(args.login.clone());
         s.last_error = None;
     }
+    // v1.6.0: tell the ws_server we're now in team mode so it serves from
+    // `<repo>/memory` instead of `~/.tangerine-memory`.
+    *state.ws_team_repo.lock() = Some(args.repo_path.clone());
     let dirty = control.dirty.clone();
     let stop = control.stop.clone();
     let app_handle = app.clone();
@@ -250,6 +253,9 @@ pub async fn sync_stop(state: State<'_, AppState>) -> Result<(), AppError> {
     if was_running {
         control.stop.notify_waiters();
     }
+    // v1.6.0: clear the ws_server's team-mode hint so subsequent searches
+    // fall back to `~/.tangerine-memory`.
+    *state.ws_team_repo.lock() = None;
     Ok(())
 }
 
