@@ -16,10 +16,12 @@ import { TeamSettings } from "./TeamSettings";
 import { AdaptersSettings } from "./AdaptersSettings";
 import { AdvancedSettings } from "./AdvancedSettings";
 import { AIToolsSettings } from "./AIToolsSettings";
+import { AGISettings } from "./AGISettings";
 
 const TABS = [
   { id: "general", label: "General" },
   { id: "ai-tools", label: "AI tools" },
+  { id: "agi", label: "AGI" },
   { id: "team", label: "Team" },
   { id: "adapters", label: "Adapters" },
   { id: "advanced", label: "Advanced" },
@@ -108,6 +110,7 @@ export default function Settings() {
       <section className="flex-1 overflow-auto">
         {tab === "general" && <GeneralSettings draft={draft} update={update} />}
         {tab === "ai-tools" && <AIToolsSettings />}
+        {tab === "agi" && <AGISettings />}
         {tab === "team" && <TeamSettings draft={draft} update={update} />}
         {tab === "adapters" && <AdaptersSettings draft={draft} update={update} />}
         {tab === "advanced" && <AdvancedSettings draft={draft} update={update} />}

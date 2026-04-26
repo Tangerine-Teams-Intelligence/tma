@@ -101,6 +101,39 @@ pub mod zoom;
 pub mod co_thinker;
 // === end Phase 3-B co-thinker engine ===
 
+// === Phase 4-B canvas surface ===
+// v1.8 Phase 4-B: per-project ideation surface (sticky notes + threading).
+// React side at `app/src/routes/canvas.tsx` + `app/src/components/canvas/*`;
+// the inert filesystem layer at `crate::agi::canvas`. Sibling P4-C agent
+// wires AGI peer behaviors (the AGI participates as a peer, posting stickies
+// and replies) on top of the same on-disk file shape — that lives in P4-C's
+// own module and is independent of this command surface.
+pub mod canvas;
+// === end Phase 4-B canvas surface ===
+
+// === Phase 4-A ambient ===
+// v1.8 Phase 4-A: ambient input layer. The whole app is a chat surface,
+// but there is no chatbot tab — every textarea / contenteditable / palette
+// input is implicitly an AGI entry point. This module exposes the single
+// command (`agi_analyze_input`) that the React-side observer
+// (`AmbientInputObserver`) calls once per debounced edit. The actual
+// dispatch goes through `crate::agi::session_borrower::dispatch` with a
+// fixed AMBIENT system prompt (`crate::agi::ambient`).
+pub mod agi_ambient;
+// === end Phase 4-A ambient ===
+
+// === Phase 4-C agi peer + propose lock ===
+// v1.8 Phase 4-C: AGI participates on Canvas surfaces as a peer, and the
+// "propose as decision" affordance lifts a sticky into a draft decision
+// atom under `~/.tangerine-memory/decisions/`. This module is the thin
+// Tauri command surface; the engine lives in `crate::agi::propose_lock` +
+// `crate::agi::canvas_writer`. Heartbeat-driven sticky throws are wired
+// in `crate::agi::co_thinker`'s sentinel parser (THROW_STICKY: /
+// COMMENT_STICKY:) — these commands are the manual entry point used by
+// the AgiStickyAffordances button + dogfood tests.
+pub mod canvas_agi;
+// === end Phase 4-C agi peer + propose lock ===
+
 mod error;
 mod paths;
 mod runner;
@@ -316,6 +349,20 @@ macro_rules! tmi_invoke_handler {
             $crate::commands::co_thinker::co_thinker_trigger_heartbeat,
             $crate::commands::co_thinker::co_thinker_status,
             // === end Phase 3-B co-thinker engine ===
+            // === Phase 4-B canvas surface ===
+            $crate::commands::canvas::canvas_list_projects,
+            $crate::commands::canvas::canvas_list_topics,
+            $crate::commands::canvas::canvas_load_topic,
+            $crate::commands::canvas::canvas_save_topic,
+            // === end Phase 4-B canvas surface ===
+            // === Phase 4-A ambient ===
+            $crate::commands::agi_ambient::agi_analyze_input,
+            // === end Phase 4-A ambient ===
+            // === Phase 4-C agi peer + propose lock ===
+            $crate::commands::canvas_agi::canvas_propose_lock,
+            $crate::commands::canvas_agi::agi_throw_sticky,
+            $crate::commands::canvas_agi::agi_comment_sticky,
+            // === end Phase 4-C agi peer + propose lock ===
         ]
     };
 }

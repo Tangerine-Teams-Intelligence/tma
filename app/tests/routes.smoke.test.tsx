@@ -122,13 +122,14 @@ describe("Stage 1 Wave 3 routes — smoke", () => {
     expect(await screen.findByText(/Nothing pending/i)).toBeInTheDocument();
   });
 
-  // v1.8 Phase 1 — placeholder surfaces. Real impls land Phase 4 / Phase 3.
-  it("/canvas renders the placeholder", async () => {
+  // v1.8 Phase 4-B — canvas index renders the empty/list state by default.
+  it("/canvas renders the index", async () => {
     renderRoute("/canvas", <CanvasRoute />);
     expect(
       await screen.findByRole("heading", { level: 1, name: /Canvas/i }),
     ).toBeInTheDocument();
-    expect(await screen.findByText(/Coming in Phase 4/i)).toBeInTheDocument();
+    // No canvases on disk in vitest mock → empty index.
+    expect(await screen.findByText(/No canvases yet/i)).toBeInTheDocument();
   });
 
   it("/co-thinker renders the route (empty state by default)", async () => {

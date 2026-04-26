@@ -40,6 +40,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::commands::AppError;
 
+use super::canvas_writer;
 use super::observations;
 
 // ---------------------------------------------------------------------------
@@ -335,6 +336,21 @@ impl CoThinkerEngine {
         // 7. Detect proposals (lines starting with `PROPOSAL:`) and write them.
         let proposals_created = write_proposals(&self.memory_root, &response_text, started)?;
 
+        // 7b. v1.8 Phase 4-C — detect canvas-peer sentinels and act on them.
+        //     `THROW_STICKY:` → AGI puts a fresh sticky on a canvas.
+        //     `COMMENT_STICKY:` → AGI replies on an existing sticky.
+        //     Each successful throw also appends a `Recent reasoning` anchor
+        //     (`[sticky:{project}/{topic}/{stickyid}]`) to the brain doc so the
+        //     /co-thinker route can scroll to the matching reasoning entry
+        //     when "View AGI reasoning" is clicked.
+        let canvas_anchors =
+            apply_canvas_sentinels(&self.memory_root, &response_text, started).await;
+        if !canvas_anchors.is_empty() && brain_updated {
+            // Append the reasoning anchors to the just-written brain doc.
+            // Best-effort — failure does not roll back the heartbeat.
+            let _ = append_canvas_reasoning_anchors(&self.brain_doc_path(), &canvas_anchors);
+        }
+
         // 8. Append observation log entry.
         let brief = first_reasoning_line(&validated)
             .unwrap_or_else(|| "(no brief extracted)".to_string());
@@ -520,15 +536,22 @@ fn read_blurb(path: &Path) -> String {
 // LLM prompt construction
 
 const SYSTEM_PROMPT: &str = "You are Tangerine's co-thinker, a persistent team-memory analyst. \
-You read the team's atoms (decisions, meetings, threads) and maintain a brain doc \
-the user can audit. Every claim you make MUST be followed by a citation in the form \
-`[path/to/atom.md]` or it will be silently dropped. Only output the new full markdown \
-for co-thinker.md — no preamble, no fences, no commentary outside the doc. \
-Use exactly these section headings: \
+You read the team's atoms (decisions, meetings, threads, canvas/<project>/<topic>.md) and \
+maintain a brain doc the user can audit. Every claim you make MUST be followed by a \
+citation in the form `[path/to/atom.md]` or it will be silently dropped. Only output the \
+new full markdown for co-thinker.md — no preamble, no fences, no commentary outside the \
+doc. Use exactly these section headings: \
 `## What I'm watching`, `## Active threads`, `## My todo (next 24h, ranked)`, \
 `## Recent reasoning`, `## Cited atoms (grounding)`. \
 When you propose a decision lock or notification, prefix the line with `PROPOSAL:` and \
-include `type=decision|notification` and a short slug.";
+include `type=decision|notification` and a short slug. \
+\
+You can also participate on Canvas surfaces as a peer — when reading a `canvas/<p>/<t>.md` \
+atom suggests it, emit a sentinel line OUTSIDE the brain doc body (the host strips these \
+before writing brain.md): \
+`THROW_STICKY: project={p} topic={t} body={b} color=yellow` to propose a new sticky, or \
+`COMMENT_STICKY: project={p} topic={t} sticky_id={id} body={b}` to reply on a sticky. Be \
+sparing — at most 1 throw + 1 comment per heartbeat unless the team is very active.";
 
 fn build_llm_request(
     current_brain: &str,
@@ -609,10 +632,18 @@ pub fn validate_and_ground(response: &str, current_brain: &str) -> String {
     // Heading lines, blank lines, the `Last heartbeat:` line, and
     // intentional placeholders (containing `(None)` / `(none)` / `(No atoms`)
     // pass through untouched.
+    //
+    // v1.8 Phase 4-C: also drop `THROW_STICKY:` / `COMMENT_STICKY:` sentinel
+    // lines — those are out-of-band instructions for the canvas peer, not
+    // brain-doc content. The host parses them BEFORE calling this validator
+    // (see `apply_canvas_sentinels`).
     let mut out = String::new();
     for line in body.lines() {
         if is_claim_line(line) && !has_citation(line) {
             // Drop silently.
+            continue;
+        }
+        if is_canvas_sentinel(line) {
             continue;
         }
         out.push_str(line);
@@ -828,6 +859,255 @@ fn atomic_write(path: &Path, content: &str) -> Result<(), AppError> {
 
 fn escape_for_log(s: &str) -> String {
     s.replace('"', "'").replace('\n', " ")
+}
+
+// ---------------------------------------------------------------------------
+// v1.8 Phase 4-C — Canvas-peer sentinels.
+//
+// The LLM emits `THROW_STICKY:` / `COMMENT_STICKY:` lines outside the brain
+// doc body. We strip them from the validated brain doc (see `validate_and_ground`)
+// and act on them here.
+
+/// Anchor shape used to splice "Recent reasoning" entries the /co-thinker
+/// route can scroll to via `#sticky-{id}` URL fragments.
+#[derive(Debug, Clone)]
+pub struct CanvasReasoningAnchor {
+    pub project: String,
+    pub topic: String,
+    pub sticky_id: String,
+    /// Either `"throw"` or `"comment"` — used in the appended bullet line.
+    pub kind: String,
+    pub blurb: String,
+}
+
+/// True if `line` is a `THROW_STICKY:` / `COMMENT_STICKY:` sentinel. Used by
+/// the validator to keep them out of the brain doc.
+pub fn is_canvas_sentinel(line: &str) -> bool {
+    let t = line.trim_start();
+    t.starts_with("THROW_STICKY:") || t.starts_with("COMMENT_STICKY:")
+}
+
+/// Parse + execute every canvas sentinel in the LLM response. Returns the
+/// "Recent reasoning" anchors that should be appended to the brain doc.
+///
+/// Sentinel grammar (whitespace-tolerant):
+///   `THROW_STICKY: project=<p> topic=<t> body=<b> color=<c>`
+///   `COMMENT_STICKY: project=<p> topic=<t> sticky_id=<id> body=<b>`
+///
+/// `body` and `topic` may contain spaces — we treat them as `key=value` until
+/// the next `key=` token boundary. Failures are logged + skipped (we never
+/// fail the whole heartbeat over a malformed sentinel).
+pub async fn apply_canvas_sentinels(
+    memory_root: &Path,
+    response: &str,
+    now: DateTime<Utc>,
+) -> Vec<CanvasReasoningAnchor> {
+    let mut anchors: Vec<CanvasReasoningAnchor> = Vec::new();
+    for line in response.lines() {
+        let t = line.trim_start();
+        if let Some(rest) = t.strip_prefix("THROW_STICKY:") {
+            let kv = parse_canvas_kv(rest);
+            let project = kv.get("project").cloned().unwrap_or_default();
+            let topic = kv.get("topic").cloned().unwrap_or_default();
+            let body = kv.get("body").cloned().unwrap_or_default();
+            let color = kv.get("color").cloned().unwrap_or_else(|| "yellow".into());
+            if project.is_empty() || topic.is_empty() || body.is_empty() {
+                tracing::debug!(
+                    "co_thinker: skipping malformed THROW_STICKY (missing project/topic/body): {}",
+                    line
+                );
+                continue;
+            }
+            match canvas_writer::agi_throw_sticky_in(
+                memory_root,
+                project.clone(),
+                topic.clone(),
+                body.clone(),
+                color,
+            )
+            .await
+            {
+                Ok(id) => anchors.push(CanvasReasoningAnchor {
+                    project,
+                    topic,
+                    sticky_id: id,
+                    kind: "throw".into(),
+                    blurb: short_blurb(&body),
+                }),
+                Err(e) => {
+                    tracing::warn!(
+                        "co_thinker: THROW_STICKY failed: {}, line={}",
+                        e,
+                        line
+                    );
+                }
+            }
+        } else if let Some(rest) = t.strip_prefix("COMMENT_STICKY:") {
+            let kv = parse_canvas_kv(rest);
+            let project = kv.get("project").cloned().unwrap_or_default();
+            let topic = kv.get("topic").cloned().unwrap_or_default();
+            let sticky_id = kv.get("sticky_id").cloned().unwrap_or_default();
+            let body = kv.get("body").cloned().unwrap_or_default();
+            if project.is_empty() || topic.is_empty() || sticky_id.is_empty() || body.is_empty() {
+                tracing::debug!(
+                    "co_thinker: skipping malformed COMMENT_STICKY: {}",
+                    line
+                );
+                continue;
+            }
+            match canvas_writer::agi_comment_sticky_in(
+                memory_root,
+                project.clone(),
+                topic.clone(),
+                sticky_id.clone(),
+                body.clone(),
+            )
+            .await
+            {
+                Ok(()) => anchors.push(CanvasReasoningAnchor {
+                    project,
+                    topic,
+                    sticky_id,
+                    kind: "comment".into(),
+                    blurb: short_blurb(&body),
+                }),
+                Err(e) => {
+                    tracing::warn!(
+                        "co_thinker: COMMENT_STICKY failed: {}, line={}",
+                        e,
+                        line
+                    );
+                }
+            }
+        }
+    }
+    let _ = now;
+    anchors
+}
+
+/// Parse `key=value key=value ...` where each value runs until the next
+/// `key=` token (so `body=foo bar baz topic=x` correctly captures `foo bar baz`).
+fn parse_canvas_kv(s: &str) -> std::collections::HashMap<String, String> {
+    // Pre-scan to find every `key=` index. Keys are alphanumeric + `_`.
+    let chars: Vec<char> = s.chars().collect();
+    let mut starts: Vec<(usize, String)> = Vec::new();
+    let mut i = 0usize;
+    while i < chars.len() {
+        let c = chars[i];
+        if c.is_ascii_alphabetic() {
+            // Look ahead for `key=`.
+            let mut j = i;
+            while j < chars.len() && (chars[j].is_ascii_alphanumeric() || chars[j] == '_') {
+                j += 1;
+            }
+            if j < chars.len() && chars[j] == '=' && j > i {
+                let key: String = chars[i..j].iter().collect();
+                // Boundary check — preceding char must be start, whitespace, or `,`.
+                let preceding_ok = i == 0
+                    || matches!(chars.get(i - 1).copied(), Some(c) if c.is_whitespace() || c == ',');
+                if preceding_ok {
+                    starts.push((j + 1, key.to_lowercase())); // value starts after `=`
+                    i = j + 1;
+                    continue;
+                }
+            }
+        }
+        i += 1;
+    }
+
+    // Carve substrings between consecutive starts.
+    let mut out = std::collections::HashMap::new();
+    for k in 0..starts.len() {
+        let (vstart, ref key) = starts[k];
+        let vend = if k + 1 < starts.len() {
+            // value ends just before the next key (which is at chars[start..]).
+            // We scanned the next key's position as `(start_of_value, key)`,
+            // and the actual key char starts at: prev_value_end such that
+            // chars[prev_value_end..next_value_start - 1] == "<key>=".
+            let next_vstart = starts[k + 1].0;
+            // The next key occupies chars[next_key_start..next_vstart - 1].
+            // We need to walk back from next_vstart - 1 across `=` and the key
+            // chars to find the boundary.
+            let mut pos = next_vstart.saturating_sub(1); // points at '='
+            while pos > 0 {
+                let c = chars[pos - 1];
+                if c.is_ascii_alphanumeric() || c == '_' {
+                    pos -= 1;
+                } else {
+                    break;
+                }
+            }
+            pos
+        } else {
+            chars.len()
+        };
+        let v: String = chars[vstart..vend].iter().collect();
+        out.insert(key.clone(), v.trim().trim_end_matches(',').trim().to_string());
+    }
+    out
+}
+
+fn short_blurb(s: &str) -> String {
+    let trimmed = s.replace('\n', " ");
+    if trimmed.chars().count() <= 80 {
+        trimmed
+    } else {
+        let mut out: String = trimmed.chars().take(80).collect();
+        out.push('…');
+        out
+    }
+}
+
+/// Append `Recent reasoning` bullets (with `[sticky:p/t/id]` anchor markers)
+/// to the just-written brain doc. Best-effort — IO failures are logged but
+/// don't fail the heartbeat.
+fn append_canvas_reasoning_anchors(
+    brain_path: &Path,
+    anchors: &[CanvasReasoningAnchor],
+) -> Result<(), AppError> {
+    if anchors.is_empty() {
+        return Ok(());
+    }
+    let raw = std::fs::read_to_string(brain_path)
+        .map_err(|e| AppError::internal("read_brain_for_anchor", e.to_string()))?;
+
+    // Find the `## Recent reasoning` heading; insert immediately after it.
+    let lines: Vec<&str> = raw.lines().collect();
+    let mut insert_at: Option<usize> = None;
+    for (i, l) in lines.iter().enumerate() {
+        if l.trim() == "## Recent reasoning" {
+            insert_at = Some(i + 1);
+            break;
+        }
+    }
+    let insert_at = match insert_at {
+        Some(n) => n,
+        None => {
+            // No section to append to — don't try to repair; just no-op.
+            return Ok(());
+        }
+    };
+
+    let mut new_lines: Vec<String> = lines.iter().map(|l| l.to_string()).collect();
+    for (k, a) in anchors.iter().enumerate() {
+        let bullet = format!(
+            "- {ts} → AGI {kind} on canvas `{p}/{t}` — {blurb} [sticky:{p}/{t}/{id}] [canvas/{p}/{t}.md]",
+            ts = Utc::now().format("%Y-%m-%d %H:%M"),
+            kind = a.kind,
+            p = a.project,
+            t = a.topic,
+            id = a.sticky_id,
+            blurb = a.blurb,
+        );
+        new_lines.insert(insert_at + k, bullet);
+    }
+    let mut out = new_lines.join("\n");
+    if !out.ends_with('\n') {
+        out.push('\n');
+    }
+    std::fs::write(brain_path, out)
+        .map_err(|e| AppError::internal("write_brain_anchors", e.to_string()))?;
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -1109,6 +1389,111 @@ Last heartbeat: 2026-04-26
             "agi/ subtree must not be self-fed"
         );
         assert!(atoms.iter().any(|a| a.rel_path == "decisions/x.md"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn test_scan_atoms_includes_canvas_subtree() {
+        // Phase 4-C: canvas/ files become first-class atoms the brain can see.
+        let root = tmp_root();
+        touch_atom(&root, "canvas/tangerine/sync.md", "---\n---\n\n## Sticky stk-1\n");
+        let atoms = scan_atoms_since(&root, Utc::now() - chrono::Duration::hours(1));
+        assert!(
+            atoms.iter().any(|a| a.rel_path == "canvas/tangerine/sync.md"),
+            "canvas/ atoms must be visible to the heartbeat"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn test_is_canvas_sentinel_recognizes_both_kinds() {
+        assert!(is_canvas_sentinel(
+            "THROW_STICKY: project=p topic=t body=hello color=yellow"
+        ));
+        assert!(is_canvas_sentinel(
+            "  COMMENT_STICKY: project=p topic=t sticky_id=stk-1 body=hi"
+        ));
+        assert!(!is_canvas_sentinel("- regular bullet"));
+        assert!(!is_canvas_sentinel("PROPOSAL: type=decision slug=x"));
+    }
+
+    #[test]
+    fn test_canvas_sentinel_dropped_from_brain_doc() {
+        // Validator must strip the sentinels so they don't end up in brain.md.
+        let resp = "# Tangerine Co-Thinker\nLast: ...\n\n## What I'm watching\n- foo [a.md]\n\n## Active threads\n- t [a.md]\n\n## My todo (next 24h, ranked)\n- [ ] x [a.md]\n\n## Recent reasoning\n- y [a.md]\n\n## Cited atoms (grounding)\n- [a.md]\n\nTHROW_STICKY: project=p topic=t body=hello color=yellow\n";
+        let cleaned = validate_and_ground(resp, "");
+        assert!(!cleaned.is_empty());
+        assert!(!cleaned.contains("THROW_STICKY"));
+        assert!(cleaned.contains("foo [a.md]"));
+    }
+
+    #[test]
+    fn test_parse_canvas_kv_handles_spaces_in_body() {
+        let kv = parse_canvas_kv(" project=tangerine topic=weekly-sync body=Reminder David promised follow-up by Fri color=yellow");
+        assert_eq!(kv.get("project").map(|s| s.as_str()), Some("tangerine"));
+        assert_eq!(kv.get("topic").map(|s| s.as_str()), Some("weekly-sync"));
+        assert_eq!(
+            kv.get("body").map(|s| s.as_str()),
+            Some("Reminder David promised follow-up by Fri")
+        );
+        assert_eq!(kv.get("color").map(|s| s.as_str()), Some("yellow"));
+    }
+
+    #[tokio::test]
+    async fn test_apply_canvas_sentinels_throws_a_sticky() {
+        let root = tmp_root();
+        let resp = "THROW_STICKY: project=ph4 topic=test body=hello world color=yellow\n";
+        let anchors = apply_canvas_sentinels(&root, resp, Utc::now()).await;
+        assert_eq!(anchors.len(), 1);
+        assert_eq!(anchors[0].project, "ph4");
+        assert_eq!(anchors[0].topic, "test");
+        assert_eq!(anchors[0].kind, "throw");
+        assert_eq!(anchors[0].sticky_id.len(), 12);
+        // Verify the sticky landed in the test memory root (NOT the user's
+        // real ~/.tangerine-memory).
+        let p = root.join("canvas/ph4/test.md");
+        assert!(p.exists(), "canvas topic file should exist after THROW_STICKY");
+        let raw = std::fs::read_to_string(&p).unwrap();
+        assert!(raw.contains("hello world"));
+        assert!(raw.contains("\"is_agi\":true"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn test_apply_canvas_sentinels_skips_malformed() {
+        let root = tmp_root();
+        let resp = "THROW_STICKY: project=p\nTHROW_STICKY: topic=only-topic body=incomplete\n";
+        let anchors = apply_canvas_sentinels(&root, resp, Utc::now()).await;
+        assert!(
+            anchors.is_empty(),
+            "missing fields → no anchor + no sticky written"
+        );
+        // Canvas dir should not exist at all (no successful writes).
+        assert!(!root.join("canvas").exists() || std::fs::read_dir(root.join("canvas")).map(|d| d.count()).unwrap_or(0) == 0);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn test_append_canvas_reasoning_anchors_inserts_under_recent_reasoning() {
+        let root = tmp_root();
+        let brain = root.join("brain.md");
+        let seed = "# Brain\n\n## What I'm watching\n- a [x.md]\n\n## Recent reasoning\n- earlier [x.md]\n\n## Cited atoms (grounding)\n- [x.md]\n";
+        std::fs::write(&brain, seed).unwrap();
+        let anchors = vec![CanvasReasoningAnchor {
+            project: "p".into(),
+            topic: "t".into(),
+            sticky_id: "agi-abcd".into(),
+            kind: "throw".into(),
+            blurb: "hi there".into(),
+        }];
+        append_canvas_reasoning_anchors(&brain, &anchors).unwrap();
+        let raw = std::fs::read_to_string(&brain).unwrap();
+        assert!(raw.contains("[sticky:p/t/agi-abcd]"));
+        // Should appear BEFORE the existing "earlier" entry (we insert
+        // immediately after the heading).
+        let sticky_pos = raw.find("[sticky:p/t/agi-abcd]").unwrap();
+        let earlier_pos = raw.find("earlier").unwrap();
+        assert!(sticky_pos < earlier_pos);
         let _ = std::fs::remove_dir_all(&root);
     }
 }

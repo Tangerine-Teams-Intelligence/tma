@@ -1447,3 +1447,162 @@ export async function coThinkerStatus(): Promise<CoThinkerStatus> {
     observations_today: 0,
   }));
 }
+
+// === Phase 4-A ambient ===
+// v1.8 Phase 4 — ambient input layer. The observer
+// (`components/ambient/AmbientInputObserver.tsx`) calls this once per
+// debounced edit on every textarea / contenteditable / search palette
+// input. The Rust side reuses session_borrower::dispatch with a fixed
+// AMBIENT system prompt; the React side decides whether to *show* the
+// resulting reaction via `lib/ambient.ts::shouldShowReaction`.
+
+/**
+ * Result of one ambient analysis pass. Confidence is 0.0–1.0; the
+ * frontend gates rendering on it. `text === "(silent)"` is the explicit
+ * "nothing to say" sentinel — observers must drop it without rendering.
+ */
+export interface AmbientAnalyzeResult {
+  text: string;
+  confidence: number;
+  /** "mcp_sampling" | "ollama" | "browser_ext" | "silent" */
+  channel_used: string;
+  tool_id: string;
+  latency_ms: number;
+}
+
+/**
+ * Analyse one freshly-typed input. Mock returns a low-confidence canned
+ * reaction so vitest doesn't try to hit Tauri.
+ */
+export async function agiAnalyzeInput(
+  text: string,
+  surface_id: string,
+  primary_tool_id?: string,
+): Promise<AmbientAnalyzeResult> {
+  return safeInvoke<AmbientAnalyzeResult>(
+    "agi_analyze_input",
+    { text, surface_id: surface_id, primary_tool_id: primary_tool_id ?? null },
+    () => ({
+      text: "(silent)",
+      confidence: 0,
+      channel_used: "silent",
+      tool_id: primary_tool_id ?? "mock",
+      latency_ms: 0,
+    }),
+  );
+}
+// === end Phase 4-A ambient ===
+
+// === Phase 4-B canvas surface ===
+// v1.8 Phase 4-B — per-project ideation surface. Sticky notes + threading.
+// The on-disk shape is plain markdown at
+// `~/.tangerine-memory/canvas/<project>/<topic>.md`; see `lib/canvas.ts`
+// for the round-trip helpers. The Rust side is `crate::agi::canvas` +
+// `crate::commands::canvas`.
+
+export async function canvasListProjects(): Promise<string[]> {
+  return safeInvoke<string[]>("canvas_list_projects", undefined, () => []);
+}
+
+export async function canvasListTopics(project: string): Promise<string[]> {
+  return safeInvoke<string[]>("canvas_list_topics", { project }, () => []);
+}
+
+export async function canvasLoadTopic(
+  project: string,
+  topic: string,
+): Promise<string> {
+  return safeInvoke<string>(
+    "canvas_load_topic",
+    { project, topic },
+    () => "",
+  );
+}
+
+export async function canvasSaveTopic(
+  project: string,
+  topic: string,
+  content: string,
+): Promise<void> {
+  return safeInvoke<void>(
+    "canvas_save_topic",
+    { project, topic, content },
+    () => {
+      // eslint-disable-next-line no-console
+      console.info("[mock] canvas_save_topic", project, topic, `${content.length} chars`);
+    },
+  );
+}
+// === end Phase 4-B canvas surface ===
+
+// === Phase 4-C agi peer ===
+// v1.8 Phase 4-C — AGI participates on Canvas as a peer:
+//   - `canvasProposeLock` lifts a sticky into a draft decision atom under
+//     `~/.tangerine-memory/decisions/`. Returns the absolute path of the
+//     decision file; idempotent — clicking twice on the same sticky reuses
+//     the same path and does NOT clobber a user-finalised decision.
+//   - `agiThrowSticky` puts a fresh sticky on a canvas (used by dogfood
+//     tests + the heartbeat sentinel parser at `crate::agi::co_thinker`).
+//     Returns the new sticky id (12 hex chars, matching `lib/canvas.ts`'s
+//     `shortUuid` so AGI-thrown stickies are indistinguishable in shape from
+//     human-thrown ones).
+//   - `agiCommentSticky` appends an AGI reply into the target sticky's
+//     `canvas-meta` JSON `comments` array. Errors when the sticky id is
+//     missing.
+
+export async function canvasProposeLock(
+  project: string,
+  topic: string,
+  stickyId: string,
+): Promise<string> {
+  return safeInvoke<string>(
+    "canvas_propose_lock",
+    { project, topic, stickyId },
+    () => `~/.tangerine-memory/decisions/canvas-${slugifyForMock(topic)}-${slugifyForMock(stickyId)}.md`,
+  );
+}
+
+export async function agiThrowSticky(
+  project: string,
+  topic: string,
+  body: string,
+  color: string,
+): Promise<string> {
+  return safeInvoke<string>(
+    "agi_throw_sticky",
+    { project, topic, body, color },
+    () => {
+      // eslint-disable-next-line no-console
+      console.info("[mock] agi_throw_sticky", project, topic, color, body.slice(0, 40));
+      // 12 hex chars to match `lib/canvas.ts::shortUuid`.
+      return Array.from({ length: 12 }, () =>
+        Math.floor(Math.random() * 16).toString(16),
+      ).join("");
+    },
+  );
+}
+
+export async function agiCommentSticky(
+  project: string,
+  topic: string,
+  stickyId: string,
+  body: string,
+): Promise<void> {
+  return safeInvoke<void>(
+    "agi_comment_sticky",
+    { project, topic, stickyId, body },
+    () => {
+      // eslint-disable-next-line no-console
+      console.info("[mock] agi_comment_sticky", project, topic, stickyId, body.slice(0, 40));
+    },
+  );
+}
+
+function slugifyForMock(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    || "item";
+}
+// === end Phase 4-C agi peer ===

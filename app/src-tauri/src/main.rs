@@ -22,7 +22,11 @@
 
 use std::sync::Arc;
 
-use tauri::{Manager, RunEvent, WindowEvent};
+use tauri::{
+    menu::{Menu, MenuItem},
+    tray::TrayIconBuilder,
+    Manager, RunEvent, WindowEvent,
+};
 use tokio::sync::Notify;
 
 use tangerine_meeting_lib::commands;
@@ -110,6 +114,103 @@ fn main() {
                     }
                 }
             });
+            // v1.8 Phase 4-A — system tray. The CEO's vision is no chatbot
+            // tab anywhere in the UI; instead the tray surfaces high-priority
+            // co-thinker proposals as "AGI: N active proposal(s)". Clicking
+            // "Show co-thinker" opens the main window on the /co-thinker
+            // route. The poll loop scans
+            // `~/.tangerine-memory/agi/proposals/` every 60s — light enough
+            // not to compete with the daemon's heartbeat for IO.
+            //
+            // We register the tray with default-menu disabled because we
+            // build a tiny menu by hand (a label item + a "show" item +
+            // separator + quit). Menu item ids are the same strings the
+            // event handler reads back.
+            let proposal_label = MenuItem::with_id(
+                app,
+                "agi_proposals",
+                "AGI: 0 active proposals",
+                false,
+                None::<&str>,
+            )?;
+            let show_item =
+                MenuItem::with_id(app, "show_co_thinker", "Show co-thinker", true, None::<&str>)?;
+            let separator =
+                tauri::menu::PredefinedMenuItem::separator(app)?;
+            let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+            let tray_menu = Menu::with_items(
+                app,
+                &[&proposal_label, &show_item, &separator, &quit_item],
+            )?;
+            // The tray icon reuses the app's default window icon — that
+            // way the iconography always matches the running build's
+            // bundle config, and we don't carry a separate decoded copy
+            // of the PNG. `default_window_icon()` is `Some` in production
+            // because tauri.conf.json registers icons/icon.png +
+            // icons/icon.ico under bundle.icon.
+            let mut tray_builder = TrayIconBuilder::with_id("agi_tray")
+                .tooltip("Tangerine AI Teams")
+                .menu(&tray_menu)
+                .show_menu_on_left_click(true);
+            if let Some(icon) = app.default_window_icon().cloned() {
+                tray_builder = tray_builder.icon(icon);
+            }
+            let tray_handle = tray_builder
+                .on_menu_event(|app, event| match event.id.as_ref() {
+                    "show_co_thinker" => {
+                        if let Some(win) = app.get_webview_window("main") {
+                            let _ = win.unminimize();
+                            let _ = win.show();
+                            let _ = win.set_focus();
+                            // Navigate the webview to the /co-thinker
+                            // route. We send via JS rather than a Tauri
+                            // event because the route hierarchy lives
+                            // entirely in React Router.
+                            let _ = win.eval(
+                                "window.location.hash = '#/co-thinker';\
+                                 if (typeof window.dispatchEvent==='function') {\
+                                   window.dispatchEvent(new HashChangeEvent('hashchange'));\
+                                 }",
+                            );
+                        }
+                    }
+                    "quit" => {
+                        app.exit(0);
+                    }
+                    _ => {}
+                })
+                .build(app)?;
+            // Spin up the proposal-monitor poll loop. We re-resolve the
+            // memory root every tick (cheap) so a future team-mode switch
+            // takes effect on the next poll.
+            let proposals_root = dirs::home_dir()
+                .map(|h| h.join(".tangerine-memory").join("agi").join("proposals"))
+                .unwrap_or_else(|| {
+                    std::path::PathBuf::from(".tangerine-memory")
+                        .join("agi")
+                        .join("proposals")
+                });
+            let label_clone = proposal_label.clone();
+            let _ = tray_handle;
+            tauri::async_runtime::spawn(async move {
+                let mut last_count: usize = usize::MAX;
+                loop {
+                    let count = count_active_proposals(&proposals_root);
+                    if count != last_count {
+                        let new_text = if count == 0 {
+                            "AGI: 0 active proposals".to_string()
+                        } else if count == 1 {
+                            "AGI: 1 active proposal".to_string()
+                        } else {
+                            format!("AGI: {count} active proposals")
+                        };
+                        let _ = label_clone.set_text(new_text);
+                        last_count = count;
+                    }
+                    tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+                }
+            });
+
             // v1.7.0: spawn the RMS daemon. Solo-mode default — the React
             // side calls `daemon_status` / `daemon_kick` to read/poke it.
             // Switching to team mode flips `git_pull_enabled` via a future
@@ -162,3 +263,26 @@ fn main() {
 /// so the RunEvent::Exit hook (which only sees `&AppHandle`) can fish it out
 /// and flip it.
 struct WsStopHandle(Arc<parking_lot::Mutex<Option<Arc<Notify>>>>);
+
+/// Count the .md files under the proposals dir. Used by the tray label
+/// poll loop. Missing dir → 0 (the co-thinker hasn't created its first
+/// proposal yet); read errors → keep last count by returning 0 (the
+/// label's `last_count` guard means we don't spam updates).
+fn count_active_proposals(root: &std::path::Path) -> usize {
+    let entries = match std::fs::read_dir(root) {
+        Ok(e) => e,
+        Err(_) => return 0,
+    };
+    let mut n = 0usize;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let is_md = path
+            .extension()
+            .map(|e| e.eq_ignore_ascii_case("md"))
+            .unwrap_or(false);
+        if is_md {
+            n += 1;
+        }
+    }
+    n
+}

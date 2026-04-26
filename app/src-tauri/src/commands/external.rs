@@ -12,6 +12,26 @@ use tauri::{AppHandle, Manager, Runtime, State};
 use super::runner::run_oneshot;
 use super::{AppError, AppState};
 
+/// Windows `CREATE_NO_WINDOW` flag — suppresses the black `cmd.exe` console
+/// pop-up that GUI parents get when spawning non-GUI children. Same value
+/// the rest of the codebase uses.
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+/// Apply `CREATE_NO_WINDOW` to a `std::process::Command` on Windows. No-op on
+/// other platforms. We use a free function here rather than inlining the
+/// `#[cfg]` block at every call site because this file has multiple spawn
+/// points.
+#[cfg(windows)]
+fn no_window(cmd: &mut StdCommand) -> &mut StdCommand {
+    use std::os::windows::process::CommandExt;
+    cmd.creation_flags(CREATE_NO_WINDOW)
+}
+#[cfg(not(windows))]
+fn no_window(cmd: &mut StdCommand) -> &mut StdCommand {
+    cmd
+}
+
 #[derive(Debug, Deserialize)]
 pub struct OpenExternalArgs {
     pub url: String,
@@ -40,10 +60,10 @@ pub async fn open_in_editor(args: OpenInEditorArgs) -> Result<(), AppError> {
         None => path_str.to_string(),
     };
     if which_first(&["code", "cursor"]).is_some() {
-        let _ = StdCommand::new(which_first(&["code", "cursor"]).unwrap())
-            .arg("--goto")
-            .arg(&code_arg)
-            .spawn();
+        let mut cmd = StdCommand::new(which_first(&["code", "cursor"]).unwrap());
+        cmd.arg("--goto").arg(&code_arg);
+        no_window(&mut cmd);
+        let _ = cmd.spawn();
         return Ok(());
     }
     open_with_default_handler(path_str)
@@ -63,9 +83,10 @@ pub async fn show_in_folder(args: ShowInFolderArgs) -> Result<(), AppError> {
             .ok_or_else(|| AppError::internal("non_utf8_path", format!("{:?}", args.path)))?;
         // /select, opens the parent and highlights the file. The trailing comma
         // is required by explorer.exe — don't "fix" it.
-        StdCommand::new("explorer.exe")
-            .arg(format!("/select,{}", p))
-            .spawn()
+        let mut cmd = StdCommand::new("explorer.exe");
+        cmd.arg(format!("/select,{}", p));
+        no_window(&mut cmd);
+        cmd.spawn()
             .map_err(|e| AppError::external("explorer", e.to_string()))?;
         return Ok(());
     }
@@ -282,9 +303,10 @@ fn open_with_default_handler(target: &str) -> Result<(), AppError> {
     {
         // `cmd /c start "" "<url>"` is the safest invocation for paths/URLs
         // that contain spaces; the empty quoted title is required.
-        StdCommand::new("cmd")
-            .args(["/c", "start", "", target])
-            .spawn()
+        let mut cmd = StdCommand::new("cmd");
+        cmd.args(["/c", "start", "", target]);
+        no_window(&mut cmd);
+        cmd.spawn()
             .map_err(|e| AppError::external("start", e.to_string()))?;
         Ok(())
     }

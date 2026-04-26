@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useLocation } from "react-router-dom";
 import { Brain, RotateCw, Pencil, Save, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 
@@ -39,6 +40,7 @@ import { getAIToolConfig } from "@/lib/ai-tools-config";
 export default function CoThinkerRoute() {
   const primaryAITool = useStore((s) => s.ui.primaryAITool);
   const pushToast = useStore((s) => s.ui.pushToast);
+  const location = useLocation();
 
   const [content, setContent] = useState<string>("");
   const [status, setStatus] = useState<CoThinkerStatus | null>(null);
@@ -47,6 +49,36 @@ export default function CoThinkerRoute() {
   const [draft, setDraft] = useState<string>("");
   const [saving, setSaving] = useState(false);
   const [triggerLoading, setTriggerLoading] = useState(false);
+  const brainContainerRef = useRef<HTMLDivElement | null>(null);
+
+  // v1.8 Phase 4-C — when arriving via `/co-thinker#sticky-{id}` (the
+  // "🍊 View AGI reasoning" affordance on a canvas sticky), scroll to the
+  // matching `Recent reasoning` entry.
+  //
+  // The bullet shape the heartbeat writes is:
+  //   - <ts> → AGI throw on canvas `<p>/<t>` — <blurb> [sticky:<p>/<t>/<id>] [canvas/<p>/<t>.md]
+  //
+  // We scan the rendered markdown for the first `[sticky:.../{id}]` token.
+  useEffect(() => {
+    if (loading || editing) return;
+    if (!location.hash) return;
+    const m = location.hash.match(/^#sticky-(.+)$/);
+    if (!m) return;
+    const id = decodeURIComponent(m[1]);
+    // Defer to next tick so ReactMarkdown has emitted DOM nodes.
+    const tries = [0, 50, 150, 400];
+    for (const delay of tries) {
+      window.setTimeout(() => {
+        const root = brainContainerRef.current ?? document.body;
+        const target = findReasoningElementForSticky(root, id);
+        if (target) {
+          target.scrollIntoView({ behavior: "smooth", block: "center" });
+          target.classList.add("ti-sticky-reasoning-flash");
+          window.setTimeout(() => target.classList.remove("ti-sticky-reasoning-flash"), 1800);
+        }
+      }, delay);
+    }
+  }, [location.hash, loading, editing, content]);
 
   // Look up the human label for the user's primary tool. Falls back to the
   // raw id (or "your AI tool") when the catalog doesn't know it — keeps the
@@ -195,11 +227,38 @@ export default function CoThinkerRoute() {
             saving={saving}
           />
         ) : (
-          <BrainView content={content} />
+          <div ref={brainContainerRef}>
+            <BrainView content={content} />
+          </div>
         )}
       </div>
     </div>
   );
+}
+
+/**
+ * v1.8 Phase 4-C — locate the rendered `Recent reasoning` element whose
+ * text contains the canvas-anchor token `[sticky:<p>/<t>/<id>]` for the
+ * given sticky id. Returns the closest scrollable ancestor (typically a
+ * `<li>`) so `scrollIntoView` lands on a meaningful row.
+ */
+function findReasoningElementForSticky(root: HTMLElement, stickyId: string): HTMLElement | null {
+  // Match either `[sticky:<rest>/<id>]` or `[sticky:<id>]` (defensive).
+  const needles = [`/${stickyId}]`, `[sticky:${stickyId}]`];
+  // Walk all <li> elements first — that's where the heartbeat writes the
+  // reasoning bullet.
+  const lis = root.querySelectorAll<HTMLElement>("li");
+  for (const li of Array.from(lis)) {
+    const text = li.textContent || "";
+    if (needles.some((n) => text.includes(n))) return li;
+  }
+  // Fallback — any element directly containing the marker text.
+  const all = root.querySelectorAll<HTMLElement>("p, li, span");
+  for (const el of Array.from(all)) {
+    const text = el.textContent || "";
+    if (needles.some((n) => text.includes(n))) return el;
+  }
+  return null;
 }
 
 /* ============================================================

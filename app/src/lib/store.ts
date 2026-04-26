@@ -19,6 +19,11 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import { defaultMemoryRoot } from "./memory";
+import {
+  type AgiVolume,
+  type DismissEntry,
+  pruneDismissed,
+} from "./ambient";
 
 // ---------- shared types ----------
 
@@ -124,6 +129,26 @@ interface UiSlice {
    *  itself happens in components/ai-tools/AIToolsSection.tsx after
    *  `detect_ai_tools` returns; this field is the persisted choice. */
   primaryAITool: string | null;
+  // ---- v1.8 Phase 4 — ambient input layer ----
+  // The CEO's vision: every input is an AGI entry point, gated by these
+  // three knobs. See `lib/ambient.ts::shouldShowReaction` for the policy.
+  /** Volume band controlling how often the AGI surfaces inline reactions.
+   *  Default `quiet` — high-confidence only. */
+  agiVolume: AgiVolume;
+  /** Per-channel mute list. Lets the user silence Canvas / Memory / Cmd+K /
+   *  /today / Settings independently without flipping the global volume. */
+  mutedAgiChannels: string[];
+  /** Surfaces the user explicitly dismissed in the last 24h. The store
+   *  prunes entries older than 24h on every write so the list stays small. */
+  dismissedSurfaces: DismissEntry[];
+  /** User-tunable confidence floor (0.5–0.95). Sits *on top of* the
+   *  hard-coded `MIN_CONFIDENCE = 0.7`. Default 0.7. */
+  agiConfidenceThreshold: number;
+  setAgiVolume: (v: AgiVolume) => void;
+  toggleAgiChannelMute: (channel: string) => void;
+  rememberDismissed: (surfaceId: string) => void;
+  resetDismissedSurfaces: () => void;
+  setAgiConfidenceThreshold: (n: number) => void;
   toasts: { id: string; kind: "info" | "success" | "error"; text: string }[];
   setTheme: (t: ThemeMode) => void;
   cycleTheme: () => void;
@@ -226,6 +251,10 @@ export const useStore = create<Store>()(
         snoozedAtoms: {},
         whatsNewDismissed: false,
         primaryAITool: null,
+        agiVolume: "quiet",
+        mutedAgiChannels: [],
+        dismissedSurfaces: [],
+        agiConfidenceThreshold: 0.7,
         toasts: [],
         setTheme: (t) => {
           const resolved = resolveTheme(t);
@@ -287,6 +316,40 @@ export const useStore = create<Store>()(
           set((s) => ({ ui: { ...s.ui, whatsNewDismissed: v } })),
         setPrimaryAITool: (id) =>
           set((s) => ({ ui: { ...s.ui, primaryAITool: id } })),
+        // ---- v1.8 Phase 4 ambient input layer ----
+        setAgiVolume: (v) =>
+          set((s) => ({ ui: { ...s.ui, agiVolume: v } })),
+        toggleAgiChannelMute: (channel) =>
+          set((s) => ({
+            ui: {
+              ...s.ui,
+              mutedAgiChannels: s.ui.mutedAgiChannels.includes(channel)
+                ? s.ui.mutedAgiChannels.filter((c) => c !== channel)
+                : [...s.ui.mutedAgiChannels, channel],
+            },
+          })),
+        rememberDismissed: (surfaceId) =>
+          set((s) => {
+            // Prune stale + add the new entry. Replace if surface already
+            // exists so the 24h window restarts on every dismiss.
+            const now = Date.now();
+            const next = pruneDismissed(s.ui.dismissedSurfaces, now).filter(
+              (e) => e.surfaceId !== surfaceId,
+            );
+            next.push({ surfaceId, dismissedAt: now });
+            return { ui: { ...s.ui, dismissedSurfaces: next } };
+          }),
+        resetDismissedSurfaces: () =>
+          set((s) => ({ ui: { ...s.ui, dismissedSurfaces: [] } })),
+        setAgiConfidenceThreshold: (n) =>
+          set((s) => ({
+            ui: {
+              ...s.ui,
+              // Clamp to the documented slider range so a malformed
+              // persisted value can't bypass the hard floor.
+              agiConfidenceThreshold: Math.max(0.5, Math.min(0.95, n)),
+            },
+          })),
         pushToast: (kind, text) =>
           set((s) => ({
             ui: {
@@ -357,6 +420,16 @@ export const useStore = create<Store>()(
             dismissedAtoms: s.ui.dismissedAtoms,
             snoozedAtoms: s.ui.snoozedAtoms,
             primaryAITool: s.ui.primaryAITool,
+            // v1.8 Phase 4 ambient
+            agiVolume: s.ui.agiVolume,
+            mutedAgiChannels: s.ui.mutedAgiChannels,
+            // Dismiss memory is pruned on hydrate via the merge fn — we
+            // still persist the raw list here so very recent dismisses
+            // survive a restart (e.g. user dismisses, app crashes 5
+            // minutes later, reopens — entry is still inside the 24h
+            // window and respected).
+            dismissedSurfaces: s.ui.dismissedSurfaces,
+            agiConfidenceThreshold: s.ui.agiConfidenceThreshold,
           },
           skills: { meetingConfig: s.skills.meetingConfig },
         }) as unknown as Store,
@@ -373,6 +446,10 @@ export const useStore = create<Store>()(
                 dismissedAtoms?: string[];
                 snoozedAtoms?: Record<string, number>;
                 primaryAITool?: string | null;
+                agiVolume?: AgiVolume;
+                mutedAgiChannels?: string[];
+                dismissedSurfaces?: DismissEntry[];
+                agiConfidenceThreshold?: number;
               };
               skills?: { meetingConfig?: MeetingConfig };
             }
@@ -394,6 +471,17 @@ export const useStore = create<Store>()(
             dismissedAtoms: p?.ui?.dismissedAtoms ?? current.ui.dismissedAtoms,
             snoozedAtoms: p?.ui?.snoozedAtoms ?? current.ui.snoozedAtoms,
             primaryAITool: p?.ui?.primaryAITool ?? current.ui.primaryAITool,
+            // v1.8 Phase 4 ambient — prune any persisted dismiss entries
+            // older than 24h so a long-paused install doesn't carry a
+            // forever-dismissed surface forward.
+            agiVolume: p?.ui?.agiVolume ?? current.ui.agiVolume,
+            mutedAgiChannels:
+              p?.ui?.mutedAgiChannels ?? current.ui.mutedAgiChannels,
+            dismissedSurfaces: pruneDismissed(
+              p?.ui?.dismissedSurfaces ?? current.ui.dismissedSurfaces,
+            ),
+            agiConfidenceThreshold:
+              p?.ui?.agiConfidenceThreshold ?? current.ui.agiConfidenceThreshold,
           },
           skills: {
             ...current.skills,

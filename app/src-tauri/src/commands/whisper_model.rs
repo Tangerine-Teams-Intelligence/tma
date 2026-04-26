@@ -136,6 +136,9 @@ pub async fn download_whisper_model<R: Runtime>(
 
     #[cfg(windows)]
     {
+        // Trait-extension method dispatch isn't tracked through the
+        // use-statement, so suppress the warning.
+        #[allow(unused_imports)]
         use std::os::windows::process::CommandExt;
         cmd.creation_flags(CREATE_NO_WINDOW);
     }

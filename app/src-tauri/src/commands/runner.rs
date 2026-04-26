@@ -131,6 +131,10 @@ pub async fn spawn_streamed<R: Runtime>(
     // attached if the user double-clicks the .exe.
     #[cfg(windows)]
     {
+        // The compiler flags this as unused because trait-extension method
+        // dispatch isn't tracked through the use-statement, but removing
+        // it makes `creation_flags` an unknown method on Command.
+        #[allow(unused_imports)]
         use std::os::windows::process::CommandExt;
         cmd.creation_flags(CREATE_NO_WINDOW);
     }
@@ -297,6 +301,9 @@ pub async fn run_oneshot(
     cmd.stderr(Stdio::piped());
     #[cfg(windows)]
     {
+        // See note in spawn_streamed: trait-extension method dispatch isn't
+        // tracked through the use-statement, so suppress the warning.
+        #[allow(unused_imports)]
         use std::os::windows::process::CommandExt;
         cmd.creation_flags(CREATE_NO_WINDOW);
     }

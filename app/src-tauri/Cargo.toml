@@ -1,6 +1,6 @@
 [package]
 name = "tangerine-meeting"
-version = "1.8.0-beta.3"
+version = "1.8.0"
 description = "Tangerine AI Teams — desktop shell for the Tangerine Meeting Assistant CLI"
 authors = ["Tangerine Intelligence Inc."]
 license = "Apache-2.0"
@@ -21,7 +21,10 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+# v1.8 Phase 4-A — `tray-icon` feature pulls in TrayIconBuilder so we can
+# show "AGI: N proposals" in the system tray. The watcher polls
+# `~/.tangerine-memory/agi/proposals/` every 60s.
+tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-shell = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"

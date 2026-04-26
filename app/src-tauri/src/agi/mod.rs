@@ -32,3 +32,32 @@
 pub mod session_borrower;
 pub mod co_thinker;
 pub mod observations;
+
+// === Phase 4-B canvas surface ===
+// Per-project ideation surface — markdown files at canvas/<project>/<topic>.md.
+// Sibling P4-C wires AGI peer behaviors on top of the same files; this
+// module is the inert filesystem layer (read / atomic write / list).
+pub mod canvas;
+// === end Phase 4-B canvas surface ===
+
+// === Phase 4-A ambient ===
+// v1.8 Phase 4-A — ambient input analyser. Thin wrapper around
+// `session_borrower::dispatch` consumed by `commands::agi_ambient`. The
+// React-side observer (`AmbientInputObserver`) hits this once per
+// debounced edit on every textarea / contenteditable / palette input.
+pub mod ambient;
+// === end Phase 4-A ambient ===
+
+// === Phase 4-C agi peer + propose lock ===
+// v1.8 Phase 4-C — AGI participates on Canvas as a peer (proactive sticky
+// throws + reactive comments via the heartbeat sentinel parser in
+// `co_thinker.rs`) and lifts stickies into draft decision atoms via the
+// propose-lock affordance.
+//
+// `propose_lock` builds canvas-{topic}-{stickyid}.md atoms under
+// `~/.tangerine-memory/decisions/` from a sticky's body + comments.
+// `canvas_writer` owns the AGI-side canvas writes (sticky-throw + comment),
+// using P4-B's `agi::canvas::{load_topic, save_topic}` text-blob API.
+pub mod canvas_writer;
+pub mod propose_lock;
+// === end Phase 4-C agi peer + propose lock ===

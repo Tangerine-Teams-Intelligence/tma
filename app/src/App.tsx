@@ -171,8 +171,11 @@ export default function App() {
 
         {/* v1.8 Phase 1 — Canvas + Co-thinker placeholder surfaces. Real
             implementations land in Phase 4 (Canvas, AGI peer ideation) and
-            Phase 3 (Co-thinker, persistent agent transcript). */}
+            Phase 3 (Co-thinker, persistent agent transcript). v1.8 Phase 4-B
+            shipped the canvas surface; `:project` flips canvas.tsx into the
+            per-project view. */}
         <Route path="canvas" element={<CanvasRoute />} />
+        <Route path="canvas/:project" element={<CanvasRoute />} />
         <Route path="co-thinker" element={<CoThinkerRoute />} />
 
         {/* MEMORY — file tree + viewer (still reachable, no longer default) */}

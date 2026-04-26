@@ -37,6 +37,25 @@ use tokio::sync::Notify;
 const DEFAULT_HEARTBEAT: Duration = Duration::from_secs(5 * 60);
 const MAX_ERRORS_RETAINED: usize = 20;
 
+/// Windows `CREATE_NO_WINDOW` flag. Suppresses the black `cmd.exe` console
+/// window that would otherwise flash up every time the GUI parent spawns a
+/// non-GUI child (git pull, python tmi.daemon_cli, calendar CLI). Same value
+/// used by `commands::runner`, `commands::git`, etc.
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+/// Apply `CREATE_NO_WINDOW` to a `std::process::Command` on Windows so the
+/// child doesn't get its own console window. No-op on other platforms.
+#[cfg(windows)]
+fn no_window(cmd: &mut std::process::Command) -> &mut std::process::Command {
+    use std::os::windows::process::CommandExt;
+    cmd.creation_flags(CREATE_NO_WINDOW)
+}
+#[cfg(not(windows))]
+fn no_window(cmd: &mut std::process::Command) -> &mut std::process::Command {
+    cmd
+}
+
 /// Snapshot of the daemon's internal state. Read by the UI through the
 /// `daemon_status` Tauri command.
 #[derive(Debug, Clone, Default, Serialize)]
@@ -469,6 +488,7 @@ async fn run_calendar_briefs_probe(cfg: &DaemonConfig) -> Result<usize, String> 
             .unwrap_or_else(|| std::path::PathBuf::from("tangerine-calendar"));
         let mut cmd = std::process::Command::new(&cli_path);
         cmd.args(["briefs", "--memory-root"]).arg(&memory_root);
+        no_window(&mut cmd);
         let out = match cmd.output() {
             Ok(o) => o,
             Err(_e) => {
@@ -516,12 +536,12 @@ fn should_generate_brief(status: &DaemonStatus) -> bool {
 async fn run_git_pull(repo: &PathBuf) -> Result<(), String> {
     let repo = repo.clone();
     let join = tokio::task::spawn_blocking(move || {
-        let out = std::process::Command::new("git")
-            .arg("-C")
+        let mut cmd = std::process::Command::new("git");
+        cmd.arg("-C")
             .arg(&repo)
-            .args(["pull", "--rebase", "origin", "main"])
-            .output()
-            .map_err(|e| format!("git spawn: {}", e))?;
+            .args(["pull", "--rebase", "origin", "main"]);
+        no_window(&mut cmd);
+        let out = cmd.output().map_err(|e| format!("git spawn: {}", e))?;
         if !out.status.success() {
             return Err(format!(
                 "git pull exit {}: {}",
@@ -566,6 +586,7 @@ async fn run_python_subcommand_with_args(
         for a in &extra_owned {
             cmd.arg(a);
         }
+        no_window(&mut cmd);
         let out = cmd
             .output()
             .map_err(|e| format!("python spawn: {}", e))?;
