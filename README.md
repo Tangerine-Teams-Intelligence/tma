@@ -86,20 +86,52 @@ Cursor / Claude Code / Codex / Windsurf / ChatGPT / Devin / Replit / Apple Intel
 
 ---
 
-## How we make money (anti-SaaS, no per-seat trap)
+## Pricing — transparent because we build in public
 
-Tangerine is **OSS forever**. Fork it, run it on your laptop, name your AI whatever you want, never pay us anything.
+Tangerine is **OSS forever**. Run it on your laptop, connect your own DeepSeek API key, never pay us anything. Every feature is open-source, every commit is public. There are no enterprise-only forks hidden behind a paywall.
 
-If you want zero-config, three optional paid tiers:
+If you want zero-config + managed everything, four tiers:
 
 | Tier | Price | What you get |
 |---|---|---|
-| **Self-host** | $0 | Full app, every feature, no limits. Your DeepSeek API key OR borrow your editor's LLM via MCP sampling. |
-| **Tangerine Cloud** | ~$5/team/month flat | DeepSeek-backed inference managed by us. Not per-seat. Not per-token. |
-| **Marketplace** | 10-15% take rate | Community templates / agents / sources. Sellers keep 85-90%. |
-| **Enterprise** | $25-100k/year | SOC 2, SSO, on-prem, white-label. |
+| **Self-host** | **$0 forever** | Full app, every feature. Bring your own DeepSeek API key (~$0.27/M tokens at cost) — or borrow your editor's LLM via MCP sampling. Your existing Cursor Pro / Claude Pro / Codex subscription becomes Tangerine's inference engine. |
+| **Tangerine Cloud** | **$80 / team / month flat**<br>+ overage credits | Shared DeepSeek API key managed by us. ~100M tokens included monthly (very heavy team usage). Above that, top up with credits at $5 / 10M tokens. **Not per-seat**: invite 5 people or 50, the base price stays $80. |
+| **Marketplace** | 82% to sellers / 18% to us | Buy & sell community templates, sources, agents. Sellers set prices; we handle distribution + auth + billing. |
+| **Enterprise** | **$50–200k / year** | SOC 2 Type II, SSO, on-prem deployment, white-label, 24h SLA, dedicated account manager. **Required if you redistribute Tangerine inside your products** — AGPL forces it; buy a commercial license to keep your modifications private. |
 
-See [BUSINESS_MODEL_SPEC.md](./BUSINESS_MODEL_SPEC.md) for the full breakdown.
+### Why $80/team flat instead of $20/seat?
+
+Per-seat pricing trains you to "save" by not inviting your full team. Tangerine **only works when everyone is in it** — that's how cross-AI alignment happens. So we charge per-team, not per-seat. Either everyone uses it or no one does.
+
+Math comparison for a 5-person team:
+- ChatGPT Team: $25/seat × 5 = **$125/month**
+- Linear + Notion + Slack combined: ~$25/seat × 5 = **$125/month**
+- **Tangerine Cloud: $80/month flat** ← still cheaper than either, *and* it covers the cross-AI alignment piece those tools don't
+
+For a 30-person team, you save 80% vs ChatGPT Team. For 100-person, 95%. Self-host is still $0.
+
+### How the shared DeepSeek key works
+
+Cloud teams share **one DeepSeek API key** that we manage:
+- ~100M tokens included monthly (covers ~30 people of normal co-thinker + atom edits + heartbeat)
+- Above that → credit packs ($5 per 10M tokens, no markup tricks; DeepSeek raw is ~$2.7/10M)
+- **You see the meter live** in Settings → Billing. No "surprise bill at end of month."
+- If you'd rather use your own DeepSeek key (or your own LLM), Self-host is $0 forever.
+
+### Three promises
+
+1. **No per-seat trap.** Grow your team — your base bill doesn't grow.
+2. **No paywall pivot.** Self-host stays open-source forever. If we ever raise prices, you have a fork in your back pocket.
+3. **Profit in public.** Our ARR + cost dashboard goes live with v2.0. You'll see real numbers per tier, including DeepSeek margin.
+
+### Why charge at all if it's open-source?
+
+Two answers:
+
+- **Time** — Cloud customers don't want to set up DeepSeek API keys, host an MCP server, manage SSL, run backups, patch security holes. $80/month buys their engineer's time back.
+- **AGPL gate** — If you redistribute modified Tangerine in a closed-source product, AGPL requires you to open-source your modifications. Most enterprises can't. They buy a commercial license to keep their changes private. That funds the OSS for the rest of us.
+
+See [BUSINESS_MODEL_SPEC.md](./BUSINESS_MODEL_SPEC.md) for the full economic breakdown.
 
 ---
 

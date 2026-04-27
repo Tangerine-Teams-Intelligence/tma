@@ -94,7 +94,7 @@ jobs:
           cache-dependency-path: bot/package-lock.json
 
       - name: Install Python
-        run: pip install -e .
+        run: pip install -e ".[dev]"
 
       - name: Build bot
         working-directory: bot
