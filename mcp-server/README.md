@@ -1,6 +1,6 @@
 # tangerine-mcp
 
-> **Align every AI tool on your team with your team's human workflow information.**
+> **Align every AI tool on your team with your team's actual workflow.**
 
 Your team uses Cursor, Claude, ChatGPT — but each AI sees a different slice of what your team's actually doing. This MCP server is the Sink that aligns them: it exposes Tangerine team memory to Claude Code, Cursor, Claude Desktop, and any other MCP-compatible AI client.
 

@@ -13,7 +13,7 @@
  *     `agiAnalyzeInput`, surfaces a card, dismiss persists in store.
  */
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent, act } from "@testing-library/react";
 
 import {
   shouldShowReaction,
@@ -180,12 +180,21 @@ describe("ambient store slice", () => {
     useStore.setState((s) => ({
       ui: {
         ...s.ui,
+        agiParticipation: true,
         agiVolume: "quiet",
         mutedAgiChannels: [],
         dismissedSurfaces: [],
         agiConfidenceThreshold: 0.7,
       },
     }));
+  });
+
+  it("setAgiParticipation flips the master switch", () => {
+    expect(useStore.getState().ui.agiParticipation).toBe(true);
+    useStore.getState().ui.setAgiParticipation(false);
+    expect(useStore.getState().ui.agiParticipation).toBe(false);
+    useStore.getState().ui.setAgiParticipation(true);
+    expect(useStore.getState().ui.agiParticipation).toBe(true);
   });
 
   it("setAgiVolume swaps the volume", () => {
@@ -291,6 +300,7 @@ describe("<AmbientInputObserver/>", () => {
     useStore.setState((s) => ({
       ui: {
         ...s.ui,
+        agiParticipation: true,
         agiVolume: "quiet",
         mutedAgiChannels: [],
         dismissedSurfaces: [],
@@ -356,5 +366,63 @@ describe("<AmbientInputObserver/>", () => {
     // Wait past the debounce window to verify nothing fired.
     await new Promise((resolve) => setTimeout(resolve, 1100));
     expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("skips entirely when agiParticipation is false (master kill switch)", async () => {
+    useStore.getState().ui.setAgiParticipation(false);
+    const spy = vi.spyOn(tauri, "agiAnalyzeInput").mockResolvedValue({
+      text: "ignored",
+      confidence: 0.95,
+      channel_used: "ollama",
+      tool_id: "ollama",
+      latency_ms: 10,
+    });
+
+    render(
+      <AmbientInputObserver>
+        <textarea data-ambient-id="surface-paused" data-testid="ta" />
+      </AmbientInputObserver>,
+    );
+    const ta = screen.getByTestId("ta") as HTMLTextAreaElement;
+    fireEvent.input(ta, { target: { value: "anything" } });
+    fireEvent.input(ta, { target: { value: "still anything" } });
+    // Wait past the debounce window to verify nothing fired even though
+    // volume / channel / threshold gates would all have passed.
+    await new Promise((resolve) => setTimeout(resolve, 1100));
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("resumes immediately when agiParticipation flips back on", async () => {
+    useStore.getState().ui.setAgiParticipation(false);
+    const spy = vi.spyOn(tauri, "agiAnalyzeInput").mockResolvedValue({
+      text: "Linked to /memory/decisions/q3.md.",
+      confidence: 0.85,
+      channel_used: "ollama",
+      tool_id: "ollama",
+      latency_ms: 12,
+    });
+
+    render(
+      <AmbientInputObserver>
+        <textarea data-ambient-id="surface-resume" data-testid="ta" />
+      </AmbientInputObserver>,
+    );
+    const ta = screen.getByTestId("ta") as HTMLTextAreaElement;
+    fireEvent.input(ta, { target: { value: "first pass" } });
+    await new Promise((resolve) => setTimeout(resolve, 1100));
+    expect(spy).not.toHaveBeenCalled();
+
+    // Flip the switch back on. Wrap in act() so the AmbientInputObserver
+    // useEffect that mirrors the store into policyRef runs before the
+    // next keystroke; otherwise the handler still sees the stale paused
+    // value when fireEvent fires synchronously.
+    act(() => {
+      useStore.getState().ui.setAgiParticipation(true);
+    });
+    fireEvent.input(ta, { target: { value: "second pass" } });
+    await waitFor(
+      () => expect(spy).toHaveBeenCalledTimes(1),
+      { timeout: 2000 },
+    );
   });
 });

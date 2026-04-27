@@ -132,6 +132,13 @@ interface UiSlice {
   // ---- v1.8 Phase 4 — ambient input layer ----
   // The CEO's vision: every input is an AGI entry point, gated by these
   // three knobs. See `lib/ambient.ts::shouldShowReaction` for the policy.
+  /** Master kill switch (v1.8). When false, the entire ambient AGI layer
+   *  pauses on the frontend: no inline reactions, no heartbeat, no
+   *  system tray surfacing. The volume / channel / threshold controls
+   *  below remain in their last state but are gated by this flag. The
+   *  Rust co-thinker daemon ticks on its own clock and is NOT yet
+   *  gated here — that's a v1.9 backend hook. Default `true`. */
+  agiParticipation: boolean;
   /** Volume band controlling how often the AGI surfaces inline reactions.
    *  Default `quiet` — high-confidence only. */
   agiVolume: AgiVolume;
@@ -144,6 +151,7 @@ interface UiSlice {
   /** User-tunable confidence floor (0.5–0.95). Sits *on top of* the
    *  hard-coded `MIN_CONFIDENCE = 0.7`. Default 0.7. */
   agiConfidenceThreshold: number;
+  setAgiParticipation: (v: boolean) => void;
   setAgiVolume: (v: AgiVolume) => void;
   toggleAgiChannelMute: (channel: string) => void;
   rememberDismissed: (surfaceId: string) => void;
@@ -251,6 +259,7 @@ export const useStore = create<Store>()(
         snoozedAtoms: {},
         whatsNewDismissed: false,
         primaryAITool: null,
+        agiParticipation: true,
         agiVolume: "quiet",
         mutedAgiChannels: [],
         dismissedSurfaces: [],
@@ -317,6 +326,8 @@ export const useStore = create<Store>()(
         setPrimaryAITool: (id) =>
           set((s) => ({ ui: { ...s.ui, primaryAITool: id } })),
         // ---- v1.8 Phase 4 ambient input layer ----
+        setAgiParticipation: (v) =>
+          set((s) => ({ ui: { ...s.ui, agiParticipation: v } })),
         setAgiVolume: (v) =>
           set((s) => ({ ui: { ...s.ui, agiVolume: v } })),
         toggleAgiChannelMute: (channel) =>
@@ -421,6 +432,7 @@ export const useStore = create<Store>()(
             snoozedAtoms: s.ui.snoozedAtoms,
             primaryAITool: s.ui.primaryAITool,
             // v1.8 Phase 4 ambient
+            agiParticipation: s.ui.agiParticipation,
             agiVolume: s.ui.agiVolume,
             mutedAgiChannels: s.ui.mutedAgiChannels,
             // Dismiss memory is pruned on hydrate via the merge fn — we
@@ -446,6 +458,7 @@ export const useStore = create<Store>()(
                 dismissedAtoms?: string[];
                 snoozedAtoms?: Record<string, number>;
                 primaryAITool?: string | null;
+                agiParticipation?: boolean;
                 agiVolume?: AgiVolume;
                 mutedAgiChannels?: string[];
                 dismissedSurfaces?: DismissEntry[];
@@ -474,6 +487,8 @@ export const useStore = create<Store>()(
             // v1.8 Phase 4 ambient — prune any persisted dismiss entries
             // older than 24h so a long-paused install doesn't carry a
             // forever-dismissed surface forward.
+            agiParticipation:
+              p?.ui?.agiParticipation ?? current.ui.agiParticipation,
             agiVolume: p?.ui?.agiVolume ?? current.ui.agiVolume,
             mutedAgiChannels:
               p?.ui?.mutedAgiChannels ?? current.ui.mutedAgiChannels,

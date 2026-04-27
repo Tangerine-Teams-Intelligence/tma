@@ -1,7 +1,14 @@
 /**
  * v1.8 Phase 4 — Settings → AGI tab.
  *
- * The user's three knobs over how loud the ambient AGI is allowed to be:
+ * Top of the page: **AGI participation** master switch (v1.8). Hard kill
+ * for the frontend ambient layer — when off, no inline reactions, no
+ * heartbeat, no system tray. Volume / channel / threshold controls below
+ * remain visible but disabled (greyed out) so the user sees what would
+ * resume if they flip it back on.
+ *
+ * The user's three fine-grained knobs over how loud the ambient AGI is
+ * allowed to be (only meaningful when participation === true):
  *   1. Volume band — silent / quiet / chatty.
  *   2. Confidence floor — 0.50–0.95 slider, clamped on top of the
  *      hard-coded MIN_CONFIDENCE in `lib/ambient.ts`.
@@ -39,6 +46,8 @@ const VOLUME_HELP: Record<AgiVolume, string> = {
 };
 
 export function AGISettings() {
+  const agiParticipation = useStore((s) => s.ui.agiParticipation);
+  const setAgiParticipation = useStore((s) => s.ui.setAgiParticipation);
   const agiVolume = useStore((s) => s.ui.agiVolume);
   const setAgiVolume = useStore((s) => s.ui.setAgiVolume);
   const mutedChannels = useStore((s) => s.ui.mutedAgiChannels);
@@ -48,9 +57,50 @@ export function AGISettings() {
   const dismissedSurfaces = useStore((s) => s.ui.dismissedSurfaces);
   const resetDismissed = useStore((s) => s.ui.resetDismissedSurfaces);
 
+  // When participation is off, every fine-grained control is greyed out
+  // and disabled. The toggle itself stays interactive.
+  const childrenDisabled = !agiParticipation;
+  const dimClass = childrenDisabled ? "opacity-50" : "";
+
   return (
     <div className="flex flex-col gap-8" data-testid="st-agi">
-      <section>
+      <section
+        className="rounded-md border border-[var(--ti-border-default)] bg-[var(--ti-paper-50)] px-4 py-3"
+        data-testid="st-agi-participation-card"
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h3 className="font-display text-lg">AGI participation</h3>
+            <p className="mt-1 text-sm text-[var(--ti-ink-500)]">
+              Master switch. When off, no inline reactions, no heartbeat,
+              no system tray. Tangerine&apos;s AI brain pauses.
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={agiParticipation}
+            aria-label="Toggle AGI participation"
+            onClick={() => setAgiParticipation(!agiParticipation)}
+            data-testid="st-agi-participation"
+            className={
+              "ml-3 mt-1 flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors duration-fast " +
+              (agiParticipation
+                ? "bg-[var(--ti-orange-500)]"
+                : "bg-stone-300")
+            }
+          >
+            <span
+              className={
+                "inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform duration-fast " +
+                (agiParticipation ? "translate-x-4" : "translate-x-1")
+              }
+            />
+          </button>
+        </div>
+      </section>
+
+      <section className={dimClass}>
         <h3 className="font-display text-lg">AGI volume</h3>
         <p className="mt-1 text-sm text-[var(--ti-ink-500)]">
           The whole app is a chat surface. Tangerine's AGI may surface a
@@ -70,10 +120,11 @@ export function AGISettings() {
                 type="button"
                 role="radio"
                 aria-checked={checked}
+                disabled={childrenDisabled}
                 onClick={() => setAgiVolume(v)}
                 data-testid={`st-agi-volume-${v}`}
                 className={
-                  "flex flex-col items-start rounded-md border px-3 py-2 text-left text-sm transition-colors duration-fast " +
+                  "flex flex-col items-start rounded-md border px-3 py-2 text-left text-sm transition-colors duration-fast disabled:cursor-not-allowed " +
                   (checked
                     ? "border-[var(--ti-orange-500)] bg-[var(--ti-orange-50)] text-[var(--ti-ink-900)]"
                     : "border-[var(--ti-border-default)] bg-[var(--ti-paper-50)] text-[var(--ti-ink-700)] hover:bg-[var(--ti-paper-200)]")
@@ -100,7 +151,7 @@ export function AGISettings() {
         </div>
       </section>
 
-      <section>
+      <section className={dimClass}>
         <h3 className="font-display text-lg">Confidence floor</h3>
         <p className="mt-1 text-sm text-[var(--ti-ink-500)]">
           Reactions below this confidence never surface, regardless of
@@ -113,10 +164,11 @@ export function AGISettings() {
             max={0.95}
             step={0.05}
             value={threshold}
+            disabled={childrenDisabled}
             onChange={(e) => setThreshold(Number(e.target.value))}
             data-testid="st-agi-threshold"
             aria-label="Confidence floor"
-            className="flex-1 accent-[var(--ti-orange-500)]"
+            className="flex-1 accent-[var(--ti-orange-500)] disabled:cursor-not-allowed"
           />
           <span
             className="w-12 text-right font-mono text-sm text-[var(--ti-ink-700)]"
@@ -127,7 +179,7 @@ export function AGISettings() {
         </div>
       </section>
 
-      <section>
+      <section className={dimClass}>
         <h3 className="font-display text-lg">Channel mutes</h3>
         <p className="mt-1 text-sm text-[var(--ti-ink-500)]">
           Disable ambient reactions on individual surfaces without
@@ -152,10 +204,11 @@ export function AGISettings() {
                   role="switch"
                   aria-checked={!muted}
                   aria-label={`Toggle ${c.label}`}
+                  disabled={childrenDisabled}
                   onClick={() => toggleChannel(c.id)}
                   data-testid={`st-agi-mute-${c.id}`}
                   className={
-                    "ml-3 flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors duration-fast " +
+                    "ml-3 flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors duration-fast disabled:cursor-not-allowed " +
                     (muted ? "bg-stone-300" : "bg-[var(--ti-orange-500)]")
                   }
                 >
@@ -172,7 +225,7 @@ export function AGISettings() {
         </ul>
       </section>
 
-      <section>
+      <section className={dimClass}>
         <h3 className="font-display text-lg">Dismiss memory</h3>
         <p className="mt-1 text-sm text-[var(--ti-ink-500)]">
           When you dismiss a reaction, that surface is muted for 24h.
@@ -183,6 +236,7 @@ export function AGISettings() {
           <Button
             variant="outline"
             size="sm"
+            disabled={childrenDisabled}
             onClick={resetDismissed}
             data-testid="st-agi-reset-dismissed"
           >

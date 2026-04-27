@@ -107,6 +107,7 @@ function readText(el: HTMLElement): string {
 }
 
 export function AmbientInputObserver({ children }: { children?: React.ReactNode }) {
+  const agiParticipation = useStore((s) => s.ui.agiParticipation);
   const agiVolume = useStore((s) => s.ui.agiVolume);
   const mutedAgiChannels = useStore((s) => s.ui.mutedAgiChannels);
   const dismissedSurfaces = useStore((s) => s.ui.dismissedSurfaces);
@@ -131,6 +132,7 @@ export function AmbientInputObserver({ children }: { children?: React.ReactNode 
   // input listener (installed once on mount) reads the current values
   // without us having to detach/reattach on every state change.
   const policyRef = useRef({
+    agiParticipation,
     agiVolume,
     mutedAgiChannels,
     dismissedSurfaces,
@@ -139,6 +141,7 @@ export function AmbientInputObserver({ children }: { children?: React.ReactNode 
   });
   useEffect(() => {
     policyRef.current = {
+      agiParticipation,
       agiVolume,
       mutedAgiChannels,
       dismissedSurfaces,
@@ -146,6 +149,7 @@ export function AmbientInputObserver({ children }: { children?: React.ReactNode 
       primaryAITool,
     };
   }, [
+    agiParticipation,
     agiVolume,
     mutedAgiChannels,
     dismissedSurfaces,
@@ -188,6 +192,12 @@ export function AmbientInputObserver({ children }: { children?: React.ReactNode 
   // Global capture-phase input listener. Installed exactly once.
   useEffect(() => {
     function handler(e: Event) {
+      // v1.8 master kill switch — when AGI participation is off the
+      // observer becomes a no-op. We still keep the listener attached
+      // (cheap, capture-phase delegate) so flipping the toggle back on
+      // resumes immediately without a remount. No IPC, no debounce, no
+      // throttle bookkeeping while paused.
+      if (!policyRef.current.agiParticipation) return;
       const target = e.target as Element | null;
       if (!isEligibleSurface(target)) return;
       const surfaceId = deriveSurfaceId(target);

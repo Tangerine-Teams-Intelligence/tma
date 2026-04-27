@@ -1,8 +1,8 @@
 # Tangerine
 
-> **Align every AI tool on your team with your team's human workflow information.**
+> **Align every AI tool on your team with your team's actual workflow.**
 >
-> Your team uses Cursor, Claude, ChatGPT — but each AI sees a different slice of what your team's actually doing. We align them all with one source of team workflow info. So your AIs stop giving different answers.
+> Your team uses Cursor, Claude, ChatGPT — but each AI sees a different slice of what your team's actually doing. We align them all with one source of team workflow. So your AIs stop giving different answers.
 
 [![Latest Release](https://img.shields.io/github/v/release/Tangerine-Intelligence/tangerine-meeting-live?include_prereleases)](https://github.com/Tangerine-Intelligence/tangerine-meeting-live/releases/latest)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)

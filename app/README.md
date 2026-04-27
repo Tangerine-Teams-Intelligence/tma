@@ -1,6 +1,6 @@
 # Tangerine AI Teams — Desktop App
 
-> **Align every AI tool on your team with your team's human workflow information.**
+> **Align every AI tool on your team with your team's actual workflow.**
 
 Tauri 2.x desktop shell that wraps Tangerine's capture pipeline and exposes the team-memory layer to every AI tool on the team. Wraps the Python `tmi` CLI and Node Discord bot in a native Windows app. Top-level flow: sign in → install the Meeting skill → first meeting. Spec lives in `../APP-INTERFACES.md`.
 
