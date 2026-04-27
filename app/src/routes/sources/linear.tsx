@@ -12,7 +12,9 @@
  * Toggle persists to `~/.tmi/config.yaml` under `writeback.linear.enabled`.
  */
 
+// === wave 5-α ===
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import {
   ArrowLeft,
@@ -132,6 +134,7 @@ function extractGithubWritebackBlock(yaml: string): string | null {
 }
 
 export default function LinearSourceRoute() {
+  const { t } = useTranslation();
   const pushToast = useStore((s) => s.ui.pushToast);
   const pushModal = useStore((s) => s.ui.pushModal);
   const firstWritebackConfirmed = useStore(
@@ -222,10 +225,7 @@ export default function LinearSourceRoute() {
     setSaving(true);
     try {
       if (!yamlBody.trim()) {
-        pushToast(
-          "error",
-          "No ~/.tmi/config.yaml yet. Finish the Discord setup first so the schema is initialised."
-        );
+        pushToast("error", t("sources.github.noConfig"));
         return;
       }
       const githubBlock = extractGithubWritebackBlock(yamlBody);
@@ -251,12 +251,12 @@ export default function LinearSourceRoute() {
       pushToast(
         "success",
         next.enabled
-          ? "Linear writeback ON. Decisions will open issues automatically."
-          : "Linear writeback OFF. Capture continues unchanged."
+          ? t("sources.linear.writebackOn")
+          : t("sources.linear.writebackOff"),
       );
     } catch (e) {
       const msg = (e as Error).message ?? String(e);
-      pushToast("error", `Save failed: ${msg}`);
+      pushToast("error", `${t("sources.github.saveFailed")} ${msg}`);
     } finally {
       setSaving(false);
     }
@@ -286,12 +286,10 @@ export default function LinearSourceRoute() {
     pushModal({
       id: "linear-writeback-first-time",
       emoji: "🍊",
-      title: "Open Linear issues on Tangerine's behalf?",
-      body:
-        "When enabled, Tangerine will open a fresh \"decision recorded\" issue (state Done, label tangerine-decision) in the team for every finalized decision. Each issue is automated — no per-message confirm.\n\n" +
-        "This is a one-time confirm. Disable any time.",
-      confirmLabel: "Allow Linear issues",
-      cancelLabel: "Not now",
+      title: t("sources.linear.modalTitle"),
+      body: t("sources.linear.modalBody"),
+      confirmLabel: t("sources.linear.modalConfirm"),
+      cancelLabel: t("sources.linear.modalCancel"),
       onConfirm: () => {
         markWritebackConfirmed("linear");
         void persistWriteback(next, nextKey);
@@ -314,7 +312,7 @@ export default function LinearSourceRoute() {
       <header className="ti-no-select flex h-14 items-center gap-3 border-b border-stone-200 bg-stone-50 px-6 dark:border-stone-800 dark:bg-stone-950">
         <Link
           to="/memory"
-          aria-label="Back"
+          aria-label={t("buttons.back")}
           className="inline-flex h-8 w-8 items-center justify-center rounded-md text-stone-700 hover:bg-stone-200 dark:text-stone-300 dark:hover:bg-stone-800"
         >
           <ArrowLeft size={16} />
@@ -326,37 +324,37 @@ export default function LinearSourceRoute() {
           <GitBranch size={14} />
         </div>
         <span className="font-display text-lg leading-none text-stone-900 dark:text-stone-100">
-          Linear
+          {t("sources.linear.title")}
         </span>
         <span className="font-mono text-[11px] text-stone-500 dark:text-stone-400">
-          / Source / Configure
+          {t("sources.linear.headerSub")}
         </span>
       </header>
 
       <main className="mx-auto max-w-3xl p-8 pb-24">
-        <p className="ti-section-label">Source · Linear</p>
+        <p className="ti-section-label">{t("sources.linear.kicker")}</p>
         <h1 className="mt-1 font-display text-3xl tracking-tight text-stone-900 dark:text-stone-100">
-          Linear source
+          {t("sources.linear.h1")}
         </h1>
         <p className="mt-2 text-sm text-stone-700 dark:text-stone-300">
-          Pulls issues, comments, and project state into{" "}
-          <code className="font-mono text-[13px]">memory/threads/linear-*.md</code>.
-          With writeback ON, finalised decisions in{" "}
-          <code className="font-mono text-[13px]">memory/decisions/</code> open a fresh
-          "decision recorded" issue (state Done, label{" "}
-          <code className="font-mono text-[13px]">tangerine-decision</code>) in the
-          team the original issue belongs to.
+          {t("sources.linear.intro")}{" "}
+          <code className="font-mono text-[13px]">memory/threads/linear-*.md</code>
+          {t("sources.linear.introTail")}{" "}
+          <code className="font-mono text-[13px]">memory/decisions/</code>{" "}
+          {t("sources.linear.introTail2")}
+          <code className="font-mono text-[13px]">tangerine-decision</code>
+          {t("sources.linear.introTail3")}
         </p>
 
         {loading ? (
           <p className="mt-6 flex items-center gap-2 text-sm text-stone-500 dark:text-stone-400">
-            <Loader2 size={14} className="animate-spin" /> Loading config…
+            <Loader2 size={14} className="animate-spin" /> {t("sources.linear.loading")}
           </p>
         ) : (
           <div className="mt-8 space-y-3">
             <Section
               id="capture"
-              title="Capture"
+              title={t("sources.github.captureTitle")}
               done={true}
               open={openSection === "capture"}
               onToggle={() =>
@@ -368,7 +366,7 @@ export default function LinearSourceRoute() {
 
             <Section
               id="writeback"
-              title="Writeback"
+              title={t("sources.github.writebackTitle")}
               done={cfg.enabled}
               open={openSection === "writeback"}
               onToggle={() =>
@@ -407,6 +405,7 @@ interface SectionProps {
 }
 
 function Section({ title, done, open, onToggle, children }: SectionProps) {
+  const { t } = useTranslation();
   return (
     <Card>
       <button
@@ -424,11 +423,11 @@ function Section({ title, done, open, onToggle, children }: SectionProps) {
         </div>
         {done ? (
           <span className="flex items-center gap-1 text-xs text-[var(--ti-success)]">
-            <CheckCircle2 size={14} /> On
+            <CheckCircle2 size={14} /> {t("sidebar.statusOn")}
           </span>
         ) : (
           <span className="flex items-center gap-1 text-xs text-[var(--ti-ink-500)]">
-            <AlertCircle size={14} /> Off
+            <AlertCircle size={14} /> {t("sidebar.statusOff")}
           </span>
         )}
       </button>
@@ -438,18 +437,18 @@ function Section({ title, done, open, onToggle, children }: SectionProps) {
 }
 
 function CaptureSection() {
+  const { t } = useTranslation();
   return (
     <div className="space-y-3 text-sm text-[var(--ti-ink-700)]">
       <p>
-        Capture for Linear runs from the{" "}
-        <code className="font-mono text-[13px]">sources/linear</code> Node package
-        (separate process). Issues, comments, and project state changes become
-        atoms in your memory dir.
+        {t("sources.linear.captureBody")}{" "}
+        <code className="font-mono text-[13px]">sources/linear</code>{" "}
+        {t("sources.linear.captureBodyTail")}
       </p>
       <p className="font-mono text-[11px] text-[var(--ti-ink-500)]">
-        Per-team cursors live in{" "}
-        <code>memory/.tangerine/sources/linear.config.json</code>. This page focuses
-        on writeback — Phase 2-A.
+        {t("sources.linear.captureNote")}{" "}
+        <code>memory/.tangerine/sources/linear.config.json</code>
+        {t("sources.linear.captureNoteTail")}
       </p>
     </div>
   );
@@ -471,6 +470,7 @@ interface WritebackSectionProps {
 }
 
 function WritebackSection(p: WritebackSectionProps) {
+  const { t } = useTranslation();
   const [draft, setDraft] = useState<LinearWritebackConfig>(p.cfg);
   useEffect(() => setDraft(p.cfg), [p.cfg.enabled]);
   const dirty = draft.enabled !== p.cfg.enabled || p.keyDraft.length > 0;
@@ -479,12 +479,13 @@ function WritebackSection(p: WritebackSectionProps) {
     <div className="space-y-6">
       <div className="space-y-3">
         <p className="text-sm text-[var(--ti-ink-700)]">
-          When ON, Tangerine watches{" "}
+          {t("sources.linear.writebackIntro")}{" "}
           <code className="font-mono text-[13px]">~/.tangerine-memory/decisions/</code>{" "}
-          and creates a Linear issue whenever a new decision file with{" "}
-          <code className="font-mono text-[13px]">source: linear</code> is written.
-          Issue title comes from the decision's <code className="font-mono">title</code>{" "}
-          frontmatter; body is the full decision markdown.
+          {t("sources.linear.writebackIntroTail")}{" "}
+          <code className="font-mono text-[13px]">source: linear</code>{" "}
+          {t("sources.linear.writebackIntroTail2")}{" "}
+          <code className="font-mono">title</code>{" "}
+          {t("sources.linear.writebackIntroTail3")}
         </p>
 
         <label className="flex items-start gap-3">
@@ -496,18 +497,18 @@ function WritebackSection(p: WritebackSectionProps) {
           />
           <div>
             <p className="font-medium text-[var(--ti-ink-900)]">
-              Post decisions back to Linear
+              {t("sources.linear.postLabel")}
             </p>
             <p className="text-xs text-[var(--ti-ink-500)]">
-              Reuses your{" "}
-              <code className="font-mono text-[13px]">LINEAR_API_KEY</code>. Read-only
-              when OFF.
+              {t("sources.linear.postHint")}{" "}
+              <code className="font-mono text-[13px]">LINEAR_API_KEY</code>
+              {t("sources.linear.postHintTail")}
             </p>
           </div>
         </label>
 
         <div className="space-y-1">
-          <Label htmlFor="linear-key">Linear API key</Label>
+          <Label htmlFor="linear-key">{t("sources.linear.keyLabel")}</Label>
           <div className="flex items-center gap-2">
             <Input
               id="linear-key"
@@ -516,7 +517,7 @@ function WritebackSection(p: WritebackSectionProps) {
               onChange={(e) => p.setKeyDraft(e.target.value.trim())}
               placeholder={
                 p.keyConfigured
-                  ? "(configured — leave blank to keep)"
+                  ? t("sources.linear.keyConfigured")
                   : "lin_api_…"
               }
               autoComplete="off"
@@ -534,14 +535,14 @@ function WritebackSection(p: WritebackSectionProps) {
           </div>
           <p className="text-xs text-[var(--ti-ink-500)]">
             {p.keyConfigured
-              ? "Key is set in your .env. Replace it by typing a new key here."
-              : "Get a personal API key from Linear → Settings → API."}{" "}
+              ? t("sources.linear.keyHintConfigured")
+              : t("sources.linear.keyHintMissing")}{" "}
             <button
               className="text-[var(--ti-orange-500)] underline-offset-2 hover:underline"
               onClick={() => openExternal("https://linear.app/settings/api")}
               type="button"
             >
-              Open Linear API settings <ExternalLink size={10} className="inline" />
+              {t("sources.linear.openLinearSettings")} <ExternalLink size={10} className="inline" />
             </button>
           </p>
         </div>
@@ -555,15 +556,15 @@ function WritebackSection(p: WritebackSectionProps) {
           >
             {p.saving ? (
               <>
-                <Loader2 size={14} className="animate-spin" /> Saving…
+                <Loader2 size={14} className="animate-spin" /> {t("sources.github.saving")}
               </>
             ) : (
-              "Apply"
+              t("sources.github.apply")
             )}
           </Button>
           {dirty && !p.saving && (
             <span className="text-xs text-[var(--ti-ink-500)]">
-              Unsaved changes
+              {t("sources.github.unsaved")}
             </span>
           )}
         </div>
@@ -571,22 +572,24 @@ function WritebackSection(p: WritebackSectionProps) {
 
       <div className="space-y-2 border-t border-stone-200 pt-4 dark:border-stone-800">
         <div className="flex items-center justify-between">
-          <p className="ti-section-label">Writeback log (last 5)</p>
+          <p className="ti-section-label">{t("sources.github.logHeading")}</p>
           <Button
             variant="outline"
             size="sm"
             onClick={() => void p.onRefreshLog()}
             disabled={p.logLoading}
           >
-            {p.logLoading ? <Loader2 size={12} className="animate-spin" /> : "Refresh"}
+            {p.logLoading ? <Loader2 size={12} className="animate-spin" /> : t("sources.github.refresh")}
           </Button>
         </div>
 
         {p.logEntries.length === 0 ? (
           <p className="text-xs italic text-[var(--ti-ink-500)]">
-            No writebacks yet. Finalize a decision in{" "}
-            <code className="font-mono">memory/decisions/</code> with{" "}
-            <code className="font-mono">source: linear</code> to see one here.
+            {t("sources.github.logEmpty")}{" "}
+            <code className="font-mono">memory/decisions/</code>{" "}
+            {t("sources.github.logEmptyTail")}{" "}
+            <code className="font-mono">source: linear</code>{" "}
+            {t("sources.github.logEmptyTail2")}
           </p>
         ) : (
           <ul className="space-y-2">
@@ -607,6 +610,7 @@ function WritebackSection(p: WritebackSectionProps) {
 }
 
 function LogRow({ entry }: { entry: WritebackLogEntry }) {
+  const { t } = useTranslation();
   const o = entry.outcome;
   const colour =
     o.status === "posted"
@@ -634,7 +638,7 @@ function LogRow({ entry }: { entry: WritebackLogEntry }) {
           className="mt-1 inline-flex items-center gap-1 text-[11px] text-[var(--ti-orange-500)] hover:underline"
           onClick={() => void openExternal(o.external_url)}
         >
-          <ExternalLink size={10} /> View issue
+          <ExternalLink size={10} /> {t("sources.linear.viewIssue")}
         </button>
       )}
       {o.status === "already_done" && (
@@ -642,7 +646,7 @@ function LogRow({ entry }: { entry: WritebackLogEntry }) {
           className="mt-1 inline-flex items-center gap-1 text-[11px] text-[var(--ti-ink-500)] hover:underline"
           onClick={() => void openExternal(o.external_url)}
         >
-          <ExternalLink size={10} /> Existing issue
+          <ExternalLink size={10} /> {t("sources.linear.existingIssue")}
         </button>
       )}
       {o.status === "failed" && (
@@ -656,3 +660,4 @@ function LogRow({ entry }: { entry: WritebackLogEntry }) {
     </li>
   );
 }
+// === end wave 5-α ===

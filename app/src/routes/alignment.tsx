@@ -1,8 +1,9 @@
+// === wave 5-α ===
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import {
   Activity,
-  AlertCircle,
   ArrowLeft,
   ArrowRight,
   Disc,
@@ -19,6 +20,7 @@ import {
 import { TangerineNotes } from "@/components/TangerineNotes";
 import { AlignmentBars } from "@/components/AlignmentBars";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { ErrorState } from "@/components/ErrorState";
 
 /**
  * /alignment — real same-screen rate dashboard.
@@ -37,6 +39,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
  *   5. "What's behind alignment loss" — actionable list
  */
 export default function AlignmentRoute() {
+  const { t } = useTranslation();
   const [data, setData] = useState<AlignmentData | null>(null);
   const [recent, setRecent] = useState<TimelineEvent[]>([]);
   const [notes, setNotes] = useState<TangerineNote[]>([]);
@@ -112,32 +115,22 @@ export default function AlignmentRoute() {
             <Activity size={20} className="text-stone-500" />
           </div>
           <div>
-            <p className="ti-section-label">Alignment</p>
+            <p className="ti-section-label">{t("alignment.kicker")}</p>
             <h1 className="font-display text-3xl tracking-tight text-stone-900 dark:text-stone-100">
-              Same-screen rate
+              {t("alignment.title")}
             </h1>
           </div>
         </header>
 
         {error ? (
-          <div
-            role="alert"
-            className="mt-8 rounded-md border border-[var(--ti-danger)]/40 bg-[var(--ti-danger)]/5 p-6 text-center"
-          >
-            <AlertCircle size={20} className="mx-auto text-[var(--ti-danger)]" />
-            <p className="mt-3 text-[12px] text-stone-700 dark:text-stone-300">
-              Couldn't read alignment snapshot.
-            </p>
-            <p className="mt-1 font-mono text-[10px] text-stone-500 dark:text-stone-400">
-              {error}
-            </p>
-            <button
-              type="button"
-              onClick={load}
-              className="mt-3 rounded border border-stone-300 px-2 py-0.5 font-mono text-[11px] text-stone-700 hover:bg-stone-100 dark:border-stone-700 dark:text-stone-200 dark:hover:bg-stone-800"
-            >
-              Retry
-            </button>
+          <div className="mt-8">
+            <ErrorState
+              error={error}
+              title={t("alignment.errorTitle")}
+              onRetry={load}
+              retryLabel={t("buttons.retry")}
+              testId="alignment-error"
+            />
           </div>
         ) : loading ? (
           <div className="mt-8 space-y-6" data-testid="alignment-loading" aria-busy="true">
@@ -159,13 +152,16 @@ export default function AlignmentRoute() {
           <>
         {/* Hero metric */}
         <section className="mt-8 rounded-md border border-stone-200 bg-stone-50 p-6 dark:border-stone-800 dark:bg-stone-900">
-          <p className="ti-section-label">Team alignment</p>
+          <p className="ti-section-label">{t("alignment.hero")}</p>
           <div className="mt-3 flex items-baseline gap-4">
             <span className="font-display text-6xl tracking-tight text-stone-900 dark:text-stone-100">
               {Math.round((data?.latest.rate ?? 0) * 100)}%
             </span>
             <span className="font-mono text-xs text-stone-500 dark:text-stone-400">
-              {data?.latest.shared_viewed ?? 0} / {data?.latest.total_atoms ?? 0} atoms shared
+              {t("alignment.atomsShared", {
+                shared: data?.latest.shared_viewed ?? 0,
+                total: data?.latest.total_atoms ?? 0,
+              })}
             </span>
           </div>
           <div className="mt-4 h-2 w-full overflow-hidden rounded bg-stone-200 dark:bg-stone-800">
@@ -175,8 +171,7 @@ export default function AlignmentRoute() {
             />
           </div>
           <p className="mt-3 text-xs text-stone-500 dark:text-stone-400">
-            Share of captured atoms viewed by every tracked team member. Live
-            from cursor diff in <code>.tangerine/alignment.json</code>.
+            {t("alignment.heroFootnote")} <code>.tangerine/alignment.json</code>.
           </p>
         </section>
 
@@ -184,7 +179,7 @@ export default function AlignmentRoute() {
         <section className="mt-6 rounded-md border border-stone-200 bg-stone-50 p-6 dark:border-stone-800 dark:bg-stone-900">
           <div className="mb-4 flex items-center gap-2">
             <Users size={14} className="text-stone-500" />
-            <p className="ti-section-label">Member coverage</p>
+            <p className="ti-section-label">{t("alignment.memberCoverage")}</p>
           </div>
           {data ? <AlignmentBars snapshot={data.latest} /> : null}
         </section>
@@ -193,36 +188,36 @@ export default function AlignmentRoute() {
         <section className="mt-6 grid grid-cols-2 gap-4 md:grid-cols-4">
           <CaptureCard
             icon={<Disc size={14} />}
-            label="Meetings captured"
+            label={t("alignment.captureMeetings")}
             value={String(stats7d.meetings)}
-            sub="last 7 days"
+            sub={t("alignment.lastNDays", { n: 7 })}
           />
           <CaptureCard
             icon={<FileText size={14} />}
-            label="Decisions extracted"
+            label={t("alignment.captureDecisions")}
             value={String(stats7d.decisions)}
-            sub="last 7 days"
+            sub={t("alignment.lastNDays", { n: 7 })}
           />
           <CaptureCard
             icon={<Users size={14} />}
-            label="Active members"
+            label={t("alignment.captureMembers")}
             value={`${data?.latest.users.length ?? 0}`}
-            sub="tracked in cursor"
+            sub={t("alignment.trackedInCursor")}
           />
           <CaptureCard
             icon={<Activity size={14} />}
-            label="Total atoms"
+            label={t("alignment.captureAtoms")}
             value={String(data?.latest.total_atoms ?? 0)}
-            sub={`${growth >= 0 ? "+" : ""}${growth}% vs prior week`}
+            sub={t("alignment.vsPriorWeek", { sign: growth >= 0 ? "+" : "", pct: growth })}
           />
         </section>
 
         {/* Behind alignment loss */}
         <section className="mt-6 rounded-md border border-stone-200 bg-stone-50 p-6 dark:border-stone-800 dark:bg-stone-900">
-          <p className="ti-section-label">What's behind alignment loss</p>
+          <p className="ti-section-label">{t("alignment.behindTitle")}</p>
           {lostAlignment.length === 0 ? (
             <p className="mt-3 text-[12px] text-stone-500 dark:text-stone-400">
-              Everyone tracked has viewed every captured atom. Same-screen rate is healthy.
+              {t("alignment.behindHealthy")}
             </p>
           ) : (
             <ul className="mt-3 divide-y divide-stone-200 dark:divide-stone-800">
@@ -238,14 +233,16 @@ export default function AlignmentRoute() {
                     @{r.user}
                   </Link>
                   <span className="text-stone-500 dark:text-stone-400">
-                    has missed{" "}
+                    {t("alignment.hasMissed")}{" "}
                     <strong className="text-stone-900 dark:text-stone-100">
                       {r.missed}
                     </strong>{" "}
-                    atom{r.missed === 1 ? "" : "s"}
+                    {r.missed === 1
+                      ? t("alignment.missedOne")
+                      : t("alignment.missedOther")}
                   </span>
                   <span className="ml-auto inline-flex items-center gap-1 font-mono text-[11px] text-stone-400 dark:text-stone-500">
-                    push brief <ArrowRight size={11} />
+                    {t("alignment.pushBrief")} <ArrowRight size={11} />
                   </span>
                 </li>
               ))}
@@ -254,10 +251,10 @@ export default function AlignmentRoute() {
         </section>
 
         <p className="mt-6 text-center font-mono text-[10px] text-stone-400 dark:text-stone-500">
-          Snapshot computed{" "}
+          {t("alignment.snapshotComputed")}{" "}
           {data?.latest.computed_at
             ? new Date(data.latest.computed_at).toLocaleString()
-            : "(never)"}
+            : t("alignment.snapshotNever")}
         </p>
           </>
         )}
@@ -300,3 +297,4 @@ function statsForRange(events: TimelineEvent[], days: number) {
     decisions: slice.filter((e) => e.kind === "decision").length,
   };
 }
+// === end wave 5-α ===

@@ -1,7 +1,8 @@
 // === wave 4-D i18n ===
+// === wave 5-α ===
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Search, AlertCircle, Sparkles } from "lucide-react";
+import { Search, Sparkles } from "lucide-react";
 import {
   marketplaceGetLaunchState,
   marketplaceListTemplates,
@@ -10,6 +11,8 @@ import {
 } from "@/lib/tauri";
 import { TemplateCard } from "@/components/marketplace/TemplateCard";
 import { SkeletonCard } from "@/components/ui/Skeleton";
+import { EmptyState } from "@/components/EmptyState";
+import { ErrorState } from "@/components/ErrorState";
 
 const VERTICALS = [
   "all",
@@ -134,35 +137,27 @@ export default function MarketplaceRoute() {
           ))}
         </ul>
       ) : error ? (
-        <div
-          role="alert"
-          className="rounded-md border border-[var(--ti-danger)]/40 bg-[var(--ti-danger)]/5 p-6 text-center"
-        >
-          <AlertCircle size={20} className="mx-auto text-[var(--ti-danger)]" />
-          <p className="mt-3 text-[12px] text-stone-700 dark:text-stone-300">
-            {t("marketplace.errorLoad")}
-          </p>
-          <p className="mt-1 font-mono text-[10px] text-stone-500 dark:text-stone-400">
-            {error}
-          </p>
-          <button
-            type="button"
-            onClick={() => setRefreshKey((k) => k + 1)}
-            className="mt-3 rounded border border-stone-300 px-2 py-0.5 font-mono text-[11px] text-stone-700 hover:bg-stone-100 dark:border-stone-700 dark:text-stone-200 dark:hover:bg-stone-800"
-          >
-            {t("buttons.retry")}
-          </button>
-        </div>
+        <ErrorState
+          error={error}
+          title={t("marketplace.errorLoad")}
+          onRetry={() => setRefreshKey((k) => k + 1)}
+          retryLabel={t("buttons.retry")}
+          testId="marketplace-error"
+        />
       ) : filtered.length === 0 ? (
-        <div className="rounded-md border border-dashed border-stone-300 p-8 text-center dark:border-stone-700">
-          <Sparkles size={20} className="mx-auto text-stone-400" />
-          <p className="mt-3 text-[13px] text-stone-700 dark:text-stone-300">
-            {t("marketplace.emptyFiltered")}
-          </p>
-          <p className="mt-1 text-[11px] text-stone-500 dark:text-stone-400">
-            {t("marketplace.emptyFilteredHint")}
-          </p>
-        </div>
+        <EmptyState
+          icon={<Sparkles size={32} />}
+          title={t("marketplace.emptyFiltered")}
+          description={t("marketplace.emptyFilteredHint")}
+          primaryAction={{
+            label: t("marketplace.allVerticals"),
+            onClick: () => {
+              setQuery("");
+              setVertical("all");
+            },
+          }}
+          testId="marketplace-empty"
+        />
       ) : (
         <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {filtered.map((t) => (
@@ -240,3 +235,4 @@ function GateProgress({
     </div>
   );
 }
+// === end wave 5-α ===

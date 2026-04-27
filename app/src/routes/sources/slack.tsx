@@ -22,7 +22,9 @@
  * (the command surfaces `slack_token_missing` in the outcomes panel).
  */
 
+// === wave 5-α ===
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import {
   ArrowLeft,
@@ -93,6 +95,7 @@ function saveOutcomes(outcomes: WritebackOutcome[]): void {
 }
 
 export default function SlackSourceRoute() {
+  const { t } = useTranslation();
   const pushToast = useStore((s) => s.ui.pushToast);
   const pushModal = useStore((s) => s.ui.pushModal);
   const firstWritebackConfirmed = useStore(
@@ -142,7 +145,7 @@ export default function SlackSourceRoute() {
       const merged = mergeSlackWriteback(r, next);
       await setConfig(merged);
     } catch (e) {
-      pushToast("error", `Couldn't save Slack writeback prefs: ${(e as Error).message}`);
+      pushToast("error", `${t("sources.slack.saveError")} ${(e as Error).message}`);
     } finally {
       setSaving(false);
     }
@@ -179,12 +182,10 @@ export default function SlackSourceRoute() {
     pushModal({
       id: "slack-writeback-first-time",
       emoji: "🍊",
-      title: "Post to Slack on Tangerine's behalf?",
-      body:
-        "When enabled, Tangerine will post pre-meeting briefs and decision summaries to your team's Slack channel. Each post is automated — no per-message confirm.\n\n" +
-        "This is a one-time confirm. Disable any time.",
-      confirmLabel: "Allow Slack posts",
-      cancelLabel: "Not now",
+      title: t("sources.slack.modalTitle"),
+      body: t("sources.slack.modalBody"),
+      confirmLabel: t("sources.slack.modalConfirm"),
+      cancelLabel: t("sources.slack.modalCancel"),
       onConfirm: () => {
         markWritebackConfirmed("slack");
         void persist(next);
@@ -222,7 +223,7 @@ export default function SlackSourceRoute() {
         message: `Posted to ${cfg.fallbackChannelId || "(atom default)"}.`,
         at: new Date().toISOString(),
       });
-      pushToast("success", "Test brief posted.");
+      pushToast("success", t("sources.slack.briefPosted"));
     } catch (e) {
       const msg = (e as Error).message ?? String(e);
       recordOutcome({
@@ -231,7 +232,7 @@ export default function SlackSourceRoute() {
         message: msg,
         at: new Date().toISOString(),
       });
-      pushToast("error", `Brief failed: ${msg}`);
+      pushToast("error", `${t("sources.slack.briefFailed")} ${msg}`);
     } finally {
       setTesting(null);
     }
@@ -247,7 +248,7 @@ export default function SlackSourceRoute() {
         message: `Posted to ${cfg.fallbackChannelId || "(atom default)"}.`,
         at: new Date().toISOString(),
       });
-      pushToast("success", "Test summary posted.");
+      pushToast("success", t("sources.slack.summaryPosted"));
     } catch (e) {
       const msg = (e as Error).message ?? String(e);
       recordOutcome({
@@ -256,7 +257,7 @@ export default function SlackSourceRoute() {
         message: msg,
         at: new Date().toISOString(),
       });
-      pushToast("error", `Summary failed: ${msg}`);
+      pushToast("error", `${t("sources.slack.summaryFailed")} ${msg}`);
     } finally {
       setTesting(null);
     }
@@ -278,27 +279,25 @@ export default function SlackSourceRoute() {
           <Hash size={14} />
         </div>
         <span className="font-display text-lg leading-none text-stone-900 dark:text-stone-100">
-          Slack
+          {t("sources.slack.title")}
         </span>
         <span className="font-mono text-[11px] text-stone-500 dark:text-stone-400">
-          / Source / Writeback
+          {t("sources.slack.headerSub")}
         </span>
       </header>
 
       <main className="mx-auto max-w-3xl p-8 pb-16">
-        <p className="ti-section-label">Source · Slack</p>
+        <p className="ti-section-label">{t("sources.slack.kicker")}</p>
         <h1 className="mt-1 font-display text-3xl tracking-tight text-stone-900 dark:text-stone-100">
-          Slack writeback
+          {t("sources.slack.h1")}
         </h1>
         <p className="mt-2 text-sm text-stone-700 dark:text-stone-300">
-          The Slack source captures messages into your memory dir. Writeback closes
-          the loop: 5min before a meeting we post a brief; once the meeting wraps,
-          we post the decision summary back to the same channel.
+          {t("sources.slack.intro")}
         </p>
 
         {!hydrated ? (
           <div className="mt-8 flex items-center gap-2 text-sm text-[var(--ti-ink-500)]">
-            <Loader2 size={14} className="animate-spin" /> Loading config…
+            <Loader2 size={14} className="animate-spin" /> {t("sources.slack.loadingConfig")}
           </div>
         ) : (
           <>
@@ -306,16 +305,16 @@ export default function SlackSourceRoute() {
               <Card>
                 <CardContent className="space-y-4 pt-6">
                   <ToggleRow
-                    label="Post pre-meeting brief 5min before events"
-                    description="When a calendar event matches a memory atom, post a markdown brief to the linked channel 5 minutes before it starts."
+                    label={t("sources.slack.preBriefLabel")}
+                    description={t("sources.slack.preBriefHint")}
                     checked={cfg.postPreMeetingBrief}
                     onChange={(v) =>
                       persistWithConfirm({ ...cfg, postPreMeetingBrief: v })
                     }
                   />
                   <ToggleRow
-                    label="Post decision summary after meetings end"
-                    description="When a meeting atom flips to status: finalized, post a summary (decisions + action items) to the linked channel."
+                    label={t("sources.slack.summaryLabel")}
+                    description={t("sources.slack.summaryHint")}
                     checked={cfg.postPostMeetingSummary}
                     onChange={(v) =>
                       persistWithConfirm({ ...cfg, postPostMeetingSummary: v })
@@ -323,7 +322,7 @@ export default function SlackSourceRoute() {
                   />
                   {saving && (
                     <p className="flex items-center gap-1 text-xs text-[var(--ti-ink-500)]">
-                      <Loader2 size={12} className="animate-spin" /> Saving…
+                      <Loader2 size={12} className="animate-spin" /> {t("sources.slack.saving")}
                     </p>
                   )}
                 </CardContent>
@@ -331,11 +330,9 @@ export default function SlackSourceRoute() {
 
               <Card>
                 <CardContent className="space-y-3 pt-6">
-                  <Label htmlFor="slack-fallback-channel">Fallback channel</Label>
+                  <Label htmlFor="slack-fallback-channel">{t("sources.slack.fallbackLabel")}</Label>
                   <p className="text-xs text-[var(--ti-ink-500)]">
-                    Channel id (e.g. C0PROJECTROADMAP) we post to when the atom's
-                    own slack_channel field is unset. Leave blank to require atoms
-                    to specify their own channel.
+                    {t("sources.slack.fallbackHint")}
                   </p>
                   <Input
                     id="slack-fallback-channel"
@@ -352,10 +349,9 @@ export default function SlackSourceRoute() {
 
               <Card>
                 <CardContent className="space-y-3 pt-6">
-                  <p className="ti-section-label">Test posts</p>
+                  <p className="ti-section-label">{t("sources.slack.testHeading")}</p>
                   <p className="text-xs text-[var(--ti-ink-500)]">
-                    Smoke-test the writeback path. The Rust side surfaces
-                    `slack_token_missing` if the bot token isn't in the keychain.
+                    {t("sources.slack.testHint")}
                   </p>
                   <div className="flex gap-2">
                     <Button
@@ -369,7 +365,7 @@ export default function SlackSourceRoute() {
                       ) : (
                         <Send size={14} />
                       )}
-                      Test brief
+                      {t("sources.slack.testBrief")}
                     </Button>
                     <Button
                       variant="outline"
@@ -382,7 +378,7 @@ export default function SlackSourceRoute() {
                       ) : (
                         <Send size={14} />
                       )}
-                      Test summary
+                      {t("sources.slack.testSummary")}
                     </Button>
                   </div>
                 </CardContent>
@@ -390,12 +386,12 @@ export default function SlackSourceRoute() {
             </section>
 
             <section className="mt-6">
-              <p className="ti-section-label">Recent writeback outcomes</p>
+              <p className="ti-section-label">{t("sources.slack.outcomesHeading")}</p>
               <Card className="mt-3">
                 <CardContent className="pt-6">
                   {outcomes.length === 0 ? (
                     <p className="text-xs italic text-[var(--ti-ink-500)]">
-                      No writeback attempts yet.
+                      {t("sources.slack.outcomesEmpty")}
                     </p>
                   ) : (
                     <ul className="space-y-2">
@@ -465,6 +461,8 @@ function ToggleRow({ label, description, checked, onChange }: ToggleRowProps) {
     </label>
   );
 }
+
+// === end wave 5-α ===
 
 function formatRelative(iso: string): string {
   const t = new Date(iso).getTime();

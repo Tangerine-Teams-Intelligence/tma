@@ -179,9 +179,14 @@ const ROUTES: RouteCase[] = [
     // /reviews shows "Reviews" h1 + filter chips. Empty state copy is
     // "No open reviews. The co-thinker will propose decisions on the
     // next heartbeat." in stub mode.
+    //
+    // === wave 5-γ ===
+    // Tighten the anchor: the empty-state h3 also contains "Reviews" via
+    // "No open reviews." so a broad /Reviews/i regex hits two headings and
+    // trips strict-mode. Pin level: 1 + exact "Reviews" string.
     anchor: async (page) => {
       await expect(
-        page.getByRole("heading", { name: /Reviews/i }),
+        page.getByRole("heading", { name: "Reviews", level: 1 }),
       ).toBeVisible({ timeout: 5_000 });
     },
   },

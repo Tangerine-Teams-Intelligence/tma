@@ -1,14 +1,16 @@
 // === wave 4-D i18n ===
+// === wave 5-α ===
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link, useParams } from "react-router-dom";
-import { Layers, FolderKanban, AlertCircle } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { Layers, FolderKanban } from "lucide-react";
 import { canvasListProjects } from "@/lib/tauri";
 import { CanvasView } from "@/components/canvas/CanvasView";
 import { AgiPeer } from "@/components/canvas/AgiPeer";
 import { AgiStickyAffordances } from "@/components/canvas/AgiStickyAffordances";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { EmptyState } from "@/components/EmptyState";
+import { ErrorState } from "@/components/ErrorState";
 
 /**
  * /canvas — v1.8 Phase 4-B canvas surface entry point.
@@ -112,25 +114,13 @@ function CanvasIndex() {
             ))}
           </ul>
         ) : error ? (
-          <div
-            role="alert"
-            className="rounded-md border border-[var(--ti-danger)]/40 bg-[var(--ti-danger)]/5 p-6 text-center"
-          >
-            <AlertCircle size={20} className="mx-auto text-[var(--ti-danger)]" />
-            <p className="mt-3 text-[12px] text-stone-700 dark:text-stone-300">
-              {t("canvas.errorList")}
-            </p>
-            <p className="mt-1 font-mono text-[10px] text-stone-500 dark:text-stone-400">
-              {error}
-            </p>
-            <button
-              type="button"
-              onClick={() => setRefreshKey((k) => k + 1)}
-              className="mt-3 rounded border border-stone-300 px-2 py-0.5 font-mono text-[11px] text-stone-700 hover:bg-stone-100 dark:border-stone-700 dark:text-stone-200 dark:hover:bg-stone-800"
-            >
-              {t("buttons.retry")}
-            </button>
-          </div>
+          <ErrorState
+            error={error}
+            title={t("canvas.errorList")}
+            onRetry={() => setRefreshKey((k) => k + 1)}
+            retryLabel={t("buttons.retry")}
+            testId="canvas-error"
+          />
         ) : projects.length === 0 ? (
           <EmptyIndex />
         ) : (
@@ -171,27 +161,18 @@ function CanvasIndex() {
 
 function EmptyIndex() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   return (
-    <section
-      data-testid="canvas-index-empty"
-      className="rounded-md border border-dashed border-stone-300 bg-stone-100/40 p-8 text-center dark:border-stone-700 dark:bg-stone-900/40"
-    >
-      <h2 className="font-display text-xl tracking-tight text-stone-900 dark:text-stone-100">
-        {t("canvas.emptyTitle")}
-      </h2>
-      <p className="mt-3 max-w-prose text-[13px] leading-relaxed text-stone-600 dark:text-stone-400">
-        {t("canvas.emptyBody")}
-      </p>
-      <div className="mt-5 flex items-center justify-center gap-2">
-        <Link to="/projects">
-          <Button variant="outline" size="sm">
-            {t("canvas.browseProjects")}
-          </Button>
-        </Link>
-      </div>
-      <p className="mt-4 font-mono text-[11px] text-stone-500 dark:text-stone-400">
-        {t("canvas.emptyFooter")}
-      </p>
-    </section>
+    <EmptyState
+      icon={<FolderKanban size={32} />}
+      title={t("canvas.emptyTitle")}
+      description={t("canvas.emptyBody")}
+      primaryAction={{
+        label: t("canvas.browseProjects"),
+        onClick: () => navigate("/projects"),
+      }}
+      testId="canvas-index-empty"
+    />
   );
 }
+// === end wave 5-α ===

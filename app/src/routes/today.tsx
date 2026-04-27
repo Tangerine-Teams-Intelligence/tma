@@ -1,7 +1,9 @@
 // === wave 4-D i18n ===
+// === wave 5-α ===
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Calendar } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Calendar, Inbox } from "lucide-react";
 import {
   readBrief,
   readTimelineToday,
@@ -15,6 +17,7 @@ import { useStore } from "@/lib/store";
 import { TangerineNotes } from "@/components/TangerineNotes";
 import { DailyBriefCard } from "@/components/DailyBriefCard";
 import { TimelineEvent } from "@/components/TimelineEvent";
+import { EmptyState } from "@/components/EmptyState";
 import { MEMORY_REFRESHED_EVENT } from "@/components/layout/AppShell";
 // === v2.0-alpha.2 workflow graph ===
 // Per V2_0_SPEC §1.1 — the graph is the head pillar of the home dashboard.
@@ -47,6 +50,7 @@ import { WorkflowGraph } from "@/components/graphs/WorkflowGraph";
  */
 export default function TodayRoute() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const today = todayIso();
   const currentUser = useStore((s) => s.ui.currentUser);
   const [brief, setBrief] = useState<BriefData | null>(null);
@@ -152,10 +156,17 @@ export default function TodayRoute() {
             <div>
               <p className="ti-section-label">{t("today.activity")}</p>
               {slice && slice.events.length === 0 ? (
-                <div className="mt-3 rounded-md border border-dashed border-stone-300 p-4 text-center dark:border-stone-700">
-                  <p className="text-[11px] text-stone-500 dark:text-stone-400">
-                    {t("today.nothingToday")}
-                  </p>
+                <div className="mt-3">
+                  <EmptyState
+                    icon={<Inbox size={28} />}
+                    title={t("today.nothingToday")}
+                    description={t("memory.noSourceCta")}
+                    primaryAction={{
+                      label: t("sidebar.sources"),
+                      onClick: () => navigate("/sources/external"),
+                    }}
+                    testId="today-empty"
+                  />
                 </div>
               ) : (
                 <ul className="mt-3 max-h-[420px] divide-y divide-stone-200 overflow-y-auto pr-1 dark:divide-stone-800">

@@ -1,10 +1,20 @@
 import { test, expect } from "@playwright/test";
+// === wave 5-γ ===
+import { seedStubSession } from "./_setup";
 
 test.beforeEach(async ({ page }) => {
-  await page.addInitScript(() => {
-    (window as any).__TMI_MOCK__ = { config: { schema_version: 1 } };
-  });
+  await seedStubSession(page);
 });
+
+// === wave 5-γ ===
+// Same deprecation as 01-meetings-list-loads.spec.ts: `/meetings` redirects to
+// `/sources/discord`, and the `new-meeting-button` testid was retired with
+// the meetings list UI. Re-enable once Wave 5-α lands the v2.0 meetings flow.
+test.skip(
+  true,
+  "wave 5-γ: /meetings + new-meeting-button deprecated in v1.9.x → v2.0 reshape. " +
+    "Tauri-app smoke at playwright-tests/smoke.spec.ts is the active gate.",
+);
 
 test("creating a meeting opens the modal and navigates to detail", async ({ page }) => {
   await page.goto("/meetings");

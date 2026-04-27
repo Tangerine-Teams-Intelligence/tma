@@ -205,6 +205,22 @@ interface UiSlice {
    */
   welcomed: boolean;
   setWelcomed: (v: boolean) => void;
+  // === wave 5-α ===
+  /**
+   * Wave 5-α — settings progressive disclosure latch.
+   *
+   * `false` (default) — Settings page renders only the General / AGI /
+   * Personal Agents tabs. The Adapters / Team / Advanced / Language tabs
+   * stay hidden behind a "Show advanced settings" link below the tab
+   * row.
+   *
+   * Persisted so the user's choice carries forward across launches —
+   * once a power user opens the advanced tabs they don't want to keep
+   * re-revealing them every cold launch.
+   */
+  showAdvancedSettings: boolean;
+  setShowAdvancedSettings: (v: boolean) => void;
+  // === end wave 5-α ===
   setAgiParticipation: (v: boolean) => void;
   setAgiVolume: (v: AgiVolume) => void;
   toggleAgiChannelMute: (channel: string) => void;
@@ -620,6 +636,13 @@ export const useStore = create<Store>()(
         // once the user clicks "Get started" or "Skip tour" so the
         // overlay never re-mounts on a future launch.
         welcomed: false,
+        // === wave 5-α ===
+        // Settings progressive disclosure. False by default so first-time
+        // users see only General / AGI / Personal Agents. Persisted so
+        // returning power users don't have to re-reveal the advanced
+        // tabs on every launch.
+        showAdvancedSettings: false,
+        // === end wave 5-α ===
         // v3.0 §1 + §5 — personal-agent capture flags. ALL FALSE by default
         // — opt-in per source. Hydrated from `personal_agents_get_settings`
         // on Settings page mount; the flag map mirrors the Rust persisted
@@ -806,6 +829,10 @@ export const useStore = create<Store>()(
         // Wave 4-C — welcome overlay latch.
         setWelcomed: (v) =>
           set((s) => ({ ui: { ...s.ui, welcomed: v } })),
+        // === wave 5-α ===
+        setShowAdvancedSettings: (v) =>
+          set((s) => ({ ui: { ...s.ui, showAdvancedSettings: v } })),
+        // === end wave 5-α ===
         // v3.0 §1 — personal-agent capture flag mirror.
         setPersonalAgentsEnabled: (next) =>
           set((s) => ({
@@ -1100,6 +1127,9 @@ export const useStore = create<Store>()(
             newcomerOnboardingShown: s.ui.newcomerOnboardingShown,
             // Wave 4-C — welcome overlay latch.
             welcomed: s.ui.welcomed,
+            // === wave 5-α ===
+            showAdvancedSettings: s.ui.showAdvancedSettings,
+            // === end wave 5-α ===
             // v3.0 §1 — personal-agent capture flags. Persisted so the
             // Settings UI renders the user's last opt-in choices on cold
             // launch without waiting for the first
@@ -1136,6 +1166,7 @@ export const useStore = create<Store>()(
                 agiSensitivity?: number;
                 newcomerOnboardingShown?: boolean;
                 welcomed?: boolean;
+                showAdvancedSettings?: boolean;
                 personalAgentsEnabled?: {
                   cursor: boolean;
                   claude_code: boolean;
@@ -1212,6 +1243,10 @@ export const useStore = create<Store>()(
               p?.ui?.newcomerOnboardingShown ?? current.ui.newcomerOnboardingShown,
             // Wave 4-C — welcome overlay latch.
             welcomed: p?.ui?.welcomed ?? current.ui.welcomed,
+            // === wave 5-α ===
+            showAdvancedSettings:
+              p?.ui?.showAdvancedSettings ?? current.ui.showAdvancedSettings,
+            // === end wave 5-α ===
             // v3.0 §1 — personal-agent capture flags. Persisted; the
             // Settings page also calls `personal_agents_get_settings`
             // on mount to reconcile with the Rust source of truth.

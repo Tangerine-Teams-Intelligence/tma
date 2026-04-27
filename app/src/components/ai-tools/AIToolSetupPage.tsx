@@ -14,6 +14,8 @@ import {
 } from "lucide-react";
 import { loadAITools, type AIToolStatus } from "@/lib/ai-tools";
 import { getAIToolConfig, type AIToolConfig } from "@/lib/ai-tools-config";
+// === wave 5-γ ===
+import { mcpConfigDisplayPath } from "@/lib/platform";
 import { coThinkerDispatch } from "@/lib/tauri";
 import { useStore } from "@/lib/store";
 import { logEvent } from "@/lib/telemetry";
@@ -279,6 +281,12 @@ function StatusBanner({
  * existing `setup_steps[1].body` already documents — we keep it
  * consistent so the auto-configure flow reads as a one-click shortcut
  * for the manual flow, not a separate concept.
+ *
+ * === wave 5-γ ===
+ * The returned string is the canonical POSIX form. Display-time consumers
+ * MUST run it through `mcpConfigDisplayPath()` from lib/platform so the
+ * Windows shell variant (`%USERPROFILE%\.cursor\mcp.json`) shows up on
+ * Windows hosts. The clipboard JSON snippet stays OS-neutral.
  */
 function mcpConfigPathFor(toolId: string): string | null {
   switch (toolId) {
@@ -340,7 +348,13 @@ function AutoConfigureCard({
 
   if (!eligible) return null;
 
-  const path = mcpConfigPathFor(config.id) ?? "";
+  // === wave 5-γ ===
+  // Translate the canonical POSIX path into the OS-correct display string
+  // (`%USERPROFILE%\.cursor\mcp.json` on Windows, `~/.cursor/mcp.json`
+  // elsewhere). Telemetry still gets the canonical form so dashboards
+  // group the same path across OSes.
+  const canonicalPath = mcpConfigPathFor(config.id) ?? "";
+  const path = mcpConfigDisplayPath(canonicalPath);
 
   // Pull the JSON snippet straight out of the existing setup_steps so
   // the source of truth stays in lib/ai-tools-config.ts. We pick the
@@ -359,7 +373,8 @@ function AutoConfigureCard({
       );
       void logEvent("ai_tool_auto_configure", {
         tool_id: config.id,
-        path,
+        // Telemetry stays OS-neutral so analytics can group across hosts.
+        path: canonicalPath,
         outcome: "copied",
       });
       // Clear the "Copied" badge after a beat so the button feels
@@ -373,7 +388,7 @@ function AutoConfigureCard({
       pushToast("error", `Couldn't copy: ${msg}. Use the manual steps below.`);
       void logEvent("ai_tool_auto_configure", {
         tool_id: config.id,
-        path,
+        path: canonicalPath,
         outcome: "copy_failed",
       });
     }
@@ -435,6 +450,24 @@ function AutoConfigureCard({
 // Setup steps
 // ----------------------------------------------------------------------------
 
+// === wave 5-γ ===
+/**
+ * Translate every POSIX home-relative path token (`~/.cursor/mcp.json`,
+ * `~/.claude/mcp_servers.json`, etc) inside a free-form prose string into
+ * the OS-correct display form. macOS / Linux pass-through; Windows swaps to
+ * `%USERPROFILE%\.<dir>\file`. The clipboard JSON snippet (rendered from
+ * `step.code`) is intentionally NOT touched — Cursor / Claude Code / Codex
+ * loaders accept the same JSON across OSes.
+ *
+ * The regex is intentionally narrow (`~/.<word>/...`) so we don't accidentally
+ * mangle prose that happens to contain a `~/` literal in some other context.
+ */
+function translatePathsInProse(text: string): string {
+  return text.replace(/~\/(\.[\w.-]+\/[\w./-]+)/g, (_match, rest) =>
+    mcpConfigDisplayPath(`~/${rest}`),
+  );
+}
+
 function SetupSteps({
   config,
   status,
@@ -464,11 +497,13 @@ function SetupSteps({
           </span>
           <div className="min-w-0 flex-1">
             <p className="text-[13px] font-medium text-stone-900 dark:text-stone-100">
-              {step.title}
+              {/* === wave 5-γ === translate ~/ paths in step titles too */}
+              {translatePathsInProse(step.title)}
             </p>
             {step.body && (
               <p className="mt-1 text-[12px] leading-relaxed text-stone-700 dark:text-stone-300">
-                {step.body}
+                {/* === wave 5-γ === */}
+                {translatePathsInProse(step.body)}
               </p>
             )}
             {step.code && (

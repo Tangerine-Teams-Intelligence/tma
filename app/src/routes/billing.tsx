@@ -11,11 +11,14 @@
 // fall through to the Tauri stub. The wire format is identical between
 // modes so the swap is keyless once the CEO ships keys.
 
+// === wave 5-α ===
 import { useEffect, useState } from "react";
-import { Loader2, AlertCircle, AlertTriangle, CheckCircle2, Clock, Lock } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import { Loader2, AlertTriangle, CheckCircle2, Clock, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useStore } from "@/lib/store";
+import { ErrorState } from "@/components/ErrorState";
 import {
   billingStatus as fetchBillingStatus,
   billingSubscribe,
@@ -62,6 +65,7 @@ function fmtCountdownPrecise(secs: number): string {
 }
 
 export default function BillingRoute() {
+  const { t } = useTranslation();
   const currentUser = useStore((s) => s.ui.currentUser);
   const setBillingSnapshot = useStore((s) => s.ui.setBillingSnapshot);
   const memoryConfig = useStore((s) => s.ui.memoryConfig);
@@ -123,7 +127,7 @@ export default function BillingRoute() {
   };
 
   const cancel = async () => {
-    if (!window.confirm("Cancel subscription? Cloud features stop at the end of the current period.")) {
+    if (!window.confirm(t("billing.confirmCancel"))) {
       return;
     }
     setBusy(true);
@@ -144,42 +148,59 @@ export default function BillingRoute() {
   const isTrialActive = status?.status === "trialing" && remaining > 0;
   const tier = isTrialActive ? urgencyTier(remaining) : null;
 
+  const statusLabel = (s: BillingStatusInfo["status"]): string => {
+    switch (s) {
+      case "trialing":
+        return t("billing.statusTrialing");
+      case "active":
+        return t("billing.statusActive");
+      case "past_due":
+        return t("billing.statusPastDue");
+      case "canceled":
+        return t("billing.statusCanceled");
+      case "none":
+        return t("billing.statusNone");
+    }
+  };
+
   return (
     <div className="mx-auto max-w-2xl px-6 py-10">
       <h1 className="font-display text-2xl tracking-tight text-[var(--ti-ink-900)]">
-        Billing
+        {t("billing.title")}
       </h1>
       <p className="mt-1 text-sm text-[var(--ti-ink-700)]">
-        Tangerine AI Teams · {PRICE_LABEL} · 30-day no-CC trial
+        {t("billing.priceLine", { price: PRICE_LABEL })}
       </p>
 
       {(status?.mode === "stub" || stripeIsStub) && (
         <Card className="mt-4 border-[var(--ti-orange-500)]/40 bg-[var(--ti-orange-50)]">
           <CardContent className="pt-4 text-xs text-[var(--ti-ink-700)]">
             <span className="font-medium text-[var(--ti-orange-700)]">
-              Coming live when CEO unblocks Stripe / Supabase keys.
+              {t("billing.stubBannerTitle")}
             </span>{" "}
-            Right now this page runs in stub mode: state transitions persist
-            locally but no real charge happens. Frontend & IPC contracts are
-            locked, so the live swap is just an env var flip.
+            {t("billing.stubBannerBody")}
           </CardContent>
         </Card>
       )}
 
       <Card className="mt-6">
         <CardHeader>
-          <CardTitle className="text-base">Subscription status</CardTitle>
+          <CardTitle className="text-base">{t("billing.subStatus")}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           {error && (
-            <p className="flex items-center gap-1 text-xs text-[var(--ti-danger)]">
-              <AlertCircle size={12} /> {error}
-            </p>
+            <ErrorState
+              error={error}
+              compact
+              onRetry={() => void refresh()}
+              retryLabel={t("buttons.retry")}
+              testId="billing-error"
+            />
           )}
 
           {!status && (
             <p className="flex items-center gap-2 text-xs text-[var(--ti-ink-500)]">
-              <Loader2 size={12} className="animate-spin" /> Loading…
+              <Loader2 size={12} className="animate-spin" /> {t("billing.loading")}
             </p>
           )}
 
@@ -188,7 +209,7 @@ export default function BillingRoute() {
               <div className="flex items-center justify-between gap-4">
                 <div>
                   <div className="text-xs uppercase tracking-wide text-[var(--ti-ink-500)]">
-                    Status
+                    {t("billing.status")}
                   </div>
                   <div className="mt-1 text-lg font-medium text-[var(--ti-ink-900)]">
                     {statusLabel(status.status)}
@@ -196,7 +217,7 @@ export default function BillingRoute() {
                 </div>
                 <div className="text-right">
                   <div className="text-xs uppercase tracking-wide text-[var(--ti-ink-500)]">
-                    Mode
+                    {t("billing.mode")}
                   </div>
                   <div className="mt-1 font-mono text-sm text-[var(--ti-ink-700)]">
                     {status.mode}
@@ -210,7 +231,7 @@ export default function BillingRoute() {
                   red and elevates the CTA prominence per spec §2.4. */}
               {isTrialActive && tier === "relaxed" && (
                 <div className="flex items-center gap-2 rounded-md border border-[var(--ti-orange-500)]/30 bg-[var(--ti-orange-50)] px-3 py-2 text-sm text-[var(--ti-orange-700)]">
-                  <Clock size={14} /> {fmtCountdownPrecise(remaining)} left in trial · No card needed
+                  <Clock size={14} /> {t("billing.trialRelaxed", { remaining: fmtCountdownPrecise(remaining) })}
                 </div>
               )}
 
@@ -220,12 +241,10 @@ export default function BillingRoute() {
                     <AlertTriangle size={16} className="mt-0.5 shrink-0" />
                     <div className="space-y-2">
                       <div className="font-medium">
-                        Your trial ends in {fmtCountdownPrecise(remaining)}.
+                        {t("billing.trialEndsIn", { remaining: fmtCountdownPrecise(remaining) })}
                       </div>
                       <div className="text-xs">
-                        Add payment now to keep Tangerine Cloud running. Cloud
-                        sync, team git mirror, and shared briefs stop at expiry —
-                        local OSS keeps working.
+                        {t("billing.trialAddPaymentBody")}
                       </div>
                     </div>
                   </div>
@@ -238,10 +257,10 @@ export default function BillingRoute() {
                     <AlertTriangle size={16} className="mt-0.5 shrink-0" />
                     <div className="space-y-2">
                       <div className="font-semibold">
-                        Trial ends in {fmtCountdownPrecise(remaining)}.
+                        {t("billing.trialCriticalTitle", { remaining: fmtCountdownPrecise(remaining) })}
                       </div>
                       <div className="text-xs">
-                        Add payment now or Cloud features pause at expiry.
+                        {t("billing.trialCriticalBody")}
                       </div>
                       <Button
                         size="sm"
@@ -251,10 +270,10 @@ export default function BillingRoute() {
                       >
                         {busy ? (
                           <>
-                            <Loader2 size={14} className="animate-spin" /> Adding payment…
+                            <Loader2 size={14} className="animate-spin" /> {t("billing.addingPayment")}
                           </>
                         ) : (
-                          `Add payment · ${PRICE_LABEL}`
+                          t("billing.addPayment", { price: PRICE_LABEL })
                         )}
                       </Button>
                     </div>
@@ -274,20 +293,18 @@ export default function BillingRoute() {
                     <Lock size={20} className="mt-0.5 shrink-0" />
                     <div className="space-y-2">
                       <div className="text-base font-semibold">
-                        Trial expired · Cloud features paused
+                        {t("billing.expiredTitle")}
                       </div>
                       <div className="text-xs leading-relaxed">
-                        Cloud sync, team git mirror, and shared briefs are paused
-                        until you add payment. Local memory tree + OSS path keep
-                        working — no data loss.
+                        {t("billing.expiredBody")}
                       </div>
                       <Button onClick={subscribe} disabled={busy} className="mt-1">
                         {busy ? (
                           <>
-                            <Loader2 size={14} className="animate-spin" /> Adding payment…
+                            <Loader2 size={14} className="animate-spin" /> {t("billing.addingPayment")}
                           </>
                         ) : (
-                          `Add payment to resume · ${PRICE_LABEL}`
+                          t("billing.addPaymentResume", { price: PRICE_LABEL })
                         )}
                       </Button>
                     </div>
@@ -297,22 +314,21 @@ export default function BillingRoute() {
 
               {status.status === "canceled" && (
                 <div className="rounded-md border border-[var(--ti-ink-300)] bg-[var(--ti-ink-50)] px-3 py-2 text-sm text-[var(--ti-ink-700)]">
-                  Subscription cancelled. Re-subscribe at any time —
-                  your local memory tree is preserved.
+                  {t("billing.cancelled")}
                 </div>
               )}
 
               {status.status === "active" && (
                 <div className="flex items-center gap-2 text-sm text-[#1F7A2A]">
-                  <CheckCircle2 size={14} /> Subscription active.
+                  <CheckCircle2 size={14} /> {t("billing.active")}
                 </div>
               )}
 
               {status.stripe_subscription_id && (
                 <div className="text-[11px] text-[var(--ti-ink-500)]">
-                  <span className="font-mono">customer:</span>{" "}
+                  <span className="font-mono">{t("billing.customer")}</span>{" "}
                   {status.stripe_customer_id ?? "—"} ·{" "}
-                  <span className="font-mono">subscription:</span>{" "}
+                  <span className="font-mono">{t("billing.subscription")}</span>{" "}
                   {status.stripe_subscription_id}
                 </div>
               )}
@@ -322,10 +338,10 @@ export default function BillingRoute() {
                   <Button onClick={startTrial} disabled={busy}>
                     {busy ? (
                       <>
-                        <Loader2 size={14} className="animate-spin" /> Starting trial…
+                        <Loader2 size={14} className="animate-spin" /> {t("billing.startingTrial")}
                       </>
                     ) : (
-                      "Start 30-day free trial"
+                      t("billing.startTrial")
                     )}
                   </Button>
                 )}
@@ -333,10 +349,10 @@ export default function BillingRoute() {
                   <Button onClick={subscribe} disabled={busy}>
                     {busy ? (
                       <>
-                        <Loader2 size={14} className="animate-spin" /> Subscribing…
+                        <Loader2 size={14} className="animate-spin" /> {t("billing.subscribing")}
                       </>
                     ) : (
-                      `Upgrade · ${PRICE_LABEL}`
+                      t("billing.upgrade", { price: PRICE_LABEL })
                     )}
                   </Button>
                 )}
@@ -344,15 +360,15 @@ export default function BillingRoute() {
                   <Button variant="outline" onClick={cancel} disabled={busy}>
                     {busy ? (
                       <>
-                        <Loader2 size={14} className="animate-spin" /> Cancelling…
+                        <Loader2 size={14} className="animate-spin" /> {t("billing.cancelling")}
                       </>
                     ) : (
-                      "Cancel subscription"
+                      t("billing.cancelSub")
                     )}
                   </Button>
                 )}
                 <Button variant="outline" onClick={() => void refresh()} disabled={busy}>
-                  Refresh
+                  {t("billing.refresh")}
                 </Button>
               </div>
             </>
@@ -362,19 +378,5 @@ export default function BillingRoute() {
     </div>
   );
 }
-
-function statusLabel(s: BillingStatusInfo["status"]): string {
-  switch (s) {
-    case "trialing":
-      return "Trial · active";
-    case "active":
-      return "Paid · active";
-    case "past_due":
-      return "Trial expired · upgrade required";
-    case "canceled":
-      return "Cancelled";
-    case "none":
-      return "No subscription";
-  }
-}
+// === end wave 5-α ===
 // === end v2.5 billing route ===

@@ -1,4 +1,6 @@
+// === wave 5-α ===
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { ArrowLeft, CalendarRange } from "lucide-react";
 import {
@@ -22,6 +24,7 @@ import { TimelineEvent } from "@/components/TimelineEvent";
  * to keep the wire payload small.
  */
 export default function ThisWeekRoute() {
+  const { t } = useTranslation();
   const [events, setEvents] = useState<TimelineEventT[]>([]);
   const [notes, setNotes] = useState<TangerineNote[]>([]);
 
@@ -84,30 +87,30 @@ export default function ThisWeekRoute() {
             <CalendarRange size={20} className="text-stone-500" />
           </div>
           <div>
-            <p className="ti-section-label">This week</p>
+            <p className="ti-section-label">{t("thisWeek.kicker")}</p>
             <h1 className="font-display text-3xl tracking-tight text-stone-900 dark:text-stone-100">
-              Last 7 days
+              {t("thisWeek.title")}
             </h1>
             <p className="mt-1 font-mono text-[11px] text-stone-500 dark:text-stone-400">
-              {weekEvents.length} atoms captured since {cutoff}
+              {t("thisWeek.captured", { count: weekEvents.length, cutoff })}
             </p>
           </div>
         </header>
 
         <section className="mt-8 grid grid-cols-2 gap-3 md:grid-cols-5">
-          <Stat n={stats.meetings} label="meetings" />
-          <Stat n={stats.decisions} label="decisions" />
-          <Stat n={stats.prs} label="PRs" />
-          <Stat n={stats.comments} label="comments" />
-          <Stat n={stats.tickets} label="tickets" />
+          <Stat n={stats.meetings} label={t("thisWeek.labelMeetings")} />
+          <Stat n={stats.decisions} label={t("thisWeek.labelDecisions")} />
+          <Stat n={stats.prs} label={t("thisWeek.labelPRs")} />
+          <Stat n={stats.comments} label={t("thisWeek.labelComments")} />
+          <Stat n={stats.tickets} label={t("thisWeek.labelTickets")} />
         </section>
 
         <div className="mt-8 grid grid-cols-1 gap-4 md:grid-cols-2">
           <section className="rounded-md border border-stone-200 bg-stone-50 p-4 dark:border-stone-800 dark:bg-stone-900">
-            <p className="ti-section-label">Top decisions</p>
+            <p className="ti-section-label">{t("thisWeek.topDecisions")}</p>
             {decisions.length === 0 ? (
               <p className="mt-3 text-[12px] text-stone-500 dark:text-stone-400">
-                No decisions captured this week.
+                {t("thisWeek.noDecisions")}
               </p>
             ) : (
               <ul className="mt-3 divide-y divide-stone-200 dark:divide-stone-800">
@@ -120,10 +123,10 @@ export default function ThisWeekRoute() {
             )}
           </section>
           <section className="rounded-md border border-stone-200 bg-stone-50 p-4 dark:border-stone-800 dark:bg-stone-900">
-            <p className="ti-section-label">Stale threads</p>
+            <p className="ti-section-label">{t("thisWeek.staleThreads")}</p>
             {stale.length === 0 ? (
               <p className="mt-3 text-[12px] text-stone-500 dark:text-stone-400">
-                Nothing stale.
+                {t("thisWeek.nothingStale")}
               </p>
             ) : (
               <ul className="mt-3 divide-y divide-stone-200 dark:divide-stone-800">
@@ -138,10 +141,10 @@ export default function ThisWeekRoute() {
         </div>
 
         <section className="mt-8 rounded-md border border-stone-200 bg-stone-50 p-4 dark:border-stone-800 dark:bg-stone-900">
-          <p className="ti-section-label">Member activity</p>
+          <p className="ti-section-label">{t("thisWeek.memberActivity")}</p>
           {Object.keys(stats.by_member).length === 0 ? (
             <p className="mt-3 text-[12px] text-stone-500 dark:text-stone-400">
-              No member activity captured.
+              {t("thisWeek.noActivity")}
             </p>
           ) : (
             <div className="mt-3 space-y-2">
@@ -193,3 +196,4 @@ function Stat({ n, label }: { n: number; label: string }) {
     </div>
   );
 }
+// === end wave 5-α ===

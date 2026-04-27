@@ -8,7 +8,9 @@
  *
  * Atoms write to `~/.tangerine-memory/personal/<user>/threads/external/<kind>/`.
  */
+// === wave 5-α ===
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Globe, Plus, RefreshCw, Trash2, Youtube } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -32,6 +34,7 @@ import {
 import { useStore } from "@/lib/store";
 
 export default function ExternalSourceRoute() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const pushToast = useStore((s) => s.ui.pushToast);
 
@@ -69,9 +72,9 @@ export default function ExternalSourceRoute() {
       const list = await externalRssSubscribe({ url: rssUrl.trim() });
       setRssFeeds(list);
       setRssUrl("");
-      pushToast("success", "RSS feed added.");
+      pushToast("success", t("sources.rssAdded"));
     } catch (e) {
-      pushToast("error", `Add feed failed: ${(e as Error).message}`);
+      pushToast("error", `${t("sources.rssAddFailed")} ${(e as Error).message}`);
     } finally {
       setBusy(null);
     }
@@ -93,10 +96,10 @@ export default function ExternalSourceRoute() {
       const r = await externalRssFetchNow();
       pushToast(
         "success",
-        `RSS: ${r.atoms_written} new, ${r.items_seen} seen.`,
+        t("sources.rssFetched", { written: r.atoms_written, seen: r.items_seen }),
       );
     } catch (e) {
-      pushToast("error", `Fetch failed: ${(e as Error).message}`);
+      pushToast("error", `${t("sources.rssFetchFailed")} ${(e as Error).message}`);
     } finally {
       setBusy(null);
     }
@@ -112,9 +115,9 @@ export default function ExternalSourceRoute() {
       });
       setPodcastFeeds(list);
       setPodcastUrl("");
-      pushToast("success", "Podcast feed added.");
+      pushToast("success", t("sources.podcastAdded"));
     } catch (e) {
-      pushToast("error", `Add podcast failed: ${(e as Error).message}`);
+      pushToast("error", `${t("sources.podcastAddFailed")} ${(e as Error).message}`);
     } finally {
       setBusy(null);
     }
@@ -136,10 +139,10 @@ export default function ExternalSourceRoute() {
       const r = await externalPodcastFetchNow();
       pushToast(
         "success",
-        `Podcast: ${r.atoms_written} new, ${r.items_seen} seen.`,
+        t("sources.podcastFetched", { written: r.atoms_written, seen: r.items_seen }),
       );
     } catch (e) {
-      pushToast("error", `Fetch failed: ${(e as Error).message}`);
+      pushToast("error", `${t("sources.rssFetchFailed")} ${(e as Error).message}`);
     } finally {
       setBusy(null);
     }
@@ -153,15 +156,15 @@ export default function ExternalSourceRoute() {
         request: { url: youtubeUrl.trim() },
       });
       if (r.atoms_written > 0) {
-        pushToast("success", "YouTube transcript captured.");
+        pushToast("success", t("sources.youtubeCaptured"));
         setYoutubeUrl("");
       } else if (r.errors.length > 0) {
         pushToast("error", r.errors[0]);
       } else {
-        pushToast("info", "Already captured.");
+        pushToast("info", t("sources.alreadyCaptured"));
       }
     } catch (e) {
-      pushToast("error", `YouTube capture failed: ${(e as Error).message}`);
+      pushToast("error", `${t("sources.youtubeCaptureFailed")} ${(e as Error).message}`);
     } finally {
       setBusy(null);
     }
@@ -175,15 +178,15 @@ export default function ExternalSourceRoute() {
         request: { url: articleUrl.trim() },
       });
       if (r.atoms_written > 0) {
-        pushToast("success", "Article captured.");
+        pushToast("success", t("sources.articleCaptured"));
         setArticleUrl("");
       } else if (r.errors.length > 0) {
         pushToast("error", r.errors[0]);
       } else {
-        pushToast("info", "Already captured.");
+        pushToast("info", t("sources.alreadyCaptured"));
       }
     } catch (e) {
-      pushToast("error", `Article capture failed: ${(e as Error).message}`);
+      pushToast("error", `${t("sources.articleCaptureFailed")} ${(e as Error).message}`);
     } finally {
       setBusy(null);
     }
@@ -195,7 +198,7 @@ export default function ExternalSourceRoute() {
         <Button
           variant="ghost"
           size="icon"
-          aria-label="Back"
+          aria-label={t("buttons.back")}
           onClick={() => navigate("/memory")}
         >
           <ArrowLeft size={16} />
@@ -207,27 +210,26 @@ export default function ExternalSourceRoute() {
           <Globe size={14} />
         </div>
         <span className="font-display text-lg leading-none text-stone-900 dark:text-stone-100">
-          External
+          {t("sources.external.title")}
         </span>
         <span className="font-mono text-[11px] text-stone-500 dark:text-stone-400">
-          / Source / Set up
+          {t("sources.external.headerSub")}
         </span>
       </header>
 
       <main className="mx-auto max-w-3xl p-8 pb-24 space-y-8">
         <div>
-          <p className="ti-section-label">Source · External world</p>
+          <p className="ti-section-label">{t("sources.external.kicker")}</p>
           <h1 className="mt-1 font-display text-3xl tracking-tight text-stone-900 dark:text-stone-100">
-            Read what you read
+            {t("sources.external.h1")}
           </h1>
           <p className="mt-2 text-sm text-stone-700 dark:text-stone-300">
-            Subscribe to RSS feeds and podcasts; paste any YouTube URL or article link.
-            Every captured item lands as a markdown atom under
+            {t("sources.external.intro")}
             {" "}
             <code className="font-mono text-[12px]">
               ~/.tangerine-memory/personal/&lt;you&gt;/threads/external/
             </code>
-            . Personal vault — never synced to the team.
+            {t("sources.external.introTail")}
           </p>
         </div>
 
@@ -236,9 +238,9 @@ export default function ExternalSourceRoute() {
           <CardContent className="space-y-4 pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="font-display text-xl">RSS feeds</h2>
+                <h2 className="font-display text-xl">{t("sources.external.rssHeading")}</h2>
                 <p className="text-xs text-stone-500">
-                  Daily fetch via the daemon; one atom per new entry.
+                  {t("sources.external.rssHint")}
                 </p>
               </div>
               <Button
@@ -248,12 +250,12 @@ export default function ExternalSourceRoute() {
                 disabled={busy === "rss-fetch" || rssFeeds.length === 0}
               >
                 <RefreshCw size={14} className="mr-1.5" />
-                Fetch now
+                {t("sources.external.fetchNow")}
               </Button>
             </div>
             <div className="flex items-end gap-2">
               <div className="flex-1 space-y-2">
-                <Label htmlFor="rss-url">Feed URL</Label>
+                <Label htmlFor="rss-url">{t("sources.external.rssLabel")}</Label>
                 <Input
                   id="rss-url"
                   value={rssUrl}
@@ -263,7 +265,7 @@ export default function ExternalSourceRoute() {
               </div>
               <Button onClick={handleAddRss} disabled={busy === "rss-add" || !rssUrl.trim()}>
                 <Plus size={14} className="mr-1.5" />
-                Add
+                {t("sources.external.rssAdd")}
               </Button>
             </div>
             {rssFeeds.length > 0 && (
@@ -279,7 +281,7 @@ export default function ExternalSourceRoute() {
                     <Button
                       variant="ghost"
                       size="icon"
-                      aria-label="Remove feed"
+                      aria-label={t("sources.external.removeFeed")}
                       disabled={busy === `rss-${f.url}`}
                       onClick={() => handleRemoveRss(f.url)}
                     >
@@ -297,9 +299,9 @@ export default function ExternalSourceRoute() {
           <CardContent className="space-y-4 pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="font-display text-xl">Podcasts</h2>
+                <h2 className="font-display text-xl">{t("sources.external.podcastHeading")}</h2>
                 <p className="text-xs text-stone-500">
-                  Subscribe to the RSS; transcripts are off by default (heavy on CPU).
+                  {t("sources.external.podcastHint")}
                 </p>
               </div>
               <Button
@@ -309,12 +311,12 @@ export default function ExternalSourceRoute() {
                 disabled={busy === "podcast-fetch" || podcastFeeds.length === 0}
               >
                 <RefreshCw size={14} className="mr-1.5" />
-                Fetch now
+                {t("sources.external.fetchNow")}
               </Button>
             </div>
             <div className="flex items-end gap-2">
               <div className="flex-1 space-y-2">
-                <Label htmlFor="podcast-url">Podcast feed URL</Label>
+                <Label htmlFor="podcast-url">{t("sources.external.podcastLabel")}</Label>
                 <Input
                   id="podcast-url"
                   value={podcastUrl}
@@ -327,7 +329,7 @@ export default function ExternalSourceRoute() {
                 disabled={busy === "podcast-add" || !podcastUrl.trim()}
               >
                 <Plus size={14} className="mr-1.5" />
-                Add
+                {t("sources.external.rssAdd")}
               </Button>
             </div>
             {podcastFeeds.length > 0 && (
@@ -343,7 +345,7 @@ export default function ExternalSourceRoute() {
                     <Button
                       variant="ghost"
                       size="icon"
-                      aria-label="Remove podcast"
+                      aria-label={t("sources.external.removePodcast")}
                       disabled={busy === `podcast-${f.url}`}
                       onClick={() => handleRemovePodcast(f.url)}
                     >
@@ -361,15 +363,15 @@ export default function ExternalSourceRoute() {
           <CardContent className="space-y-4 pt-6">
             <div>
               <h2 className="font-display text-xl flex items-center gap-2">
-                <Youtube size={18} /> YouTube
+                <Youtube size={18} /> {t("sources.external.youtubeHeading")}
               </h2>
               <p className="text-xs text-stone-500">
-                Paste any YouTube URL — we capture the transcript via captions.
+                {t("sources.external.youtubeHint")}
               </p>
             </div>
             <div className="flex items-end gap-2">
               <div className="flex-1 space-y-2">
-                <Label htmlFor="yt-url">Video URL</Label>
+                <Label htmlFor="yt-url">{t("sources.external.youtubeLabel")}</Label>
                 <Input
                   id="yt-url"
                   value={youtubeUrl}
@@ -381,7 +383,7 @@ export default function ExternalSourceRoute() {
                 onClick={handleCaptureYoutube}
                 disabled={busy === "youtube" || !youtubeUrl.trim()}
               >
-                Capture
+                {t("sources.external.capture")}
               </Button>
             </div>
           </CardContent>
@@ -391,14 +393,14 @@ export default function ExternalSourceRoute() {
         <Card>
           <CardContent className="space-y-4 pt-6">
             <div>
-              <h2 className="font-display text-xl">Article</h2>
+              <h2 className="font-display text-xl">{t("sources.external.articleHeading")}</h2>
               <p className="text-xs text-stone-500">
-                Paste any web URL — we extract the main content as an atom.
+                {t("sources.external.articleHint")}
               </p>
             </div>
             <div className="flex items-end gap-2">
               <div className="flex-1 space-y-2">
-                <Label htmlFor="article-url">Article URL</Label>
+                <Label htmlFor="article-url">{t("sources.external.articleLabel")}</Label>
                 <Input
                   id="article-url"
                   value={articleUrl}
@@ -410,7 +412,7 @@ export default function ExternalSourceRoute() {
                 onClick={handleCaptureArticle}
                 disabled={busy === "article" || !articleUrl.trim()}
               >
-                Capture
+                {t("sources.external.capture")}
               </Button>
             </div>
           </CardContent>
@@ -419,3 +421,4 @@ export default function ExternalSourceRoute() {
     </div>
   );
 }
+// === end wave 5-α ===

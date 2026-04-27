@@ -1,11 +1,12 @@
+// === wave 5-α ===
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import {
   ArrowLeft,
   Inbox as InboxIcon,
   Clock,
   AlertTriangle,
-  AlertCircle,
   CheckCircle2,
   X,
 } from "lucide-react";
@@ -17,6 +18,8 @@ import {
 import { useStore } from "@/lib/store";
 import { TangerineNotes } from "@/components/TangerineNotes";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { EmptyState } from "@/components/EmptyState";
+import { ErrorState } from "@/components/ErrorState";
 
 /**
  * /inbox — pending alerts queue (real, not placeholder).
@@ -33,6 +36,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
  *                only does the local dismiss + a console hint.
  */
 export default function InboxRoute() {
+  const { t } = useTranslation();
   const dismissedAtoms = useStore((s) => s.ui.dismissedAtoms);
   const dismissAtom = useStore((s) => s.ui.dismissAtom);
   const snoozeAtom = useStore((s) => s.ui.snoozeAtom);
@@ -87,7 +91,7 @@ export default function InboxRoute() {
             to="/today"
             className="inline-flex items-center gap-1 font-mono text-[11px] text-stone-500 hover:text-stone-900 dark:text-stone-400 dark:hover:text-stone-100"
           >
-            <ArrowLeft size={12} /> /today
+            <ArrowLeft size={12} /> {t("inbox.back")}
           </Link>
         </div>
 
@@ -98,12 +102,14 @@ export default function InboxRoute() {
             <InboxIcon size={20} className="text-stone-500" />
           </div>
           <div>
-            <p className="ti-section-label">Inbox</p>
+            <p className="ti-section-label">{t("inbox.kicker")}</p>
             <h1 className="font-display text-3xl tracking-tight text-stone-900 dark:text-stone-100">
-              Pending alerts
+              {t("inbox.title")}
             </h1>
             <p className="mt-1 font-mono text-[11px] text-stone-500 dark:text-stone-400">
-              {visible.length} active alert{visible.length === 1 ? "" : "s"} · daemon refresh ~5 min
+              {visible.length === 1
+                ? t("inbox.countOne", { count: visible.length })
+                : t("inbox.countOther", { count: visible.length })}
             </p>
           </div>
         </header>
@@ -123,39 +129,20 @@ export default function InboxRoute() {
               ))}
             </div>
           ) : error ? (
-            <div
-              role="alert"
-              className="rounded-md border border-[var(--ti-danger)]/40 bg-[var(--ti-danger)]/5 p-6 text-center"
-            >
-              <AlertCircle
-                size={20}
-                className="mx-auto text-[var(--ti-danger)]"
-              />
-              <p className="mt-3 text-[12px] text-stone-700 dark:text-stone-300">
-                Couldn't read pending alerts.
-              </p>
-              <p className="mt-1 font-mono text-[10px] text-stone-500 dark:text-stone-400">
-                {error}
-              </p>
-              <button
-                type="button"
-                onClick={refresh}
-                className="mt-3 rounded border border-stone-300 px-2 py-0.5 font-mono text-[11px] text-stone-700 hover:bg-stone-100 dark:border-stone-700 dark:text-stone-200 dark:hover:bg-stone-800"
-              >
-                Retry
-              </button>
-            </div>
+            <ErrorState
+              error={error}
+              title={t("inbox.errorTitle")}
+              onRetry={refresh}
+              retryLabel={t("buttons.retry")}
+              testId="inbox-error"
+            />
           ) : visible.length === 0 ? (
-            <div className="rounded-md border border-dashed border-stone-300 p-8 text-center dark:border-stone-700">
-              <CheckCircle2
-                size={20}
-                className="mx-auto text-[var(--ti-success)]"
-              />
-              <p className="mt-3 text-[12px] text-stone-700 dark:text-stone-300">
-                Nothing pending. The daemon hasn't found stale decisions, overdue work, or
-                knowledge gaps.
-              </p>
-            </div>
+            <EmptyState
+              icon={<CheckCircle2 size={32} className="text-[var(--ti-success)]" />}
+              title={t("inbox.emptyTitle")}
+              description={t("inbox.emptyBody")}
+              testId="inbox-empty"
+            />
           ) : (
             visible.map((a) => (
               <AlertCard
@@ -164,6 +151,10 @@ export default function InboxRoute() {
                 onDismiss={() => dismissAtom(a.id)}
                 onSnooze={() => snoozeAtom(a.id, Date.now() + 24 * 60 * 60_000)}
                 onResolve={() => dismissAtom(a.id)}
+                snoozeLabel={t("inbox.snooze24h")}
+                resolveLabel={t("inbox.resolve")}
+                dismissLabel={t("inbox.dismiss")}
+                dueLabel={t("inbox.due")}
               />
             ))
           )}
@@ -178,11 +169,19 @@ function AlertCard({
   onDismiss,
   onSnooze,
   onResolve,
+  snoozeLabel,
+  resolveLabel,
+  dismissLabel,
+  dueLabel,
 }: {
   alert: PendingAlert;
   onDismiss: () => void;
   onSnooze: () => void;
   onResolve: () => void;
+  snoozeLabel: string;
+  resolveLabel: string;
+  dismissLabel: string;
+  dueLabel: string;
 }) {
   const Icon = pickIcon(alert.kind, alert.severity);
   return (
@@ -209,7 +208,7 @@ function AlertCard({
             {alert.kind}
             {alert.due_at && (
               <span className="ml-2 normal-case tracking-normal">
-                · due {alert.due_at}
+                · {dueLabel} {alert.due_at}
               </span>
             )}
           </p>
@@ -222,8 +221,8 @@ function AlertCard({
         <button
           type="button"
           onClick={onDismiss}
-          aria-label="Dismiss"
-          title="Dismiss"
+          aria-label={dismissLabel}
+          title={dismissLabel}
           className="text-stone-400 hover:text-stone-700 dark:text-stone-500 dark:hover:text-stone-200"
         >
           <X size={14} />
@@ -235,14 +234,14 @@ function AlertCard({
           onClick={onSnooze}
           className="rounded border border-stone-200 px-2 py-0.5 font-mono text-[11px] text-stone-600 hover:bg-stone-100 dark:border-stone-800 dark:text-stone-300 dark:hover:bg-stone-800"
         >
-          Snooze 24h
+          {snoozeLabel}
         </button>
         <button
           type="button"
           onClick={onResolve}
           className="rounded bg-[var(--ti-orange-500)] px-2 py-0.5 font-mono text-[11px] text-white hover:bg-[var(--ti-orange-600)]"
         >
-          Resolve
+          {resolveLabel}
         </button>
       </div>
     </div>
@@ -254,3 +253,4 @@ function pickIcon(kind: string, severity?: string | null) {
   if (kind === "stale" || kind === "overdue") return Clock;
   return InboxIcon;
 }
+// === end wave 5-α ===

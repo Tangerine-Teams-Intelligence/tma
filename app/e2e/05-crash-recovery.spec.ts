@@ -3,11 +3,11 @@
  * review page reloads fresh blocks (mock fixtures regenerate idempotently).
  */
 import { test, expect } from "@playwright/test";
+// === wave 5-γ ===
+import { seedStubSession } from "./_setup";
 
 test.beforeEach(async ({ page }) => {
-  await page.addInitScript(() => {
-    (window as any).__TMI_MOCK__ = { config: { schema_version: 1 } };
-  });
+  await seedStubSession(page);
 });
 
 test("reload during review re-fetches blocks without losing the meeting", async ({ page }) => {

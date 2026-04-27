@@ -6,6 +6,12 @@ import { Label } from "@/components/ui/label";
 import { activeLocale, setLocale } from "@/i18n";
 import { useStore } from "@/lib/store";
 import type { ConfigDraft } from "./Settings";
+// === wave 5-β ===
+// Telemetry on the welcome-tour replay so analytics can see how
+// many users re-trigger the overlay (proxy for "users wanted help
+// but couldn't find it the first time").
+import { logEvent } from "@/lib/telemetry";
+// === end wave 5-β ===
 
 interface Props {
   draft: ConfigDraft;
@@ -24,6 +30,9 @@ export function GeneralSettings({ draft, update, onJumpToAGI }: Props) {
   // duplicate write paths. Clicking "adjust" jumps to the AGI tab.
   const agiSensitivity = useStore((s) => s.ui.agiSensitivity);
   const agiParticipation = useStore((s) => s.ui.agiParticipation);
+  // === wave 5-β ===
+  const setWelcomed = useStore((s) => s.ui.setWelcomed);
+  // === end wave 5-β ===
 
   return (
     <div className="flex max-w-xl flex-col gap-4">
@@ -129,6 +138,32 @@ export function GeneralSettings({ draft, update, onJumpToAGI }: Props) {
           {t("settings.general.tzHint")}
         </p>
       </div>
+
+      {/* === wave 5-β === */}
+      {/* Replay welcome tour. Flips `welcomed` back to false so the
+          WelcomeOverlay re-mounts on the next render. Mirrors the
+          `Run welcome tour` palette command — both call setWelcomed(false).
+          Wave 5-α may relocate this control during integration; the
+          implementation surface (the click handler) stays here. */}
+      <div data-testid="st-tour-replay-row">
+        <Label htmlFor="st-tour-replay">Welcome tour</Label>
+        <button
+          id="st-tour-replay"
+          type="button"
+          data-testid="st-tour-replay"
+          onClick={() => {
+            void logEvent("tour_replay", { source: "settings" });
+            setWelcomed(false);
+          }}
+          className="mt-1 rounded-md border border-[var(--ti-border-default)] bg-[var(--ti-paper-50)] px-3 py-1.5 text-sm text-[var(--ti-ink-700)] hover:bg-stone-100 dark:hover:bg-stone-800"
+        >
+          Show welcome tour again
+        </button>
+        <p className="mt-1 text-xs text-[var(--ti-ink-500)]">
+          Re-shows the 4-card intro overlay you saw on first launch.
+        </p>
+      </div>
+      {/* === end wave 5-β === */}
     </div>
   );
 }

@@ -1,3 +1,5 @@
+// === wave 5-α ===
+import { useTranslation } from "react-i18next";
 import { Plus, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -11,6 +13,7 @@ interface Props {
 }
 
 export function AdaptersSettings({ draft, update }: Props) {
+  const { t } = useTranslation();
   const setRow = (i: number, patch: Partial<ConfigDraft["output_adapters"][number]>) => {
     update(
       "output_adapters",
@@ -31,9 +34,9 @@ export function AdaptersSettings({ draft, update }: Props) {
   return (
     <div className="flex flex-col gap-6">
       <section>
-        <h3 className="font-display text-lg">Output adapters</h3>
+        <h3 className="font-display text-lg">{t("settings.adapters.title")}</h3>
         <p className="text-xs text-[var(--ti-ink-500)]">
-          Where applied diffs land. v1.5 ships only the Claude Code adapter.
+          {t("settings.adapters.subtitle")}
         </p>
         <div className="mt-3 flex flex-col gap-3">
           {draft.output_adapters.map((a, i) => (
@@ -56,7 +59,7 @@ export function AdaptersSettings({ draft, update }: Props) {
                 variant="ghost"
                 size="icon"
                 onClick={() => remove(i)}
-                aria-label="Remove adapter"
+                aria-label={t("settings.adapters.removeAdapter")}
                 data-testid={`adapter-remove-${i}`}
               >
                 <Trash2 size={16} />
@@ -65,16 +68,16 @@ export function AdaptersSettings({ draft, update }: Props) {
           ))}
           <Button variant="outline" size="sm" onClick={add} className="self-start">
             <Plus size={14} />
-            Add adapter
+            {t("settings.adapters.addAdapter")}
           </Button>
         </div>
       </section>
 
       <section>
-        <h3 className="font-display text-lg">Whisper</h3>
+        <h3 className="font-display text-lg">{t("settings.adapters.whisperTitle")}</h3>
         <div className="mt-3 grid max-w-xl grid-cols-2 gap-3">
           <div>
-            <Label htmlFor="adp-model">Model</Label>
+            <Label htmlFor="adp-model">{t("settings.adapters.model")}</Label>
             <Input
               id="adp-model"
               value={draft.whisper_model}
@@ -82,7 +85,7 @@ export function AdaptersSettings({ draft, update }: Props) {
             />
           </div>
           <div>
-            <Label htmlFor="adp-chunk">Chunk seconds</Label>
+            <Label htmlFor="adp-chunk">{t("settings.adapters.chunkSeconds")}</Label>
             <Input
               id="adp-chunk"
               type="number"
@@ -100,3 +103,4 @@ export function AdaptersSettings({ draft, update }: Props) {
     </div>
   );
 }
+// === end wave 5-α ===

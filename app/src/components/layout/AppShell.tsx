@@ -1,10 +1,18 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { CommandPalette } from "@/components/CommandPalette";
 import { ActivityFeed } from "@/components/ActivityFeed";
 import { WhatsNewBanner } from "@/components/WhatsNewBanner";
 import { LicenseTransitionBanner } from "@/components/LicenseTransitionBanner";
+// === wave 5-β ===
+// Discoverability primitives: floating help button + global shortcuts
+// overlay. Mounted at AppShell level so they exist on every route. The
+// `?` key listener that toggles the overlay also lives here — see the
+// effect block in the body below.
+import { HelpButton } from "@/components/HelpButton";
+import { KeyboardShortcutsOverlay } from "@/components/KeyboardShortcutsOverlay";
+// === end wave 5-β ===
 // Wave 4-C — first-run welcome tour. Mounted inside AppShell so it
 // covers every route the user might land on (default is /today). The
 // overlay self-hides once `ui.welcomed` flips, so re-renders after the
@@ -228,14 +236,64 @@ export function AppShell() {
     };
   }, [toasts, dismissToast]);
 
+  // === wave 5-β ===
+  // Local state for the keyboard-shortcuts overlay. Lives in component
+  // state (not the store) because it's purely transient UI — opens via
+  // `?` press, closes via Esc or backdrop click. Persisting it would be
+  // strictly worse: a refresh while the overlay is open is annoying.
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  // === end wave 5-β ===
+
   // Cmd+K / Ctrl+K → toggle palette.
+  // === wave 5-β ===
+  // Same listener also handles `?` (Shift+/) → toggle shortcuts overlay,
+  // and `Cmd/Ctrl+,` → jump to /settings. Bracketed inside the same
+  // effect so we install/remove a single keydown listener instead of N.
+  // Skip `?` when the user is typing in a field — otherwise the
+  // shortcut steals every Shift+/ they type into a textarea.
+  // === end wave 5-β ===
   useEffect(() => {
+    function isTypingTarget(t: EventTarget | null): boolean {
+      if (!(t instanceof HTMLElement)) return false;
+      const tag = t.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return true;
+      if (t.isContentEditable) return true;
+      return false;
+    }
     function onKey(e: KeyboardEvent) {
       const isCmdK = (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k";
       if (isCmdK) {
         e.preventDefault();
         togglePalette();
+        return;
       }
+      // === wave 5-β ===
+      // Cmd/Ctrl+, → Settings. Standard convention; users from VS Code,
+      // Chrome, Slack expect it.
+      if ((e.metaKey || e.ctrlKey) && e.key === ",") {
+        e.preventDefault();
+        // Use the History API directly so we don't need to import
+        // useNavigate at the AppShell level (it's already in the
+        // <Outlet/> tree). location.assign would full-reload; pushState
+        // keeps the router in sync.
+        if (typeof window !== "undefined") {
+          window.history.pushState({}, "", "/settings");
+          window.dispatchEvent(new PopStateEvent("popstate"));
+        }
+        return;
+      }
+      // ? (Shift+/) → toggle shortcuts overlay. Suppressed while the
+      // user is typing — otherwise the shortcut clobbers every "?"
+      // they try to type into a comment / brain edit / search box.
+      if (e.key === "?" && !isTypingTarget(e.target)) {
+        e.preventDefault();
+        setShortcutsOpen((v) => {
+          if (!v) void logEvent("shortcuts_open", {});
+          return !v;
+        });
+        return;
+      }
+      // === end wave 5-β ===
       if (e.key === "Escape" && paletteOpen) {
         setPalette(false);
       }
@@ -583,6 +641,22 @@ export function AppShell() {
             Self-hides on subsequent launches via persisted `welcomed`
             flag, so this mount is a no-op for returning users. */}
         <WelcomeOverlay />
+
+        {/* === wave 5-β === */}
+        {/* Discoverability layer. HelpButton is a fixed-position floating
+            `?` icon at bottom-right; KeyboardShortcutsOverlay is the
+            global cheatsheet bound to the `?` key. Both live OUTSIDE
+            the flex column above (same level as ModalHost) so they
+            float above any route content + sidebar. The shortcuts
+            overlay self-hides when `shortcutsOpen` is false; mounting
+            unconditionally keeps the listener wiring stable across
+            route changes. */}
+        <HelpButton />
+        <KeyboardShortcutsOverlay
+          open={shortcutsOpen}
+          onClose={() => setShortcutsOpen(false)}
+        />
+        {/* === end wave 5-β === */}
       </div>
     </AmbientInputObserver>
   );

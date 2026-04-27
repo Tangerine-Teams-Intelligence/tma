@@ -23,7 +23,9 @@
  * resetting to 50 on first launch.
  */
 
+// === wave 5-α ===
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { useStore } from "@/lib/store";
 import { sensitivityToVolumeThreshold } from "@/lib/store";
@@ -39,27 +41,10 @@ import {
   type SuppressionEntry,
 } from "@/lib/tauri";
 
-const CHANNELS: { id: string; label: string; help: string }[] = [
-  { id: "canvas", label: "Canvas", help: "Freeform note + scratchpad surface." },
-  { id: "memory", label: "Memory edit", help: "Editing a /memory/* atom." },
-  { id: "search", label: "Cmd+K palette", help: "The global Cmd+K search bar." },
-  { id: "today", label: "/today", help: "Today's timeline + brief composer." },
-  { id: "settings", label: "Settings", help: "Forms inside Settings itself." },
-];
-
-const VOLUME_HELP: Record<AgiVolume, string> = {
-  silent:
-    "No inline reactions ever. AGI still runs in the co-thinker brain " +
-    "and tray, just not in the margin.",
-  quiet:
-    "Default. High-confidence reactions only (≥ your confidence floor + " +
-    "the volume floor). Most input events stay silent.",
-  chatty:
-    "Lower bar. Surfaces lower-confidence hunches too. Useful when you " +
-    "actively want the AGI to push back more often.",
-};
+const CHANNEL_IDS = ["canvas", "memory", "search", "today", "settings"] as const;
 
 export function AGISettings() {
+  const { t } = useTranslation();
   const agiParticipation = useStore((s) => s.ui.agiParticipation);
   const setAgiParticipation = useStore((s) => s.ui.setAgiParticipation);
   const agiVolume = useStore((s) => s.ui.agiVolume);
@@ -114,12 +99,14 @@ export function AGISettings() {
       pushToast(
         "success",
         removed === 0
-          ? "Telemetry already clean — nothing to clear."
-          : `Telemetry cleared (${removed} day${removed === 1 ? "" : "s"} of events removed).`,
+          ? t("settings.agi.telemetryClean")
+          : removed === 1
+            ? t("settings.agi.telemetryCleared_one", { count: 1 })
+            : t("settings.agi.telemetryCleared_other", { count: removed }),
       );
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      pushToast("error", `Clear telemetry failed: ${msg}`);
+      pushToast("error", `${t("settings.agi.clearTelemetryFailed")} ${msg}`);
     } finally {
       setClearingTelemetry(false);
     }
@@ -130,10 +117,10 @@ export function AGISettings() {
     try {
       await suppressionClear();
       setSuppressed([]);
-      pushToast("success", "Suppression list cleared.");
+      pushToast("success", t("settings.agi.suppressionCleared"));
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      pushToast("error", `Clear suppression failed: ${msg}`);
+      pushToast("error", `${t("settings.agi.clearSuppressionFailed")} ${msg}`);
     } finally {
       setClearingSuppression(false);
     }
@@ -144,6 +131,46 @@ export function AGISettings() {
   const childrenDisabled = !agiParticipation;
   const dimClass = childrenDisabled ? "opacity-50" : "";
 
+  // Localized lookups for channels + volume help. Inline so changing the
+  // language flips them on the next render without a re-mount.
+  const channelLabel = (id: string): string => {
+    switch (id) {
+      case "canvas":
+        return t("settings.agi.channelCanvas");
+      case "memory":
+        return t("settings.agi.channelMemory");
+      case "search":
+        return t("settings.agi.channelSearch");
+      case "today":
+        return t("settings.agi.channelToday");
+      case "settings":
+        return t("settings.agi.channelSettings");
+      default:
+        return id;
+    }
+  };
+  const channelHelp = (id: string): string => {
+    switch (id) {
+      case "canvas":
+        return t("settings.agi.channelCanvasHelp");
+      case "memory":
+        return t("settings.agi.channelMemoryHelp");
+      case "search":
+        return t("settings.agi.channelSearchHelp");
+      case "today":
+        return t("settings.agi.channelTodayHelp");
+      case "settings":
+        return t("settings.agi.channelSettingsHelp");
+      default:
+        return id;
+    }
+  };
+  const volumeHelp = (v: AgiVolume): string => {
+    if (v === "silent") return t("settings.agi.volumeSilent");
+    if (v === "chatty") return t("settings.agi.volumeChatty");
+    return t("settings.agi.volumeQuiet");
+  };
+
   return (
     <div className="flex flex-col gap-8" data-testid="st-agi">
       <section
@@ -152,10 +179,9 @@ export function AGISettings() {
       >
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <h3 className="font-display text-lg">AGI participation</h3>
+            <h3 className="font-display text-lg">{t("settings.agi.participationTitle")}</h3>
             <p className="mt-1 text-sm text-[var(--ti-ink-500)]">
-              Master switch. When off, no inline reactions, no heartbeat,
-              no system tray. Tangerine&apos;s AI brain pauses.
+              {t("settings.agi.participationBody")}
             </p>
           </div>
           <button
@@ -190,12 +216,9 @@ export function AGISettings() {
           knobs reachable through the "Advanced" disclosure below — for
           the 95% of users who want one knob, this is the only knob. */}
       <section className={dimClass} data-testid="st-agi-sensitivity-card">
-        <h3 className="font-display text-lg">Sensitivity</h3>
+        <h3 className="font-display text-lg">{t("settings.agi.sensitivityTitle")}</h3>
         <p className="mt-1 text-sm text-[var(--ti-ink-500)]">
-          One knob for how often Tangerine speaks up. Lower = quieter,
-          higher = chattier. The very top end is "alerts only" — a
-          sensitivity of 100 means only the very-high-confidence
-          reactions surface.
+          {t("settings.agi.sensitivityBody")}
         </p>
         <div className="mt-3 flex items-center gap-3">
           <input
@@ -221,7 +244,7 @@ export function AGISettings() {
           className="mt-2 text-xs text-[var(--ti-ink-500)]"
           data-testid="st-agi-sensitivity-band"
         >
-          {sensitivityBandLabel(agiSensitivity)}
+          {sensitivityBandLabel(agiSensitivity, t)}
         </p>
       </section>
 
@@ -241,13 +264,11 @@ export function AGISettings() {
           <span aria-hidden className="font-mono text-xs">
             {advancedOpen ? "▼" : "▶"}
           </span>
-          Advanced (v1.8 knobs)
+          {t("settings.agi.advancedToggle")}
         </button>
         {!advancedOpen && (
           <p className="mt-1 text-xs text-[var(--ti-ink-500)]">
-            Volume band, raw confidence threshold, per-channel mutes. The
-            sensitivity slider above derives all three; only open this if
-            you need finer control.
+            {t("settings.agi.advancedHint")}
           </p>
         )}
       </section>
@@ -256,11 +277,9 @@ export function AGISettings() {
         <>
       {/* === end v2.0-beta.3 settings simplify === */}
       <section className={dimClass}>
-        <h3 className="font-display text-lg">AGI volume</h3>
+        <h3 className="font-display text-lg">{t("settings.agi.volumeTitle")}</h3>
         <p className="mt-1 text-sm text-[var(--ti-ink-500)]">
-          The whole app is a chat surface. Tangerine's AGI may surface a
-          tiny inline reaction — a 🍊 dot in the page margin — when you
-          type into any input. Volume controls how often.
+          {t("settings.agi.volumeBody")}
         </p>
         <div
           className="mt-4 flex flex-col gap-2"
@@ -298,7 +317,7 @@ export function AGISettings() {
                   <span className="font-medium capitalize">{v}</span>
                 </span>
                 <span className="mt-1 text-xs text-[var(--ti-ink-500)]">
-                  {VOLUME_HELP[v]}
+                  {volumeHelp(v)}
                 </span>
               </button>
             );
@@ -307,10 +326,9 @@ export function AGISettings() {
       </section>
 
       <section className={dimClass}>
-        <h3 className="font-display text-lg">Confidence floor</h3>
+        <h3 className="font-display text-lg">{t("settings.agi.thresholdTitle")}</h3>
         <p className="mt-1 text-sm text-[var(--ti-ink-500)]">
-          Reactions below this confidence never surface, regardless of
-          volume. Default 0.70.
+          {t("settings.agi.thresholdBody")}
         </p>
         <div className="mt-3 flex items-center gap-3">
           <input
@@ -335,33 +353,32 @@ export function AGISettings() {
       </section>
 
       <section className={dimClass}>
-        <h3 className="font-display text-lg">Channel mutes</h3>
+        <h3 className="font-display text-lg">{t("settings.agi.channelsTitle")}</h3>
         <p className="mt-1 text-sm text-[var(--ti-ink-500)]">
-          Disable ambient reactions on individual surfaces without
-          flipping the global volume.
+          {t("settings.agi.channelsBody")}
         </p>
         <ul className="mt-4 flex flex-col gap-2">
-          {CHANNELS.map((c) => {
-            const muted = mutedChannels.includes(c.id);
+          {CHANNEL_IDS.map((cid) => {
+            const muted = mutedChannels.includes(cid);
             return (
               <li
-                key={c.id}
+                key={cid}
                 className="flex items-center justify-between rounded-md border border-[var(--ti-border-default)] bg-[var(--ti-paper-50)] px-3 py-2"
               >
                 <div className="min-w-0">
                   <div className="text-sm font-medium text-[var(--ti-ink-900)]">
-                    {c.label}
+                    {channelLabel(cid)}
                   </div>
-                  <div className="text-xs text-[var(--ti-ink-500)]">{c.help}</div>
+                  <div className="text-xs text-[var(--ti-ink-500)]">{channelHelp(cid)}</div>
                 </div>
                 <button
                   type="button"
                   role="switch"
                   aria-checked={!muted}
-                  aria-label={`Toggle ${c.label}`}
+                  aria-label={`Toggle ${channelLabel(cid)}`}
                   disabled={childrenDisabled}
-                  onClick={() => toggleChannel(c.id)}
-                  data-testid={`st-agi-mute-${c.id}`}
+                  onClick={() => toggleChannel(cid)}
+                  data-testid={`st-agi-mute-${cid}`}
                   className={
                     "ml-3 flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors duration-fast disabled:cursor-not-allowed " +
                     (muted ? "bg-stone-300" : "bg-[var(--ti-orange-500)]")
@@ -381,11 +398,9 @@ export function AGISettings() {
       </section>
 
       <section className={dimClass}>
-        <h3 className="font-display text-lg">Dismiss memory</h3>
+        <h3 className="font-display text-lg">{t("settings.agi.dismissTitle")}</h3>
         <p className="mt-1 text-sm text-[var(--ti-ink-500)]">
-          When you dismiss a reaction, that surface is muted for 24h.
-          Currently {dismissedSurfaces.length} surface
-          {dismissedSurfaces.length === 1 ? "" : "s"} silenced.
+          {t("settings.agi.dismissBody", { count: dismissedSurfaces.length })}
         </p>
         <div className="mt-3">
           <Button
@@ -395,7 +410,7 @@ export function AGISettings() {
             onClick={resetDismissed}
             data-testid="st-agi-reset-dismissed"
           >
-            Reset dismiss memory
+            {t("settings.agi.dismissReset")}
           </Button>
         </div>
       </section>
@@ -412,12 +427,13 @@ export function AGISettings() {
           if the layer is paused, the user must be able to inspect /
           wipe the suppression state. */}
       <section data-testid="st-agi-suppression-card">
-        <h3 className="font-display text-lg">Suppressed suggestions</h3>
+        <h3 className="font-display text-lg">{t("settings.agi.suppressionTitle")}</h3>
         <p className="mt-1 text-sm text-[var(--ti-ink-500)]">
-          Suggestions you&apos;ve dismissed 3+ times for the same atom or
-          surface get silenced for 30 days. {suppressed.length === 0
-            ? "Nothing is currently suppressed."
-            : `${suppressed.length} ${suppressed.length === 1 ? "entry is" : "entries are"} silenced.`}
+          {suppressed.length === 0
+            ? t("settings.agi.suppressionBodyZero")
+            : suppressed.length === 1
+              ? t("settings.agi.suppressionBodyOne", { count: 1 })
+              : t("settings.agi.suppressionBodyOther", { count: suppressed.length })}
         </p>
         {suppressed.length > 0 && (
           <ul
@@ -450,7 +466,7 @@ export function AGISettings() {
             disabled={clearingSuppression || suppressed.length === 0}
             data-testid="st-agi-clear-suppression"
           >
-            {clearingSuppression ? "Clearing…" : "Clear suppression list"}
+            {clearingSuppression ? t("settings.agi.suppressionClearing") : t("settings.agi.suppressionClear")}
           </Button>
         </div>
       </section>
@@ -462,16 +478,9 @@ export function AGISettings() {
           always be able to wipe their data, even if the AGI layer is
           paused. */}
       <section data-testid="st-agi-telemetry-card">
-        <h3 className="font-display text-lg">Telemetry</h3>
+        <h3 className="font-display text-lg">{t("settings.agi.telemetryTitle")}</h3>
         <p className="mt-1 text-sm text-[var(--ti-ink-500)]">
-          Tangerine logs every meaningful action (route changes, atom
-          opens, dismisses, …) to{" "}
-          <code className="font-mono text-[11px]">
-            ~/.tangerine-memory/.tangerine/telemetry/
-          </code>{" "}
-          so the suggestion engine can detect patterns. All events stay
-          local — nothing syncs to the cloud. Files older than 90 days
-          are auto-pruned.
+          {t("settings.agi.telemetryBody")}
         </p>
         <div className="mt-3">
           <Button
@@ -481,7 +490,7 @@ export function AGISettings() {
             disabled={clearingTelemetry}
             data-testid="st-agi-clear-telemetry"
           >
-            {clearingTelemetry ? "Clearing…" : "Clear telemetry"}
+            {clearingTelemetry ? t("settings.agi.telemetryClearing") : t("settings.agi.telemetryClear")}
           </Button>
         </div>
       </section>
@@ -492,24 +501,23 @@ export function AGISettings() {
 // === v2.0-beta.3 settings simplify ===
 /**
  * Human-readable label for the sensitivity slider's current bucket.
- * Mirrors `sensitivityToVolumeThreshold` in `lib/store.ts`. Kept inline
- * (rather than imported from store) so the user-facing copy can drift
- * from the engineering names — "Quiet (default)" is friendlier than
- * "quiet" and lines up with the surrounding marketing voice.
+ * Mirrors `sensitivityToVolumeThreshold` in `lib/store.ts`. Wave 5-α
+ * routes the copy through i18n so the band label matches the active
+ * locale.
  */
-function sensitivityBandLabel(n: number): string {
+function sensitivityBandLabel(
+  n: number,
+  t: (key: string) => string,
+): string {
   const { volume, threshold } = sensitivityToVolumeThreshold(n);
-  if (volume === "silent") return "Silent — no inline reactions.";
-  if (volume === "chatty") {
-    return "Chatty — surfaces lower-confidence hunches too.";
-  }
+  if (volume === "silent") return t("settings.agi.bandSilent");
+  if (volume === "chatty") return t("settings.agi.bandChatty");
   // volume === "quiet"
-  if (threshold >= 0.85) {
-    return "Alerts only — only the very-high-confidence reactions surface.";
-  }
-  return "Quiet (default) — high-confidence reactions only.";
+  if (threshold >= 0.85) return t("settings.agi.bandAlerts");
+  return t("settings.agi.bandQuiet");
 }
 // === end v2.0-beta.3 settings simplify ===
+// === end wave 5-α ===
 
 /**
  * Render an ISO 8601 `suppressed_until` as a short human-readable

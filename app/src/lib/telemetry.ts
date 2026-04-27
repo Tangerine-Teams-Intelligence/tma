@@ -104,7 +104,25 @@ export type TelemetryEventName =
   | "welcome_overlay_shown"
   | "welcome_overlay_started"
   | "welcome_overlay_skipped"
-  | "ai_tool_auto_configure";
+  | "ai_tool_auto_configure"
+  // === wave 5-β discoverability ===
+  // Cmd+K palette + help/shortcuts surfaces. Lets the suggestion engine
+  // detect "user keeps Cmd+K-ing /memory → sidebar isn't discoverable"
+  // or "shortcuts overlay opened 8× this week → maybe surface them
+  // inline".
+  // Payload shapes (also documented at each call site):
+  //   - palette_open      : {}
+  //   - palette_select    : { id: string, kind: "route" | "action" |
+  //                            "hit" | "shortcut" }
+  //   - help_open         : { route: string }
+  //   - shortcuts_open    : {}
+  //   - tour_replay       : { source: "settings" | "palette" }
+  | "palette_open"
+  | "palette_select"
+  | "help_open"
+  | "shortcuts_open"
+  | "tour_replay";
+// === end wave 5-β discoverability ===
 
 /** One telemetry record. Mirrors `app/src-tauri/src/agi/telemetry.rs::TelemetryEvent`. */
 export interface TelemetryEvent {

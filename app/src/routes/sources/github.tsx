@@ -16,7 +16,9 @@
  * immediately. The next cold-launch reads the YAML and re-arms.
  */
 
+// === wave 5-α ===
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import {
   ArrowLeft,
@@ -119,6 +121,7 @@ function mergeWritebackIntoYaml(
 }
 
 export default function GithubSourceRoute() {
+  const { t } = useTranslation();
   const pushToast = useStore((s) => s.ui.pushToast);
   const pushModal = useStore((s) => s.ui.pushModal);
   const firstWritebackConfirmed = useStore(
@@ -203,10 +206,7 @@ export default function GithubSourceRoute() {
       // The validator requires the original required fields — if the existing
       // yaml is empty, surface an error rather than write a partial config.
       if (!yamlBody.trim()) {
-        pushToast(
-          "error",
-          "No ~/.tmi/config.yaml yet. Finish the Discord setup first so the schema is initialised."
-        );
+        pushToast("error", t("sources.github.noConfig"));
         return;
       }
       await setConfig(newYaml);
@@ -219,13 +219,11 @@ export default function GithubSourceRoute() {
       await setWritebackWatcher(next.enabled);
       pushToast(
         "success",
-        next.enabled
-          ? "GitHub writeback ON. Decisions will post back automatically."
-          : "GitHub writeback OFF. Capture continues unchanged."
+        next.enabled ? t("sources.github.writebackOn") : t("sources.github.writebackOff"),
       );
     } catch (e) {
       const msg = (e as Error).message ?? String(e);
-      pushToast("error", `Save failed: ${msg}`);
+      pushToast("error", `${t("sources.github.saveFailed")} ${msg}`);
     } finally {
       setSaving(false);
     }
@@ -255,12 +253,10 @@ export default function GithubSourceRoute() {
     pushModal({
       id: "github-writeback-first-time",
       emoji: "🍊",
-      title: "Post comments to GitHub on Tangerine's behalf?",
-      body:
-        "When enabled, Tangerine will post decision summaries as markdown comments on the linked PR or issue. Each comment is automated — no per-message confirm.\n\n" +
-        "This is a one-time confirm. Disable any time.",
-      confirmLabel: "Allow GitHub posts",
-      cancelLabel: "Not now",
+      title: t("sources.github.modalTitle"),
+      body: t("sources.github.modalBody"),
+      confirmLabel: t("sources.github.modalConfirm"),
+      cancelLabel: t("sources.github.modalCancel"),
       onConfirm: () => {
         markWritebackConfirmed("github");
         void persistWriteback(next);
@@ -283,7 +279,7 @@ export default function GithubSourceRoute() {
       <header className="ti-no-select flex h-14 items-center gap-3 border-b border-stone-200 bg-stone-50 px-6 dark:border-stone-800 dark:bg-stone-950">
         <Link
           to="/memory"
-          aria-label="Back"
+          aria-label={t("buttons.back")}
           className="inline-flex h-8 w-8 items-center justify-center rounded-md text-stone-700 hover:bg-stone-200 dark:text-stone-300 dark:hover:bg-stone-800"
         >
           <ArrowLeft size={16} />
@@ -295,35 +291,35 @@ export default function GithubSourceRoute() {
           <Github size={14} />
         </div>
         <span className="font-display text-lg leading-none text-stone-900 dark:text-stone-100">
-          GitHub
+          {t("sources.github.title")}
         </span>
         <span className="font-mono text-[11px] text-stone-500 dark:text-stone-400">
-          / Source / Configure
+          {t("sources.github.headerSub")}
         </span>
       </header>
 
       <main className="mx-auto max-w-3xl p-8 pb-24">
-        <p className="ti-section-label">Source · GitHub</p>
+        <p className="ti-section-label">{t("sources.github.kicker")}</p>
         <h1 className="mt-1 font-display text-3xl tracking-tight text-stone-900 dark:text-stone-100">
-          GitHub source
+          {t("sources.github.h1")}
         </h1>
         <p className="mt-2 text-sm text-stone-700 dark:text-stone-300">
-          Pulls PR threads, review comments, and merge decisions into{" "}
-          <code className="font-mono text-[13px]">memory/threads/pr-*.md</code>. With
-          writeback ON, finalised decisions in{" "}
-          <code className="font-mono text-[13px]">memory/decisions/</code> get posted
-          back as a markdown comment on the linked PR.
+          {t("sources.github.intro")}{" "}
+          <code className="font-mono text-[13px]">memory/threads/pr-*.md</code>
+          {t("sources.github.introTail")}{" "}
+          <code className="font-mono text-[13px]">memory/decisions/</code>{" "}
+          {t("sources.github.introTail2")}
         </p>
 
         {loading ? (
           <p className="mt-6 flex items-center gap-2 text-sm text-stone-500 dark:text-stone-400">
-            <Loader2 size={14} className="animate-spin" /> Loading config…
+            <Loader2 size={14} className="animate-spin" /> {t("sources.github.loading")}
           </p>
         ) : (
           <div className="mt-8 space-y-3">
             <Section
               id="capture"
-              title="Capture"
+              title={t("sources.github.captureTitle")}
               done={true}
               open={openSection === "capture"}
               onToggle={() =>
@@ -335,7 +331,7 @@ export default function GithubSourceRoute() {
 
             <Section
               id="writeback"
-              title="Writeback"
+              title={t("sources.github.writebackTitle")}
               done={cfg.enabled}
               open={openSection === "writeback"}
               onToggle={() =>
@@ -373,6 +369,7 @@ interface SectionProps {
 }
 
 function Section({ title, done, open, onToggle, children }: SectionProps) {
+  const { t } = useTranslation();
   return (
     <Card>
       <button
@@ -390,11 +387,11 @@ function Section({ title, done, open, onToggle, children }: SectionProps) {
         </div>
         {done ? (
           <span className="flex items-center gap-1 text-xs text-[var(--ti-success)]">
-            <CheckCircle2 size={14} /> On
+            <CheckCircle2 size={14} /> {t("sidebar.statusOn")}
           </span>
         ) : (
           <span className="flex items-center gap-1 text-xs text-[var(--ti-ink-500)]">
-            <AlertCircle size={14} /> Off
+            <AlertCircle size={14} /> {t("sidebar.statusOff")}
           </span>
         )}
       </button>
@@ -408,18 +405,18 @@ function Section({ title, done, open, onToggle, children }: SectionProps) {
 // ============================================================
 
 function CaptureSection() {
+  const { t } = useTranslation();
   return (
     <div className="space-y-3 text-sm text-[var(--ti-ink-700)]">
       <p>
-        Capture for GitHub runs from the{" "}
-        <code className="font-mono text-[13px]">sources/github</code> Node package
-        (separate process). Once authorised it reads PRs + issues for the repos you
-        opt into. This pane shows whether the connector is currently writing atoms.
+        {t("sources.github.captureBody")}{" "}
+        <code className="font-mono text-[13px]">sources/github</code>{" "}
+        {t("sources.github.captureBodyTail")}
       </p>
       <p className="font-mono text-[11px] text-[var(--ti-ink-500)]">
-        Capture configuration lives outside this pane (per-repo cursors live in{" "}
-        <code>memory/.tangerine/sources/github.config.json</code>). This page
-        intentionally focuses on writeback — Phase 2-A.
+        {t("sources.github.captureNote")}{" "}
+        <code>memory/.tangerine/sources/github.config.json</code>
+        {t("sources.github.captureNoteTail")}
       </p>
     </div>
   );
@@ -440,6 +437,7 @@ interface WritebackSectionProps {
 }
 
 function WritebackSection(p: WritebackSectionProps) {
+  const { t } = useTranslation();
   const [draft, setDraft] = useState<GithubWritebackConfig>(p.cfg);
   useEffect(() => setDraft(p.cfg), [p.cfg.enabled, p.cfg.login]);
   const dirty =
@@ -449,13 +447,11 @@ function WritebackSection(p: WritebackSectionProps) {
     <div className="space-y-6">
       <div className="space-y-3">
         <p className="text-sm text-[var(--ti-ink-700)]">
-          When ON, Tangerine watches{" "}
+          {t("sources.github.writebackIntro")}{" "}
           <code className="font-mono text-[13px]">~/.tangerine-memory/decisions/</code>{" "}
-          and posts a markdown comment on the linked PR / issue whenever a new
-          decision file with{" "}
-          <code className="font-mono text-[13px]">source: github</code> is written. The
-          comment format is shown below — your team sees a single 🍊 message,
-          unmistakably from Tangerine.
+          {t("sources.github.writebackIntroTail")}{" "}
+          <code className="font-mono text-[13px]">source: github</code>{" "}
+          {t("sources.github.writebackIntroTail2")}
         </p>
 
         <label className="flex items-start gap-3">
@@ -467,16 +463,16 @@ function WritebackSection(p: WritebackSectionProps) {
           />
           <div>
             <p className="font-medium text-[var(--ti-ink-900)]">
-              Post decisions back to GitHub
+              {t("sources.github.postLabel")}
             </p>
             <p className="text-xs text-[var(--ti-ink-500)]">
-              Reuses your existing GitHub OAuth token. Read-only when OFF.
+              {t("sources.github.postHint")}
             </p>
           </div>
         </label>
 
         <div className="space-y-1">
-          <Label htmlFor="github-login">GitHub login</Label>
+          <Label htmlFor="github-login">{t("sources.github.loginLabel")}</Label>
           <Input
             id="github-login"
             type="text"
@@ -487,8 +483,7 @@ function WritebackSection(p: WritebackSectionProps) {
             autoComplete="off"
           />
           <p className="text-xs text-[var(--ti-ink-500)]">
-            The login we use to look up your token in the OS keychain. Defaults to
-            the account you signed in with during onboarding.
+            {t("sources.github.loginHint")}
           </p>
         </div>
 
@@ -499,15 +494,15 @@ function WritebackSection(p: WritebackSectionProps) {
           >
             {p.saving ? (
               <>
-                <Loader2 size={14} className="animate-spin" /> Saving…
+                <Loader2 size={14} className="animate-spin" /> {t("sources.github.saving")}
               </>
             ) : (
-              "Apply"
+              t("sources.github.apply")
             )}
           </Button>
           {dirty && !p.saving && (
             <span className="text-xs text-[var(--ti-ink-500)]">
-              Unsaved changes
+              {t("sources.github.unsaved")}
             </span>
           )}
         </div>
@@ -515,7 +510,7 @@ function WritebackSection(p: WritebackSectionProps) {
 
       <div className="space-y-2 border-t border-stone-200 pt-4 dark:border-stone-800">
         <div className="flex items-center justify-between">
-          <p className="ti-section-label">Writeback log (last 5)</p>
+          <p className="ti-section-label">{t("sources.github.logHeading")}</p>
           <Button
             variant="outline"
             size="sm"
@@ -525,16 +520,18 @@ function WritebackSection(p: WritebackSectionProps) {
             {p.logLoading ? (
               <Loader2 size={12} className="animate-spin" />
             ) : (
-              "Refresh"
+              t("sources.github.refresh")
             )}
           </Button>
         </div>
 
         {p.logEntries.length === 0 ? (
           <p className="text-xs italic text-[var(--ti-ink-500)]">
-            No writebacks yet. Finalize a decision in{" "}
-            <code className="font-mono">memory/decisions/</code> with{" "}
-            <code className="font-mono">source: github</code> to see one here.
+            {t("sources.github.logEmpty")}{" "}
+            <code className="font-mono">memory/decisions/</code>{" "}
+            {t("sources.github.logEmptyTail")}{" "}
+            <code className="font-mono">source: github</code>{" "}
+            {t("sources.github.logEmptyTail2")}
           </p>
         ) : (
           <ul className="space-y-2">
@@ -555,6 +552,7 @@ function WritebackSection(p: WritebackSectionProps) {
 }
 
 function LogRow({ entry }: { entry: WritebackLogEntry }) {
+  const { t } = useTranslation();
   const o = entry.outcome;
   const colour =
     o.status === "posted"
@@ -582,7 +580,7 @@ function LogRow({ entry }: { entry: WritebackLogEntry }) {
           className="mt-1 inline-flex items-center gap-1 text-[11px] text-[var(--ti-orange-500)] hover:underline"
           onClick={() => void openExternal(o.external_url)}
         >
-          <ExternalLink size={10} /> View comment
+          <ExternalLink size={10} /> {t("sources.github.viewComment")}
         </button>
       )}
       {o.status === "already_done" && (
@@ -590,7 +588,7 @@ function LogRow({ entry }: { entry: WritebackLogEntry }) {
           className="mt-1 inline-flex items-center gap-1 text-[11px] text-[var(--ti-ink-500)] hover:underline"
           onClick={() => void openExternal(o.external_url)}
         >
-          <ExternalLink size={10} /> Existing comment
+          <ExternalLink size={10} /> {t("sources.github.existingComment")}
         </button>
       )}
       {o.status === "failed" && (
@@ -604,3 +602,4 @@ function LogRow({ entry }: { entry: WritebackLogEntry }) {
     </li>
   );
 }
+// === end wave 5-α ===

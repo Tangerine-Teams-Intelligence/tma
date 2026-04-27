@@ -13,9 +13,10 @@
  */
 
 // === wave 4-D i18n ===
+// === wave 5-α ===
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { GitPullRequest, RefreshCw, AlertCircle } from "lucide-react";
+import { GitPullRequest, RefreshCw, CheckCircle2, ListChecks } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { ReviewPanel } from "@/components/review/ReviewPanel";
@@ -23,6 +24,8 @@ import { reviewListOpen, type ReviewState } from "@/lib/tauri";
 import { useStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { EmptyState } from "@/components/EmptyState";
+import { ErrorState } from "@/components/ErrorState";
 
 type Filter = "open" | "mine" | "all";
 
@@ -142,27 +145,15 @@ export default function ReviewsRoute() {
           ))}
         </div>
       ) : error ? (
-        <div
-          role="alert"
-          className="rounded border border-[var(--ti-danger)]/40 bg-[var(--ti-danger)]/5 p-6 text-center"
-        >
-          <AlertCircle size={20} className="mx-auto text-[var(--ti-danger)]" />
-          <p className="mt-3 text-[12px] text-stone-700 dark:text-stone-300">
-            {t("reviews.errorLoad")}
-          </p>
-          <p className="mt-1 font-mono text-[10px] text-stone-500 dark:text-stone-400">
-            {error}
-          </p>
-          <button
-            type="button"
-            onClick={() => setRefreshKey((k) => k + 1)}
-            className="mt-3 rounded border border-stone-300 px-2 py-0.5 font-mono text-[11px] text-stone-700 hover:bg-stone-100 dark:border-stone-700 dark:text-stone-200 dark:hover:bg-stone-800"
-          >
-            {t("buttons.retry")}
-          </button>
-        </div>
+        <ErrorState
+          error={error}
+          title={t("reviews.errorLoad")}
+          onRetry={() => setRefreshKey((k) => k + 1)}
+          retryLabel={t("buttons.retry")}
+          testId="reviews-error"
+        />
       ) : filtered.length === 0 ? (
-        <EmptyState filter={filter} />
+        <ReviewsEmpty filter={filter} />
       ) : (
         <ul className="space-y-3">
           {filtered.map((r) => (
@@ -213,17 +204,33 @@ function FilterChip({
   );
 }
 
-function EmptyState({ filter }: { filter: Filter }) {
+function ReviewsEmpty({ filter }: { filter: Filter }) {
   const { t } = useTranslation();
-  const msg =
+  const title =
+    filter === "mine"
+      ? t("reviews.emptyTitleMine")
+      : filter === "open"
+        ? t("reviews.emptyTitleOpen")
+        : t("reviews.emptyTitleAll");
+  const description =
     filter === "mine"
       ? t("reviews.emptyMine")
       : filter === "open"
         ? t("reviews.emptyOpen")
         : t("reviews.emptyAll");
+  const icon =
+    filter === "mine" ? (
+      <CheckCircle2 size={32} className="text-[var(--ti-success)]" />
+    ) : (
+      <ListChecks size={32} />
+    );
   return (
-    <div className="rounded border border-dashed border-stone-300 p-8 text-center dark:border-stone-700">
-      <p className="text-sm text-stone-500 dark:text-stone-400">{msg}</p>
-    </div>
+    <EmptyState
+      icon={icon}
+      title={title}
+      description={description}
+      testId="reviews-empty"
+    />
   );
 }
+// === end wave 5-α ===

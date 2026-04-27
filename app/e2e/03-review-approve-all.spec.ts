@@ -1,9 +1,9 @@
 import { test, expect } from "@playwright/test";
+// === wave 5-γ ===
+import { seedStubSession } from "./_setup";
 
 test.beforeEach(async ({ page }) => {
-  await page.addInitScript(() => {
-    (window as any).__TMI_MOCK__ = { config: { schema_version: 1 } };
-  });
+  await seedStubSession(page);
 });
 
 test("approve all blocks then merge", async ({ page }) => {

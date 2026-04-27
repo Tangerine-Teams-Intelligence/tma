@@ -17,7 +17,9 @@
  * `<user_data>/personal_agents.json`.
  */
 
+// === wave 5-α ===
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useStore } from "@/lib/store";
 import {
   personalAgentsScanAll,
@@ -114,6 +116,7 @@ const AGENTS: AgentRow[] = [
 ];
 
 export function PersonalAgentsSettings() {
+  const { t } = useTranslation();
   const enabled = useStore((s) => s.ui.personalAgentsEnabled);
   const setPersonalAgentsEnabled = useStore((s) => s.ui.setPersonalAgentsEnabled);
   const togglePersonalAgent = useStore((s) => s.ui.togglePersonalAgent);
@@ -191,7 +194,7 @@ export function PersonalAgentsSettings() {
       setLastSyncAt(updated.last_sync_at ?? null);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      pushToast("error", `Toggle failed: ${msg}`);
+      pushToast("error", `${t("settings.personalAgents.toggleFailed")} ${msg}`);
       // Roll back the optimistic flip.
       togglePersonalAgent(row.flagKey, !next);
     }
@@ -204,8 +207,8 @@ export function PersonalAgentsSettings() {
       setLastResult((r) => ({ ...r, [row.flagKey]: result }));
       const headline =
         result.errors.length > 0
-          ? `Synced with ${result.errors.length} error(s)`
-          : `Synced — wrote ${result.written}, skipped ${result.skipped}`;
+          ? t("settings.personalAgents.syncedHeadlineErrors", { count: result.errors.length })
+          : t("settings.personalAgents.syncedHeadline", { written: result.written, skipped: result.skipped });
       pushToast(result.errors.length ? "error" : "success", `${row.label}: ${headline}`);
       // Refresh detection counts so the row's "N conversations" line
       // stays in sync with disk after a write pass.
@@ -216,7 +219,7 @@ export function PersonalAgentsSettings() {
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      pushToast("error", `${row.label}: sync failed: ${msg}`);
+      pushToast("error", `${row.label}: ${t("settings.personalAgents.syncFailed")} ${msg}`);
     } finally {
       setBusy((b) => ({ ...b, [row.flagKey]: false }));
     }
@@ -225,16 +228,13 @@ export function PersonalAgentsSettings() {
   return (
     <div className="flex flex-col gap-6" data-testid="st-personal-agents">
       <section>
-        <h3 className="font-display text-lg">Personal AI agent capture</h3>
+        <h3 className="font-display text-lg">{t("settings.personalAgents.heading")}</h3>
         <p className="mt-1 max-w-2xl text-sm text-[var(--ti-ink-500)]">
-          Tangerine reads your local AI agent conversation logs and writes
-          one atom per conversation under{" "}
+          {t("settings.personalAgents.intro")}{" "}
           <code className="font-mono text-xs">
             personal/{currentUser}/threads/&lt;agent&gt;/
           </code>
-          . Strict opt-in — every source is OFF until you turn it on. Atoms
-          stay on this machine; the personal vault is git-ignored and never
-          syncs to the team repo.
+          {t("settings.personalAgents.introTail")}
         </p>
       </section>
 
@@ -267,22 +267,24 @@ export function PersonalAgentsSettings() {
                     <h4 className="font-display text-base">{row.label}</h4>
                     <span className="text-xs text-[var(--ti-ink-500)]">
                       {detected
-                        ? `${conversationCount} conversation${conversationCount === 1 ? "" : "s"} found`
-                        : "not detected"}
+                        ? conversationCount === 1
+                          ? t("settings.personalAgents.detectedSingular", { count: 1 })
+                          : t("settings.personalAgents.detectedPlural", { count: conversationCount })
+                        : t("settings.personalAgents.notDetected")}
                     </span>
                   </div>
                   <p className="mt-1 text-sm text-[var(--ti-ink-500)]">{row.description}</p>
                   <p className="mt-1 break-all font-mono text-xs text-[var(--ti-ink-400)]">
-                    {detected ? "Reading from " : "Looking at "}
+                    {detected ? `${t("settings.personalAgents.readingFrom")} ` : `${t("settings.personalAgents.lookingAt")} `}
                     {homePath}
                   </p>
                   {last && (
                     <p className="mt-2 text-xs text-[var(--ti-ink-500)]">
-                      Last sync: wrote <strong>{last.written}</strong>, skipped{" "}
+                      {t("settings.personalAgents.lastSyncWrote")} <strong>{last.written}</strong>, {t("settings.personalAgents.skipped")}{" "}
                       <strong>{last.skipped}</strong>
                       {last.errors.length > 0 && (
                         <>
-                          {", errors: "}
+                          {`, ${t("settings.personalAgents.errors")} `}
                           <span className="text-[var(--ti-danger)]">{last.errors.length}</span>
                         </>
                       )}
@@ -297,7 +299,7 @@ export function PersonalAgentsSettings() {
                       onChange={(e) => void onToggle(row, e.target.checked)}
                       data-testid={`st-personal-agent-toggle-${row.flagKey}`}
                     />
-                    <span>{isOn ? "On" : "Off"}</span>
+                    <span>{isOn ? t("settings.personalAgents.on") : t("settings.personalAgents.off")}</span>
                   </label>
                   <button
                     type="button"
@@ -310,9 +312,9 @@ export function PersonalAgentsSettings() {
                         ? "hover:bg-[var(--ti-paper-100,#f3eee6)]"
                         : "cursor-not-allowed opacity-50")
                     }
-                    title={detected ? "Run a one-off capture now" : "Source not detected on this machine"}
+                    title={detected ? t("settings.personalAgents.syncTooltip") : t("settings.personalAgents.syncTooltipNotDetected")}
                   >
-                    {busy[row.flagKey] ? "Syncing…" : "Sync now"}
+                    {busy[row.flagKey] ? t("settings.personalAgents.syncing") : t("settings.personalAgents.syncNow")}
                   </button>
                 </div>
               </div>
@@ -324,10 +326,10 @@ export function PersonalAgentsSettings() {
       <section className="text-xs text-[var(--ti-ink-500)]">
         {lastSyncAt ? (
           <p>
-            Last successful capture: <strong>{new Date(lastSyncAt).toLocaleString()}</strong>
+            {t("settings.personalAgents.lastSuccessful")} <strong>{new Date(lastSyncAt).toLocaleString()}</strong>
           </p>
         ) : (
-          <p>No captures yet — flip a toggle and click &ldquo;Sync now&rdquo; to start.</p>
+          <p>{t("settings.personalAgents.noCaptures")}</p>
         )}
       </section>
     </div>
@@ -335,3 +337,4 @@ export function PersonalAgentsSettings() {
 }
 
 export default PersonalAgentsSettings;
+// === end wave 5-α ===

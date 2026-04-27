@@ -7,12 +7,19 @@
  *
  * v1.8 adds the "AI tools" tab — the user picks a primary external AI tool
  * (Cursor / Claude Code / etc.) for the co-thinker brain to think through.
+ *
+ * === wave 5-α ===
+ * Progressive disclosure: by default only General / AI tools / AGI /
+ * Personal Agents are visible. Adapters / Team / Advanced live behind a
+ * "Show advanced settings" toggle persisted in `ui.showAdvancedSettings`.
+ * === end wave 5-α ===
  */
 // === wave 4-D i18n ===
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { getConfig, setConfig } from "@/lib/tauri";
+import { useStore } from "@/lib/store";
 import { GeneralSettings } from "./GeneralSettings";
 import { TeamSettings } from "./TeamSettings";
 import { AdaptersSettings } from "./AdaptersSettings";
@@ -23,18 +30,27 @@ import { AGISettings } from "./AGISettings";
 // Code / Codex / Windsurf logs into the personal vault.
 import { PersonalAgentsSettings } from "./PersonalAgentsSettings";
 
-const TABS = [
+// === wave 5-α ===
+// Tab classification:
+//   default — always visible (small, opinionated set)
+//   advanced — only visible when `ui.showAdvancedSettings` is true
+const DEFAULT_TABS = [
   { id: "general", label: "General" },
   { id: "ai-tools", label: "AI tools" },
   { id: "agi", label: "AGI" },
-  // v3.0 §1 — Personal Agents tab.
   { id: "personal-agents", label: "Personal Agents" },
+] as const;
+
+const ADVANCED_TABS = [
   { id: "team", label: "Team" },
   { id: "adapters", label: "Adapters" },
   { id: "advanced", label: "Advanced" },
 ] as const;
 
-type TabId = (typeof TABS)[number]["id"];
+type DefaultTabId = (typeof DEFAULT_TABS)[number]["id"];
+type AdvancedTabId = (typeof ADVANCED_TABS)[number]["id"];
+type TabId = DefaultTabId | AdvancedTabId;
+// === end wave 5-α ===
 
 // Minimal in-app shape; T1's WizardData lives in store.
 export interface ConfigDraft {
@@ -57,7 +73,11 @@ const DEFAULT_DRAFT: ConfigDraft = {
 
 export default function Settings() {
   const { t } = useTranslation();
+  // === wave 5-α ===
+  const showAdvanced = useStore((s) => s.ui.showAdvancedSettings);
+  const setShowAdvanced = useStore((s) => s.ui.setShowAdvancedSettings);
   const [tab, setTab] = useState<TabId>("general");
+  // === end wave 5-α ===
   const [draft, setDraft] = useState<ConfigDraft>(DEFAULT_DRAFT);
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -70,6 +90,19 @@ export default function Settings() {
       }
     });
   }, []);
+
+  // === wave 5-α ===
+  // If the user hides advanced while sitting on an advanced tab, fall
+  // back to the general tab so the page never renders nothing.
+  useEffect(() => {
+    if (
+      !showAdvanced &&
+      ADVANCED_TABS.some((tt) => tt.id === tab)
+    ) {
+      setTab("general");
+    }
+  }, [showAdvanced, tab]);
+  // === end wave 5-α ===
 
   const update = <K extends keyof ConfigDraft>(key: K, val: ConfigDraft[K]) => {
     setDraft((d) => ({ ...d, [key]: val }));
@@ -88,6 +121,22 @@ export default function Settings() {
     }
   };
 
+  // === wave 5-α ===
+  const visibleTabs: ReadonlyArray<{ id: TabId; label: string }> = showAdvanced
+    ? [...DEFAULT_TABS, ...ADVANCED_TABS]
+    : [...DEFAULT_TABS];
+  // === end wave 5-α ===
+
+  const tabLabelKey: Record<TabId, string> = {
+    general: "settings.tabs.general",
+    "ai-tools": "settings.tabs.aiTools",
+    agi: "settings.tabs.agi",
+    "personal-agents": "settings.tabs.personalAgents",
+    team: "settings.tabs.team",
+    adapters: "settings.tabs.adapters",
+    advanced: "settings.tabs.advanced",
+  };
+
   return (
     <div className="mx-auto flex h-full max-w-4xl flex-col gap-6 p-8" data-testid="st-0">
       <header>
@@ -99,33 +148,45 @@ export default function Settings() {
       </header>
 
       <nav className="flex gap-1 border-b border-[var(--ti-border-faint)]">
-        {TABS.map((tab2) => {
-          const tabLabelKey: Record<TabId, string> = {
-            general: "settings.tabs.general",
-            "ai-tools": "settings.tabs.aiTools",
-            agi: "settings.tabs.agi",
-            "personal-agents": "settings.tabs.personalAgents",
-            team: "settings.tabs.team",
-            adapters: "settings.tabs.adapters",
-            advanced: "settings.tabs.advanced",
-          };
-          return (
-            <button
-              key={tab2.id}
-              onClick={() => setTab(tab2.id)}
-              data-testid={`st-tab-${tab2.id}`}
-              className={
-                "border-b-2 px-3 py-2 text-sm transition-colors duration-fast " +
-                (tab === tab2.id
-                  ? "border-[var(--ti-orange-500)] text-[var(--ti-orange-700)]"
-                  : "border-transparent text-[var(--ti-ink-500)] hover:text-[var(--ti-ink-700)]")
-              }
-            >
-              {t(tabLabelKey[tab2.id])}
-            </button>
-          );
-        })}
+        {visibleTabs.map((tab2) => (
+          <button
+            key={tab2.id}
+            onClick={() => setTab(tab2.id)}
+            data-testid={`st-tab-${tab2.id}`}
+            className={
+              "border-b-2 px-3 py-2 text-sm transition-colors duration-fast " +
+              (tab === tab2.id
+                ? "border-[var(--ti-orange-500)] text-[var(--ti-orange-700)]"
+                : "border-transparent text-[var(--ti-ink-500)] hover:text-[var(--ti-ink-700)]")
+            }
+          >
+            {t(tabLabelKey[tab2.id])}
+          </button>
+        ))}
       </nav>
+
+      {/* === wave 5-α ===
+          Show / hide advanced tabs link. Sits below the tab row, mono
+          11px font so it reads as a power-user affordance rather than
+          a primary action. */}
+      <div className="-mt-3 flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          onClick={() => setShowAdvanced(!showAdvanced)}
+          data-testid="st-advanced-toggle"
+          className="font-mono text-[11px] text-[var(--ti-ink-500)] underline-offset-2 hover:text-[var(--ti-orange-600)] hover:underline"
+        >
+          {showAdvanced
+            ? t("settings.hideAdvanced")
+            : t("settings.showAdvanced")}
+        </button>
+        {!showAdvanced && (
+          <span className="text-[11px] text-[var(--ti-ink-500)]">
+            {t("settings.advancedHint")}
+          </span>
+        )}
+      </div>
+      {/* === end wave 5-α === */}
 
       <section className="flex-1 overflow-auto">
         {tab === "general" && (

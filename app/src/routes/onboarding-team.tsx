@@ -1,4 +1,6 @@
+// === wave 5-α ===
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { Loader2, AlertCircle, Github, FolderOpen, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -37,6 +39,7 @@ type Phase = "pick" | "device" | "polling" | "creating" | "cloning" | "invite" |
  * an install link instead of letting the underlying clone error leak out.
  */
 export default function OnboardingTeamRoute() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const setMemoryConfig = useStore((s) => s.ui.setMemoryConfig);
   const setMemoryRoot = useStore((s) => s.ui.setMemoryRoot);
@@ -118,7 +121,7 @@ export default function OnboardingTeamRoute() {
 
   function chooseSolo() {
     setMemoryConfig({ mode: "solo" });
-    pushToast("info", "Memory stays on this machine. Switch to team mode any time from Settings.");
+    pushToast("info", t("onboarding.soloToast"));
     navigate("/memory", { replace: true });
   }
 
@@ -161,7 +164,7 @@ export default function OnboardingTeamRoute() {
 
   async function chooseExisting() {
     if (!existingUrl.trim()) {
-      setError("Paste a GitHub clone URL first.");
+      setError(t("onboarding.pasteCloneFirst"));
       return;
     }
     setError(null);
@@ -185,7 +188,7 @@ export default function OnboardingTeamRoute() {
       });
       setMemoryRoot(`${localClone}/memory`);
       void syncStart({ repoPath: localClone, login });
-      pushToast("success", "Team memory connected.");
+      pushToast("success", t("onboarding.teamConnectedToast"));
       navigate("/memory", { replace: true });
     } catch (e) {
       setError(humanize(e));
@@ -195,7 +198,7 @@ export default function OnboardingTeamRoute() {
 
   function finishInvite() {
     setInviteUri(null);
-    pushToast("success", "Team memory ready.");
+    pushToast("success", t("onboarding.teamReadyToast"));
     navigate("/memory", { replace: true });
   }
 
@@ -205,18 +208,17 @@ export default function OnboardingTeamRoute() {
     return (
       <FullPage>
         <h1 className="font-display text-2xl tracking-tight text-stone-900 dark:text-stone-100">
-          We need git on this machine first
+          {t("onboarding.needGitTitle")}
         </h1>
         <p className="mt-3 text-sm text-stone-700 dark:text-stone-300">
-          Tangerine syncs your team memory through git. It's a 60-second install
-          and you only do it once. Most developers already have it.
+          {t("onboarding.needGitBody")}
         </p>
         <div className="mt-6 flex gap-3">
           <Button onClick={() => openExternal(gitStatus.install_url)}>
-            Install git <ArrowRight size={14} />
+            {t("onboarding.installGit")} <ArrowRight size={14} />
           </Button>
           <Button variant="outline" onClick={chooseSolo}>
-            Skip — stay solo for now
+            {t("onboarding.skipSolo")}
           </Button>
         </div>
       </FullPage>
@@ -227,10 +229,10 @@ export default function OnboardingTeamRoute() {
     return (
       <FullPage>
         <h1 className="font-display text-2xl tracking-tight text-stone-900 dark:text-stone-100">
-          Sign in to GitHub
+          {t("onboarding.signInGithub")}
         </h1>
         <p className="mt-3 text-sm text-stone-700 dark:text-stone-300">
-          We opened the GitHub login page. Type this code:
+          {t("onboarding.signInGithubBody")}
         </p>
         <div className="mt-6 rounded-md border border-stone-300 bg-stone-100 px-4 py-4 dark:border-stone-700 dark:bg-stone-900">
           <p className="font-mono text-3xl tracking-widest text-stone-900 dark:text-stone-100">
@@ -241,7 +243,7 @@ export default function OnboardingTeamRoute() {
           </p>
         </div>
         <p className="mt-6 flex items-center gap-2 text-xs text-stone-600 dark:text-stone-400">
-          <Loader2 size={12} className="animate-spin" /> Waiting for GitHub…
+          <Loader2 size={12} className="animate-spin" /> {t("onboarding.waitingGithub")}
         </p>
       </FullPage>
     );
@@ -251,11 +253,11 @@ export default function OnboardingTeamRoute() {
     return (
       <FullPage>
         <h1 className="font-display text-2xl tracking-tight text-stone-900 dark:text-stone-100">
-          {phase === "creating" ? "Creating your team's memory repo…" : "Cloning team memory…"}
+          {phase === "creating" ? t("onboarding.creatingRepo") : t("onboarding.cloningRepo")}
         </h1>
         <p className="mt-3 flex items-center gap-2 text-sm text-stone-700 dark:text-stone-300">
           <Loader2 size={14} className="animate-spin" />
-          This takes about 10 seconds.
+          {t("onboarding.tenSeconds")}
         </p>
       </FullPage>
     );
@@ -269,7 +271,7 @@ export default function OnboardingTeamRoute() {
     return (
       <FullPage>
         <h1 className="font-display text-2xl tracking-tight text-stone-900 dark:text-stone-100">
-          Something went wrong
+          {t("onboarding.errorTitle")}
         </h1>
         <p
           role="alert"
@@ -278,9 +280,9 @@ export default function OnboardingTeamRoute() {
           <AlertCircle size={14} /> {error}
         </p>
         <div className="mt-6 flex gap-3">
-          <Button onClick={() => setPhase("pick")}>Try again</Button>
+          <Button onClick={() => setPhase("pick")}>{t("onboarding.tryAgain")}</Button>
           <Button variant="outline" onClick={chooseSolo}>
-            Stay solo for now
+            {t("onboarding.staySolo")}
           </Button>
         </div>
       </FullPage>
@@ -298,19 +300,17 @@ export default function OnboardingTeamRoute() {
         data-testid="onboarding-hero"
       >
         <p className="font-mono text-[10px] uppercase tracking-wider text-[var(--ti-orange-700)] dark:text-[var(--ti-orange-500)]">
-          Welcome
+          {t("onboarding.heroLabel")}
         </p>
         <h1 className="mt-2 font-display text-2xl tracking-tight text-stone-900 dark:text-stone-100">
-          Solo + a connected source = working CoS in 30 seconds.
+          {t("onboarding.heroTitle")}
         </h1>
         <p className="mt-2 text-sm leading-relaxed text-stone-700 dark:text-stone-300">
-          Pick Solo, connect Discord / GitHub / Slack, and the daemon starts
-          writing your team memory while you keep working. Switch to Team mode
-          from Settings whenever you're ready to share.
+          {t("onboarding.heroBody")}
         </p>
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <Button onClick={chooseSolo} data-testid="onboarding-quickstart">
-            Start solo + connect a source <ArrowRight size={14} />
+            {t("onboarding.quickstart")} <ArrowRight size={14} />
           </Button>
           <button
             type="button"
@@ -318,18 +318,17 @@ export default function OnboardingTeamRoute() {
             data-testid="onboarding-skip"
             className="rounded px-2 py-1 font-mono text-[11px] text-stone-500 underline-offset-2 hover:text-stone-900 hover:underline dark:text-stone-400 dark:hover:text-stone-100"
           >
-            Skip onboarding for now
+            {t("onboarding.skipForNow")}
           </button>
         </div>
       </div>
       {/* === end polish onboarding refine === */}
 
       <h2 className="font-display text-xl tracking-tight text-stone-900 dark:text-stone-100">
-        Where will your team's memory live?
+        {t("onboarding.pickerTitle")}
       </h2>
       <p className="mt-2 text-sm text-stone-700 dark:text-stone-300">
-        Tangerine stores meetings, decisions, and AI context as markdown files
-        your team can share via git.
+        {t("onboarding.pickerBody")}
       </p>
 
       <div className="mt-6 space-y-3">
@@ -337,20 +336,21 @@ export default function OnboardingTeamRoute() {
           selected={mode === "create"}
           onSelect={() => setMode("create")}
           icon={<Github size={16} />}
-          title="Create new GitHub repo"
+          title={t("onboarding.createNewTitle")}
           recommended
-          body="Tangerine creates a private repo, adds a starter folder, and gives you an invite link for your team. About 10 seconds."
+          recommendedLabel={t("onboarding.recommended")}
+          body={t("onboarding.createNewBody")}
         />
         <ChoiceCard
           selected={mode === "existing"}
           onSelect={() => setMode("existing")}
           icon={<FolderOpen size={16} />}
-          title="Use existing GitHub repo"
-          body="Paste a clone URL. Useful when your team already has a memory repo from another machine."
+          title={t("onboarding.useExistingTitle")}
+          body={t("onboarding.useExistingBody")}
         >
           {mode === "existing" && (
             <div className="mt-3 space-y-2">
-              <Label htmlFor="existing-url" className="text-[11px]">Clone URL</Label>
+              <Label htmlFor="existing-url" className="text-[11px]">{t("onboarding.cloneUrl")}</Label>
               <Input
                 id="existing-url"
                 placeholder="https://github.com/your-team/tangerine-memory.git"
@@ -364,8 +364,8 @@ export default function OnboardingTeamRoute() {
           selected={mode === "solo"}
           onSelect={() => setMode("solo")}
           icon={<FolderOpen size={16} />}
-          title="Solo / local only"
-          body="Memory stays in ~/.tangerine-memory. Switch to team mode any time."
+          title={t("onboarding.soloTitle")}
+          body={t("onboarding.soloBody")}
         />
       </div>
 
@@ -377,7 +377,7 @@ export default function OnboardingTeamRoute() {
             else chooseSolo();
           }}
         >
-          Continue <ArrowRight size={14} />
+          {t("onboarding.continue")} <ArrowRight size={14} />
         </Button>
       </div>
     </FullPage>
@@ -399,6 +399,7 @@ function ChoiceCard({
   title,
   body,
   recommended,
+  recommendedLabel,
   children,
 }: {
   selected: boolean;
@@ -407,6 +408,7 @@ function ChoiceCard({
   title: string;
   body: string;
   recommended?: boolean;
+  recommendedLabel?: string;
   children?: React.ReactNode;
 }) {
   return (
@@ -424,7 +426,7 @@ function ChoiceCard({
         <span className="text-sm font-medium text-stone-900 dark:text-stone-100">{title}</span>
         {recommended && (
           <span className="ml-auto rounded border border-[var(--ti-orange-500)]/40 bg-[var(--ti-orange-50)] px-1.5 py-px font-mono text-[9px] uppercase tracking-wide text-[var(--ti-orange-700)] dark:bg-stone-800 dark:text-[var(--ti-orange-500)]">
-            Recommended
+            {recommendedLabel ?? "Recommended"}
           </span>
         )}
       </div>
@@ -457,3 +459,4 @@ function humanize(e: unknown): string {
   const obj = e as { detail?: string; message?: string; code?: string };
   return obj.detail ?? obj.message ?? obj.code ?? JSON.stringify(e);
 }
+// === end wave 5-α ===

@@ -1,12 +1,14 @@
 // === wave 4-D i18n ===
+// === wave 5-α ===
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation } from "react-router-dom";
-import { Brain, RotateCw, Pencil, Save, X, AlertCircle } from "lucide-react";
+import { Brain, RotateCw, Pencil, Save, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 
 import { Button } from "@/components/ui/button";
 import { Skeleton, SkeletonText } from "@/components/ui/Skeleton";
+import { ErrorState } from "@/components/ErrorState";
 import { useStore } from "@/lib/store";
 import {
   coThinkerReadBrain,
@@ -141,6 +143,26 @@ export default function CoThinkerRoute() {
     }
   }, [primaryAITool, pushToast, refresh, t]);
 
+  // === wave 5-β ===
+  // Auto-trigger first heartbeat when the user got here via the Cmd+K
+  // "Initialize co-thinker brain" command. The palette dispatches a
+  // `tangerine:co-thinker-init` window event ~50ms after navigation;
+  // we listen for it and call onTrigger if the brain is currently
+  // empty. Empty-only so a returning user who triggers the command
+  // doesn't lose existing brain content to an unintended heartbeat.
+  useEffect(() => {
+    function onInit() {
+      const isCurrentlyEmpty = content.trim().length === 0;
+      if (isCurrentlyEmpty && !triggerLoading) {
+        void onTrigger();
+      }
+    }
+    window.addEventListener("tangerine:co-thinker-init", onInit);
+    return () =>
+      window.removeEventListener("tangerine:co-thinker-init", onInit);
+  }, [content, triggerLoading, onTrigger]);
+  // === end wave 5-β ===
+
   const onEdit = useCallback(() => {
     setDraft(content);
     setEditing(true);
@@ -235,25 +257,13 @@ export default function CoThinkerRoute() {
             <SkeletonText lines={3} />
           </div>
         ) : error ? (
-          <div
-            role="alert"
-            className="rounded-md border border-[var(--ti-danger)]/40 bg-[var(--ti-danger)]/5 p-6 text-center"
-          >
-            <AlertCircle size={20} className="mx-auto text-[var(--ti-danger)]" />
-            <p className="mt-3 text-[12px] text-stone-700 dark:text-stone-300">
-              {t("coThinker.errorRead")}
-            </p>
-            <p className="mt-1 font-mono text-[10px] text-stone-500 dark:text-stone-400">
-              {error}
-            </p>
-            <button
-              type="button"
-              onClick={() => void refresh()}
-              className="mt-3 rounded border border-stone-300 px-2 py-0.5 font-mono text-[11px] text-stone-700 hover:bg-stone-100 dark:border-stone-700 dark:text-stone-200 dark:hover:bg-stone-800"
-            >
-              {t("coThinker.retry")}
-            </button>
-          </div>
+          <ErrorState
+            error={error}
+            title={t("coThinker.errorRead")}
+            onRetry={() => void refresh()}
+            retryLabel={t("coThinker.retry")}
+            testId="co-thinker-error"
+          />
         ) : isEmpty ? (
           <EmptyState
             primaryToolName={primaryToolName}
@@ -333,41 +343,46 @@ function EmptyState({
         className="rounded-md border border-[var(--ti-orange-500)]/30 bg-[var(--ti-orange-50)]/40 p-6 dark:border-[var(--ti-orange-500)]/30 dark:bg-stone-900/40"
       >
         <h2 className="font-display text-xl tracking-tight text-stone-900 dark:text-stone-100">
-          This is your team's AGI brain.
+          {t("coThinker.explainer.heading")}
         </h2>
         <p className="mt-3 max-w-prose text-sm leading-relaxed text-stone-700 dark:text-stone-300">
-          Co-thinker is Tangerine's persistent AGI brain. Every 5 minutes
-          (or 30 minutes when you're idle) it reads your team's sources and
-          writes a markdown doc right here.
+          {t("coThinker.explainer.intro")}
         </p>
         <ul className="mt-4 space-y-2 text-[13px] text-stone-700 dark:text-stone-300">
           <li className="flex gap-2">
             <span aria-hidden className="mt-1 text-[var(--ti-orange-500)]">·</span>
             <span>
-              <strong className="text-stone-900 dark:text-stone-100">Read</strong>{" "}
-              what it's thinking — every section is a markdown card.
+              <strong className="text-stone-900 dark:text-stone-100">
+                {t("coThinker.explainer.readLabel")}
+              </strong>{" "}
+              {t("coThinker.explainer.readBody")}
             </span>
           </li>
           <li className="flex gap-2">
             <span aria-hidden className="mt-1 text-[var(--ti-orange-500)]">·</span>
             <span>
-              <strong className="text-stone-900 dark:text-stone-100">Edit</strong>{" "}
-              the doc to steer it; the AGI honors your edit on the next
-              heartbeat.
+              <strong className="text-stone-900 dark:text-stone-100">
+                {t("coThinker.explainer.editLabel")}
+              </strong>{" "}
+              {t("coThinker.explainer.editBody")}
             </span>
           </li>
           <li className="flex gap-2">
             <span aria-hidden className="mt-1 text-[var(--ti-orange-500)]">·</span>
             <span>
-              <strong className="text-stone-900 dark:text-stone-100">git-diff</strong>{" "}
-              changes over time — it's just a file in your memory dir.
+              <strong className="text-stone-900 dark:text-stone-100">
+                {t("coThinker.explainer.diffLabel")}
+              </strong>{" "}
+              {t("coThinker.explainer.diffBody")}
             </span>
           </li>
           <li className="flex gap-2">
             <span aria-hidden className="mt-1 text-[var(--ti-orange-500)]">·</span>
             <span>
-              <strong className="text-stone-900 dark:text-stone-100">No new subscription</strong>{" "}
-              — runs through your existing AI tool session via session borrowing.
+              <strong className="text-stone-900 dark:text-stone-100">
+                {t("coThinker.explainer.noSubLabel")}
+              </strong>{" "}
+              {t("coThinker.explainer.noSubBody")}
             </span>
           </li>
         </ul>
@@ -375,11 +390,10 @@ function EmptyState({
 
       <div className="rounded-md border border-dashed border-stone-300 bg-stone-100/40 p-6 dark:border-stone-700 dark:bg-stone-900/40">
         <h2 className="font-display text-base tracking-tight text-stone-900 dark:text-stone-100">
-          Ready when you are.
+          {t("coThinker.explainer.readyHeading")}
         </h2>
         <p className="mt-2 max-w-prose text-[12px] leading-relaxed text-stone-600 dark:text-stone-400">
-          Click Initialize to fire the first heartbeat. The brain doc will
-          render below within a few seconds.
+          {t("coThinker.explainer.readyBody")}
         </p>
         <div className="mt-4">
           <Button onClick={onInitialize} disabled={initializing}>
@@ -395,6 +409,7 @@ function EmptyState({
     </section>
   );
 }
+// === end wave 5-α ===
 
 /* ============================================================
    Edit pane

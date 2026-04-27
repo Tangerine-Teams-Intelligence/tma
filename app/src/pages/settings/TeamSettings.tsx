@@ -1,3 +1,5 @@
+// === wave 5-α ===
+import { useTranslation } from "react-i18next";
 import { Plus, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -11,6 +13,7 @@ interface Props {
 }
 
 export function TeamSettings({ draft, update }: Props) {
+  const { t } = useTranslation();
   const setRow = (i: number, patch: Partial<ConfigDraft["team"][number]>) => {
     const next = draft.team.map((m, idx) => (idx === i ? { ...m, ...patch } : m));
     update("team", next);
@@ -31,9 +34,9 @@ export function TeamSettings({ draft, update }: Props) {
   return (
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 text-xs text-[var(--ti-ink-500)]">
-        <Label>Alias</Label>
-        <Label>Display name</Label>
-        <Label>Discord ID</Label>
+        <Label>{t("settings.team.alias")}</Label>
+        <Label>{t("settings.team.displayName")}</Label>
+        <Label>{t("settings.team.discordId")}</Label>
         <span />
       </div>
       {draft.team.map((m, i) => (
@@ -61,7 +64,7 @@ export function TeamSettings({ draft, update }: Props) {
             variant="ghost"
             size="icon"
             onClick={() => removeRow(i)}
-            aria-label="Remove row"
+            aria-label={t("settings.team.removeRow")}
             data-testid={`team-remove-${i}`}
           >
             <Trash2 size={16} />
@@ -70,8 +73,9 @@ export function TeamSettings({ draft, update }: Props) {
       ))}
       <Button variant="outline" size="sm" onClick={addRow} className="self-start" data-testid="team-add">
         <Plus size={14} />
-        Add row
+        {t("settings.team.addRow")}
       </Button>
     </div>
   );
 }
+// === end wave 5-α ===
