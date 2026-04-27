@@ -202,13 +202,63 @@ Reference: Mattermost (MIT), Cal.com (AGPLv3 — borderline), Plausible (AGPLv3 
 
 Counter-references (what we're explicitly not doing): HashiCorp BSL (alienated community in 2023), MongoDB SSPL (alienated AWS ecosystem), Elastic SSPL → Apache reversal (admitted SSPL didn't work). The license-as-defense model has structural problems we don't want to inherit.
 
-## 9. Open Questions for CEO
+## 9. Open Questions for CEO — ratified status
 
-1. **DeepSeek wholesale account setup** — does Tangerine register the inference account directly with DeepSeek (Chinese entity), or through an intermediate (Tangerine HK once registered, or Singapore reseller)? Currently DZ assumed direct, but US Inc. → DeepSeek invoice may have payment-rail complications (CNY billing). Needs accounting + legal review before Layer 2 GA.
-2. **Marketplace take rate** — spec assumes 10-15% take rate. If we want to compete with App Store-style high margin, we could push to 25-30%; if we want maximum author retention, drop to 5-8%. Trade-off: take rate → marketplace ops budget → ecosystem acceleration. Confirm 10-15% as starting point.
-3. **Self-host telemetry** — Tangerine credits users tell us their token burn (we bill them). Self-host users tell us nothing by default. Should the OSS desktop app emit anonymized "active-team heartbeat" metrics by default (privacy: opt-out) or fully off (privacy: opt-in)? Spec assumes off — but that means we underestimate active team count by ~3×.
-4. **Free tier on inference credits** — should new accounts get $5 of free inference credits to lower zero-config friction (~3-month trial for an active team)? Spec assumes no free tier (every credit user is profit-positive). Trade-off: friction vs unit economics.
-5. **Enterprise tier early signaling** — should we publish pricing for Layer 4 white-label ($25k-100k) on the website before any reference customer is signed? Spec assumes no (don't pre-sign-up to a price). Counter-argument: enterprise buyers won't initiate without a number. CEO call.
+1. **DeepSeek wholesale account setup** — `status: open` (CEO 仍要看 accounting + legal,US Inc. → DeepSeek 直接 vs 走 HK / Singapore reseller。Layer 2 GA 之前必须答)
+2. **Marketplace take rate** — `status: ratified` 10-15% starting point per §10
+3. **Self-host telemetry** — `status: open` (CEO defer,不影响 v1.9 / v2.0 ship)
+4. **Free tier on inference credits** — `status: ratified` 无 free tier per §10(Day-1 paywall + 30-day no-CC trial 替代 free credit)
+5. **Enterprise tier early signaling** — `status: open` (CEO defer,等 reference customer)
+
+## 10. Pricing & License Lock — RATIFIED 2026-04-26
+
+CEO locked 5 商业模式 decisions in side-chat 2026-04-26 evening:
+
+| # | Decision | Status |
+|---|----------|--------|
+| 1 | **Cloud pricing**: $5/team/month flat day-1 + 30-day no-CC trial. Plausible-style (NOT Cal.com free-tier). | `ratified` |
+| 2 | **License**: AGPL v3 (OSS) + Dual Commercial License (Cloud / Enterprise / White-label). MongoDB / GitLab pattern. BSL relicensing held in reserve as defensive lever. | `ratified` |
+| 3 | **Inference margin**: 30% gross margin floor pre-commit rule + quarterly review. DeepSeek price increase >10% → trigger pricing review. Public messaging: "we commit to 30% margin floor only — overage transparently passed back as price drop." Transparency = trust. | `ratified` |
+| 4 | **Compliance**: SOC 2 Type II audit by month 6. China data region day-1 (forced by DeepSeek inference being Chinese — natural PIPL / 等保 compliance). ISO 27001 deferred to v2.0+. | `ratified` |
+| 5 | **Marketplace launch trigger**: 5,000 OSS installs + 1 self-shipped successful template prototype (e.g. "Tangerine for legal teams" vertical to validate economics). NOT 50k waiting threshold. | `ratified` |
+
+### License transition operational plan
+
+License change Apache-2.0 → AGPL+Commercial is non-trivial (~1 week implementation):
+
+- Update `LICENSE` file (Apache → AGPL v3)
+- Add `COMMERCIAL-LICENSE.md` outlining dual-licensing terms
+- Update README badges
+- Set up CLA flow (cla-assistant.io for GitHub PRs)
+- Public announcement (README banner + Twitter)
+- Future PR contributor agreement enforcement
+- US Inc. → grant ourselves commercial license for Cloud SaaS hosting (avoids AGPL network effect on our own service)
+
+**Timing:** v1.9 final ship cycle, single-week sub-phase. Not blocking SUGGESTION_ENGINE shipment.
+
+### Paywall infrastructure (deferred to v2.0)
+
+Day-1 paywall on Cloud requires (~3 weeks infra):
+
+- Supabase real auth (currently stub mode — any 6-char password signs in locally)
+- Stripe Connect integration
+- 30-day trial timer + expiry enforcement
+- Email verification + IP rate limit (no-CC trial fraud prevention)
+- Bill DeepSeek inference per team
+
+**Timing:** v2.0 (alongside visualization). v1.9 final ships free OSS still — Cloud is "Coming soon (waitlist)". Existing v1.8.1 / v1.9 OSS users grandfathered to 6-month free Cloud at v2.0 launch (community goodwill).
+
+### SOC 2 ownership
+
+Engineering agents do not handle compliance work. SOC 2 Type II by month 6 requires a named owner:
+
+- **Open question to CEO**: who owns SOC 2 prep? (Founder + Vanta auto / hire compliance lead / external audit firm)
+- Without owner, month-6 deadline impossible
+- Vanta / Drata / Sprinto are 3 main DIY-compliance platforms (~$10-30k/year)
+
+### Defensive lever in reserve
+
+If AGPL + Dual Commercial fails to block hyperscaler abuse (AWS-style clone), **BSL relicensing** held in reserve (Sentry / HashiCorp pattern). Not Day-1 because BSL pre-ratification alienates community before it forms.
 
 ---
 

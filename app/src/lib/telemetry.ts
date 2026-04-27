@@ -64,7 +64,16 @@ export type TelemetryEventName =
   | "canvas_propose_lock"
   // v1.9 P1-B suggestion bus
   | "suggestion_pushed"
-  | "suggestion_dropped";
+  | "suggestion_dropped"
+  // v1.9 P3-B modal-tier confirms
+  | "dismiss_suggestion"
+  | "modal_budget_exceeded"
+  // v1.9.0-beta.3 P3-A — fired by the daemon when the 3rd dismiss of a
+  // `{template, scope}` pair promotes it into the 30d suppression
+  // state. Analytics-only — the bus reads `suppression_check` directly
+  // for the gate. Payload shape:
+  //   { template: string, scope: string, suppressed_until: string }
+  | "dismiss_count_threshold_reached";
 
 /** One telemetry record. Mirrors `app/src-tauri/src/agi/telemetry.rs::TelemetryEvent`. */
 export interface TelemetryEvent {

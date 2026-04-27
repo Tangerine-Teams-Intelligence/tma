@@ -31,6 +31,11 @@ import {
   setConfig,
   calendarWritebackSummary,
 } from "@/lib/tauri";
+// v1.9.0-beta.3 P3-B — first-time writeback confirm. Editing a Google
+// Calendar event description on the user's behalf is irreversible (the
+// event is now visibly annotated; collaborators see the change). Per
+// spec §3.4 gate the first OFF→ON flip behind a modal.
+import { logEvent } from "@/lib/telemetry";
 
 type WritebackOutcome = {
   ok: boolean;
@@ -72,6 +77,16 @@ function saveOutcomes(outcomes: WritebackOutcome[]): void {
 
 export default function CalendarSourceRoute() {
   const pushToast = useStore((s) => s.ui.pushToast);
+  const pushModal = useStore((s) => s.ui.pushModal);
+  const firstWritebackConfirmed = useStore(
+    (s) => s.ui.firstWritebackConfirmedThisSession,
+  );
+  const markWritebackConfirmed = useStore(
+    (s) => s.ui.markWritebackConfirmed,
+  );
+  const unmarkWritebackConfirmed = useStore(
+    (s) => s.ui.unmarkWritebackConfirmed,
+  );
   const [cfg, setCfg] = useState<CalendarWritebackConfig>(defaultConfig);
   const [hydrated, setHydrated] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -116,6 +131,51 @@ export default function CalendarSourceRoute() {
     } finally {
       setSaving(false);
     }
+  }
+
+  /**
+   * v1.9.0-beta.3 P3-B — first OFF→ON flip is gated behind a confirm
+   * modal. OFF flips skip and clear the latch.
+   */
+  function persistWithConfirm(next: CalendarWritebackConfig) {
+    const turningOn = next.appendSummaryToEvent && !cfg.appendSummaryToEvent;
+    if (!turningOn) {
+      void persist(next);
+      if (!next.appendSummaryToEvent && firstWritebackConfirmed.has("calendar")) {
+        unmarkWritebackConfirmed("calendar");
+      }
+      return;
+    }
+    if (firstWritebackConfirmed.has("calendar")) {
+      void persist(next);
+      return;
+    }
+    pushModal({
+      id: "calendar-writeback-first-time",
+      emoji: "🍊",
+      title: "Edit calendar event descriptions on Tangerine's behalf?",
+      body:
+        "When enabled, Tangerine will append a 📋 Meeting summary block to the original Google Calendar event's description after each meeting finalizes. Each edit is automated — no per-message confirm.\n\n" +
+        "This is a one-time confirm. Disable any time.",
+      confirmLabel: "Allow calendar edits",
+      cancelLabel: "Not now",
+      onConfirm: () => {
+        markWritebackConfirmed("calendar");
+        void persist(next);
+        void logEvent("accept_suggestion", {
+          tier: "modal",
+          template_name: "writeback_first_time_calendar",
+        });
+      },
+      onCancel: () => {
+        // Revert local checkbox so it reflects "still off".
+        setCfg(cfg);
+        void logEvent("dismiss_suggestion", {
+          surface_id: "calendar-writeback-first-time",
+          modal_kind: "writeback_first_time_calendar",
+        });
+      },
+    });
   }
 
   function recordOutcome(o: WritebackOutcome) {
@@ -194,7 +254,7 @@ export default function CalendarSourceRoute() {
                     label="Append meeting summary to calendar event description"
                     description="Adds decisions + action items into the event the meeting was on. Idempotent — safe to leave on."
                     checked={cfg.appendSummaryToEvent}
-                    onChange={(v) => persist({ appendSummaryToEvent: v })}
+                    onChange={(v) => persistWithConfirm({ appendSummaryToEvent: v })}
                   />
                   {saving && (
                     <p className="flex items-center gap-1 text-xs text-[var(--ti-ink-500)]">

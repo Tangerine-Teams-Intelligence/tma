@@ -196,6 +196,27 @@ interface UiSlice {
    *  when it's confirmed/cancelled). Reset on app launch. The bus reads
    *  this to demote a second modal to a banner per spec §3.4. */
   modalsShownThisSession: number;
+  /**
+   * v1.9.0-beta.3 P3-B — per-source first-writeback confirm latch.
+   *
+   * Each source page (slack / github / linear / calendar) gates its
+   * "post on the user's behalf" toggle behind a one-time modal. Once the
+   * user clicks "Allow", the source name is added here and subsequent
+   * toggles in the same session bypass the modal. NOT persisted — every
+   * cold launch re-confirms (per spec §3.4 modals are session-scoped).
+   *
+   * Stored as a `Set<string>` so membership tests are O(1). The reducers
+   * always return a *new* Set so zustand's strict-equality check still
+   * fires re-renders.
+   */
+  firstWritebackConfirmedThisSession: Set<string>;
+  /** Mark a writeback source as confirmed for this session — skips modal
+   *  on subsequent toggles. */
+  markWritebackConfirmed: (source: string) => void;
+  /** Clear the latch so the next enable triggers the modal again. Used
+   *  for "disable + re-enable" cycles where the user may want to re-read
+   *  the policy disclosure. */
+  unmarkWritebackConfirmed: (source: string) => void;
   pushBanner: (b: BannerProps) => void;
   dismissBanner: (id: string) => void;
   pushModal: (m: ModalProps) => void;
@@ -365,6 +386,10 @@ export const useStore = create<Store>()(
         bannerStack: [],
         modalQueue: [],
         modalsShownThisSession: 0,
+        // v1.9.0-beta.3 P3-B — per-source first-writeback confirm latch.
+        // Always a fresh Set on cold launch so the user re-confirms once
+        // per app launch per spec §3.4.
+        firstWritebackConfirmedThisSession: new Set<string>(),
         setTheme: (t) => {
           const resolved = resolveTheme(t);
           set((s) => ({ ui: { ...s.ui, theme: t, resolvedTheme: resolved } }));
@@ -538,8 +563,29 @@ export const useStore = create<Store>()(
             },
           })),
         // ---- v1.9.0-beta.1 modal queue (FIFO, ≤ 1 visible) ----
+        // v1.9.0-beta.3 P3-B — hard ceiling at 3 modals/session. The bus
+        // already demotes the *second* modal of a session to a banner
+        // (§3.4 budget = 1), so a 4th push only happens if a caller
+        // bypasses the bus (direct `pushModal(...)` from a click handler).
+        // Drop + log telemetry so we see if any flow is hammering the
+        // user with confirms.
         pushModal: (m) =>
           set((s) => {
+            if (s.ui.modalsShownThisSession >= 3) {
+              // Fire-and-forget — telemetry must never block the render
+              // path. Lazy-import logEvent so the store stays decoupled
+              // from the telemetry module's tauri dependency at hydrate
+              // time (vitest jsdom has no tauri bridge).
+              void (async () => {
+                try {
+                  const { logEvent } = await import("./telemetry");
+                  void logEvent("modal_budget_exceeded", { dropped: m.id });
+                } catch {
+                  // No telemetry available — silent drop is correct.
+                }
+              })();
+              return s;
+            }
             const filtered = s.ui.modalQueue.filter((x) => x.id !== m.id);
             return {
               ui: {
@@ -556,6 +602,23 @@ export const useStore = create<Store>()(
               modalQueue: s.ui.modalQueue.filter((m) => m.id !== id),
             },
           })),
+        // ---- v1.9.0-beta.3 P3-B writeback confirm latch ----
+        markWritebackConfirmed: (source) =>
+          set((s) => {
+            const next = new Set(s.ui.firstWritebackConfirmedThisSession);
+            next.add(source);
+            return {
+              ui: { ...s.ui, firstWritebackConfirmedThisSession: next },
+            };
+          }),
+        unmarkWritebackConfirmed: (source) =>
+          set((s) => {
+            const next = new Set(s.ui.firstWritebackConfirmedThisSession);
+            next.delete(source);
+            return {
+              ui: { ...s.ui, firstWritebackConfirmedThisSession: next },
+            };
+          }),
       },
 
       wizard: {

@@ -41,6 +41,10 @@ import {
   type WritebackLogEntry,
 } from "@/lib/tauri";
 import { useStore } from "@/lib/store";
+// v1.9.0-beta.3 P3-B — first-time writeback confirm. Opening Linear
+// issues on the user's behalf is irreversible (the team is notified).
+// Per spec §3.4 gate the first OFF→ON apply behind a modal.
+import { logEvent } from "@/lib/telemetry";
 
 type SectionId = "capture" | "writeback";
 
@@ -129,6 +133,16 @@ function extractGithubWritebackBlock(yaml: string): string | null {
 
 export default function LinearSourceRoute() {
   const pushToast = useStore((s) => s.ui.pushToast);
+  const pushModal = useStore((s) => s.ui.pushModal);
+  const firstWritebackConfirmed = useStore(
+    (s) => s.ui.firstWritebackConfirmedThisSession,
+  );
+  const markWritebackConfirmed = useStore(
+    (s) => s.ui.markWritebackConfirmed,
+  );
+  const unmarkWritebackConfirmed = useStore(
+    (s) => s.ui.unmarkWritebackConfirmed,
+  );
 
   const [openSection, setOpenSection] = useState<SectionId | null>("writeback");
   const [loading, setLoading] = useState(true);
@@ -201,7 +215,10 @@ export default function LinearSourceRoute() {
     };
   }, []);
 
-  async function applyWriteback(next: LinearWritebackConfig, nextKey: string | null) {
+  async function persistWriteback(
+    next: LinearWritebackConfig,
+    nextKey: string | null,
+  ) {
     setSaving(true);
     try {
       if (!yamlBody.trim()) {
@@ -243,6 +260,53 @@ export default function LinearSourceRoute() {
     } finally {
       setSaving(false);
     }
+  }
+
+  /**
+   * v1.9.0-beta.3 P3-B — first OFF→ON gets the confirm modal. Pure
+   * key-only updates (no enabled change) still skip; OFF flips skip and
+   * clear the latch.
+   */
+  async function applyWriteback(
+    next: LinearWritebackConfig,
+    nextKey: string | null,
+  ): Promise<void> {
+    const turningOn = next.enabled && !cfg.enabled;
+    if (!turningOn) {
+      await persistWriteback(next, nextKey);
+      if (!next.enabled && firstWritebackConfirmed.has("linear")) {
+        unmarkWritebackConfirmed("linear");
+      }
+      return;
+    }
+    if (firstWritebackConfirmed.has("linear")) {
+      await persistWriteback(next, nextKey);
+      return;
+    }
+    pushModal({
+      id: "linear-writeback-first-time",
+      emoji: "🍊",
+      title: "Open Linear issues on Tangerine's behalf?",
+      body:
+        "When enabled, Tangerine will open a fresh \"decision recorded\" issue (state Done, label tangerine-decision) in the team for every finalized decision. Each issue is automated — no per-message confirm.\n\n" +
+        "This is a one-time confirm. Disable any time.",
+      confirmLabel: "Allow Linear issues",
+      cancelLabel: "Not now",
+      onConfirm: () => {
+        markWritebackConfirmed("linear");
+        void persistWriteback(next, nextKey);
+        void logEvent("accept_suggestion", {
+          tier: "modal",
+          template_name: "writeback_first_time_linear",
+        });
+      },
+      onCancel: () => {
+        void logEvent("dismiss_suggestion", {
+          surface_id: "linear-writeback-first-time",
+          modal_kind: "writeback_first_time_linear",
+        });
+      },
+    });
   }
 
   return (

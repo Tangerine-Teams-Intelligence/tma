@@ -87,3 +87,14 @@ pub mod telemetry;
 // to `templates::registry::evaluate_all` with no other touches needed.
 pub mod templates;
 // === end v1.9 P2 suggestion templates ===
+
+// === v1.9 P3-A suppression ===
+// v1.9.0-beta.3 — pattern-learned dismiss suppression (CEO discipline #3:
+// dismiss × 3 → 30d silence). Sits BELOW the existing v1.8 24h dismiss
+// memory (`store.ts::dismissedSurfaces`) — short-term + long-term layers
+// are independent. This module is the inert filesystem layer (read /
+// atomic write / recompute-from-telemetry); the daemon hook recomputes
+// on every heartbeat, the bus's `pushSuggestion` consults it via the
+// `suppression_check` Tauri command before dispatching.
+pub mod suppression;
+// === end v1.9 P3-A suppression ===

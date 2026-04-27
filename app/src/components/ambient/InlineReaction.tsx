@@ -38,6 +38,15 @@ interface InlineReactionProps {
    *  the same anchor (reactions stack vertically, max 3 visible). */
   stackOffset?: number;
   onDismiss: () => void;
+  /** v1.9.0-beta.3 Polish 4 — fired when the user clicks the chip's
+   *  CTA. Optional because most chips are dismiss-only (no CTA); when
+   *  present, the chip flashes green for 200ms before unmounting. */
+  onAccept?: () => void;
+  /** v1.9.0-beta.3 Polish 4 — optional CTA label. When provided, a
+   *  small pill button renders next to the dismiss × and triggers
+   *  onAccept on click. Keeps chip footprint minimal — no CTA = no
+   *  button rendered, identical to beta.2 layout. */
+  ctaLabel?: string;
 }
 
 export function InlineReaction({
@@ -45,9 +54,13 @@ export function InlineReaction({
   anchor,
   stackOffset = 0,
   onDismiss,
+  onAccept,
+  ctaLabel,
 }: InlineReactionProps) {
   const cardRef = useRef<HTMLDivElement | null>(null);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  // v1.9.0-beta.3 Polish 4 — green flash on accept before unmount.
+  const [accepting, setAccepting] = useState(false);
 
   // Track the anchor's bounding rect. We listen to scroll + resize so the
   // card follows when the user scrolls the page, the input itself, or
@@ -102,6 +115,14 @@ export function InlineReaction({
     onDismiss();
   }, [onDismiss, reaction.surface_id, reaction.text]);
 
+  // v1.9.0-beta.3 Polish 4 — accept flash + onAccept fan-out. The 200ms
+  // flash is purely visual; the user's onAccept fires synchronously so
+  // any side-effect (navigation, queue pop) is eager.
+  const handleAccept = useCallback(() => {
+    setAccepting(true);
+    if (onAccept) onAccept();
+  }, [onAccept]);
+
   useEffect(() => {
     function onDown(e: MouseEvent) {
       const target = e.target as Node | null;
@@ -137,24 +158,43 @@ export function InlineReaction({
         maxWidth: 280,
         zIndex: 80,
       }}
-      className="animate-fade-in pointer-events-auto rounded-md border border-[var(--ti-border-default)] bg-[var(--ti-paper-50)] px-3 py-2 text-sm text-[var(--ti-ink-700)] shadow-md dark:border-stone-700 dark:bg-stone-900 dark:text-stone-200"
+      // Polish 1 (v1.9.0-beta.3) — chip uses --ti-bg-elevated so it sits
+      // above the route paper in both modes; the existing dark: variants
+      // are kept for safe-net but the token swap covers the common case.
+      // Polish 4 — accept-flash class on confirm.
+      className={
+        "animate-fade-in pointer-events-auto rounded-md border border-[var(--ti-border-default)] bg-[var(--ti-bg-elevated)] px-3 py-2 text-sm text-[var(--ti-ink-700)] shadow-md" +
+        (accepting ? " ti-accept-flash" : "")
+      }
     >
       <div className="flex items-start gap-2">
         <span
           aria-hidden
           className="mt-0.5 inline-block h-2.5 w-2.5 flex-shrink-0 rounded-full"
+          // Polish 1 — orange dot stays #CC5500 in both modes (we never
+          // filter the brand mark — the dot IS the AGI's signature).
           style={{ backgroundColor: "#CC5500" }}
           title="Tangerine"
         >
           {/* The brand orange dot is the AGI's signature — no chatbot tab. */}
         </span>
         <div className="min-w-0 flex-1 leading-snug">{reaction.text}</div>
+        {ctaLabel && (
+          <button
+            type="button"
+            data-testid="ambient-reaction-cta"
+            onClick={handleAccept}
+            className="ml-1 rounded border border-[var(--ti-orange-300)] bg-[var(--ti-orange-100)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--ti-orange-700)] hover:bg-[var(--ti-orange-200)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ti-orange-500)] dark:border-stone-600 dark:bg-stone-800 dark:text-[var(--ti-orange-500)] dark:hover:bg-stone-700"
+          >
+            {ctaLabel}
+          </button>
+        )}
         <button
           type="button"
           aria-label="Dismiss"
           data-testid="ambient-reaction-dismiss"
           onClick={handleDismiss}
-          className="ml-1 rounded p-0.5 text-[var(--ti-ink-500)] hover:bg-[var(--ti-paper-200)] hover:text-[var(--ti-ink-700)] dark:hover:bg-stone-800 dark:hover:text-stone-100"
+          className="ml-1 rounded p-0.5 text-[var(--ti-ink-500)] hover:bg-[var(--ti-paper-200)] hover:text-[var(--ti-ink-900)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ti-orange-500)]"
         >
           <X size={12} />
         </button>

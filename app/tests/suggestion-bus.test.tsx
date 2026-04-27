@@ -85,6 +85,67 @@ describe("pushSuggestion — disciplines", () => {
   });
 });
 
+describe("pushSuggestion — silent volume + irreversible exception (P3-C Polish 3)", () => {
+  it("silent volume drops a banner-tier suggestion", async () => {
+    useStore.getState().ui.setAgiVolume("silent");
+    await pushSuggestion({
+      template: "silent_banner",
+      body: "would be a banner",
+      confidence: 0.95,
+      is_cross_route: true,
+    });
+    expect(useStore.getState().ui.bannerStack).toHaveLength(0);
+    expect(useStore.getState().ui.toasts).toHaveLength(0);
+  });
+
+  it("silent volume drops a toast-tier suggestion", async () => {
+    useStore.getState().ui.setAgiVolume("silent");
+    await pushSuggestion({
+      template: "silent_toast",
+      body: "would be a toast",
+      confidence: 0.95,
+      is_completion_signal: true,
+    });
+    expect(useStore.getState().ui.toasts).toHaveLength(0);
+  });
+
+  it("silent volume STILL shows an irreversible modal (Polish 3 exception)", async () => {
+    // Hard-stop confirms must never be silenced — that would let the
+    // AGI commit destructive actions without the user ever seeing the
+    // prompt. Silent gates passive nudges only.
+    useStore.getState().ui.setAgiVolume("silent");
+    await pushSuggestion({
+      template: "silent_modal",
+      body: "Tangerine wants to publish to #engineering",
+      confidence: 0.95,
+      is_irreversible: true,
+      title: "Publish?",
+      confirmLabel: "Publish",
+    });
+    expect(useStore.getState().ui.modalQueue).toHaveLength(1);
+    expect(useStore.getState().ui.modalsShownThisSession).toBe(1);
+  });
+
+  it("silent drop logs telemetry with reason=agi_volume_silent", async () => {
+    const fn = vi.fn();
+    connectTelemetry(fn);
+    useStore.getState().ui.setAgiVolume("silent");
+    await pushSuggestion({
+      template: "silent_telem",
+      body: "x",
+      confidence: 0.95,
+      is_cross_route: true,
+    });
+    expect(fn).toHaveBeenCalledWith(
+      "suggestion_dropped",
+      expect.objectContaining({
+        template: "silent_telem",
+        reason: "agi_volume_silent",
+      }),
+    );
+  });
+});
+
 describe("pushSuggestion — tier routing", () => {
   it("routes irreversible to modal queue", async () => {
     await pushSuggestion({

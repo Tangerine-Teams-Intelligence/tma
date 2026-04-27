@@ -21,7 +21,7 @@
  * window to expire.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useStore } from "@/lib/store";
 import type { AgiVolume } from "@/lib/ambient";
@@ -29,7 +29,12 @@ import type { AgiVolume } from "@/lib/ambient";
 // recorded action at any time from the bottom of the AGI Settings tab.
 // Privacy: telemetry stays local-only by design; this button is the
 // "right to be forgotten" affordance even though we never sync the data.
-import { telemetryClear } from "@/lib/tauri";
+import {
+  telemetryClear,
+  suppressionList,
+  suppressionClear,
+  type SuppressionEntry,
+} from "@/lib/tauri";
 
 const CHANNELS: { id: string; label: string; help: string }[] = [
   { id: "canvas", label: "Canvas", help: "Freeform note + scratchpad surface." },
@@ -67,6 +72,29 @@ export function AGISettings() {
   // the underlying disk wipe is irreversible so we only need the
   // pending/idle bit, not a full reducer.
   const [clearingTelemetry, setClearingTelemetry] = useState(false);
+  // v1.9.0-beta.3 P3-A — suppression list state. Hydrated from
+  // `suppression_list` on mount so the user sees what's currently
+  // silenced + how long is left on each entry. The list re-fetches
+  // after the user clicks "Clear suppression list".
+  const [suppressed, setSuppressed] = useState<SuppressionEntry[]>([]);
+  const [clearingSuppression, setClearingSuppression] = useState(false);
+
+  useEffect(() => {
+    let cancel = false;
+    void (async () => {
+      try {
+        const list = await suppressionList();
+        if (!cancel) setSuppressed(list);
+      } catch {
+        // Silent — the bridge is best-effort here. The user sees an
+        // empty list which is the right shape on a fresh install.
+        if (!cancel) setSuppressed([]);
+      }
+    })();
+    return () => {
+      cancel = true;
+    };
+  }, []);
 
   async function onClearTelemetry() {
     setClearingTelemetry(true);
@@ -83,6 +111,20 @@ export function AGISettings() {
       pushToast("error", `Clear telemetry failed: ${msg}`);
     } finally {
       setClearingTelemetry(false);
+    }
+  }
+
+  async function onClearSuppression() {
+    setClearingSuppression(true);
+    try {
+      await suppressionClear();
+      setSuppressed([]);
+      pushToast("success", "Suppression list cleared.");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      pushToast("error", `Clear suppression failed: ${msg}`);
+    } finally {
+      setClearingSuppression(false);
     }
   }
 
@@ -274,6 +316,58 @@ export function AGISettings() {
         </div>
       </section>
 
+      {/* v1.9.0-beta.3 P3-A — Suppressed suggestions list.
+          When the user dismisses the same template-scope pair 3 times
+          inside a 30-day window, the daemon promotes it to a 30-day
+          suppression. This section gives visibility into what's
+          silenced + an escape hatch ("Clear suppression list") to undo
+          it. NOT gated on the master AGI participation switch — even
+          if the layer is paused, the user must be able to inspect /
+          wipe the suppression state. */}
+      <section data-testid="st-agi-suppression-card">
+        <h3 className="font-display text-lg">Suppressed suggestions</h3>
+        <p className="mt-1 text-sm text-[var(--ti-ink-500)]">
+          Suggestions you&apos;ve dismissed 3+ times for the same atom or
+          surface get silenced for 30 days. {suppressed.length === 0
+            ? "Nothing is currently suppressed."
+            : `${suppressed.length} ${suppressed.length === 1 ? "entry is" : "entries are"} silenced.`}
+        </p>
+        {suppressed.length > 0 && (
+          <ul
+            className="mt-3 flex flex-col gap-1.5"
+            data-testid="st-agi-suppression-list"
+          >
+            {suppressed
+              .filter((e) => e.suppressed_until !== null)
+              .map((e) => (
+                <li
+                  key={e.key}
+                  data-testid={`st-agi-suppression-${e.template}`}
+                  className="rounded-md border border-[var(--ti-border-default)] bg-[var(--ti-paper-50)] px-3 py-2 text-xs text-[var(--ti-ink-700)]"
+                >
+                  <code className="font-mono">{e.template}</code> (scope:{" "}
+                  <span className="text-[var(--ti-ink-500)]">{e.scope}</span>)
+                  {" — until "}
+                  <span className="text-[var(--ti-ink-500)]">
+                    {formatUntil(e.suppressed_until)}
+                  </span>
+                </li>
+              ))}
+          </ul>
+        )}
+        <div className="mt-3">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onClearSuppression}
+            disabled={clearingSuppression || suppressed.length === 0}
+            data-testid="st-agi-clear-suppression"
+          >
+            {clearingSuppression ? "Clearing…" : "Clear suppression list"}
+          </Button>
+        </div>
+      </section>
+
       {/* v1.9.0-beta.1 P1-A — Clear telemetry button. Sits at the bottom
           per the spec: it's the most destructive action on this page so
           it lives below the gentler "reset dismiss memory" knob. NOT
@@ -306,4 +400,20 @@ export function AGISettings() {
       </section>
     </div>
   );
+}
+
+/**
+ * Render an ISO 8601 `suppressed_until` as a short human-readable
+ * absolute date (`Apr 26, 2026`). The list shows lots of these in a
+ * row so we keep it terse. `null` → "—".
+ */
+function formatUntil(iso: string | null): string {
+  if (iso === null) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
 }

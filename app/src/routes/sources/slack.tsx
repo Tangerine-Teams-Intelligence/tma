@@ -43,6 +43,12 @@ import {
   slackWritebackBrief,
   slackWritebackSummary,
 } from "@/lib/tauri";
+// v1.9.0-beta.3 P3-B — first-time writeback confirm. Posting on the
+// user's behalf to a team channel is irreversible (Slack edits the post
+// permanently if we delete; the team has already seen it). Per spec §3.4
+// gate the first OFF→ON flip behind a one-time modal; subsequent flips
+// in the same session bypass.
+import { logEvent } from "@/lib/telemetry";
 
 type WritebackOutcome = {
   kind: "brief" | "summary";
@@ -88,6 +94,16 @@ function saveOutcomes(outcomes: WritebackOutcome[]): void {
 
 export default function SlackSourceRoute() {
   const pushToast = useStore((s) => s.ui.pushToast);
+  const pushModal = useStore((s) => s.ui.pushModal);
+  const firstWritebackConfirmed = useStore(
+    (s) => s.ui.firstWritebackConfirmedThisSession,
+  );
+  const markWritebackConfirmed = useStore(
+    (s) => s.ui.markWritebackConfirmed,
+  );
+  const unmarkWritebackConfirmed = useStore(
+    (s) => s.ui.unmarkWritebackConfirmed,
+  );
   const [cfg, setCfg] = useState<SlackWritebackConfig>(defaultConfig);
   const [hydrated, setHydrated] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -130,6 +146,62 @@ export default function SlackSourceRoute() {
     } finally {
       setSaving(false);
     }
+  }
+
+  /**
+   * v1.9.0-beta.3 P3-B — gate the first OFF→ON writeback flip in this
+   * session behind a confirm modal. Disabling the toggle is reversible
+   * (we just stop posting), so OFF flips skip the modal. Re-enabling
+   * after a disable also skips — once confirmed, stays confirmed for
+   * the rest of the session.
+   */
+  function persistWithConfirm(next: SlackWritebackConfig) {
+    const turningOn =
+      (next.postPreMeetingBrief && !cfg.postPreMeetingBrief) ||
+      (next.postPostMeetingSummary && !cfg.postPostMeetingSummary);
+    const turningAllOff =
+      !next.postPreMeetingBrief && !next.postPostMeetingSummary;
+    if (!turningOn) {
+      // OFF flips or fallback channel edits don't need confirm.
+      void persist(next);
+      // If everything is now off, clear the latch so the next re-enable
+      // re-confirms (per spec — give the user a chance to re-read the
+      // disclosure on every fresh enablement cycle).
+      if (turningAllOff && firstWritebackConfirmed.has("slack")) {
+        unmarkWritebackConfirmed("slack");
+      }
+      return;
+    }
+    if (firstWritebackConfirmed.has("slack")) {
+      void persist(next);
+      return;
+    }
+    pushModal({
+      id: "slack-writeback-first-time",
+      emoji: "🍊",
+      title: "Post to Slack on Tangerine's behalf?",
+      body:
+        "When enabled, Tangerine will post pre-meeting briefs and decision summaries to your team's Slack channel. Each post is automated — no per-message confirm.\n\n" +
+        "This is a one-time confirm. Disable any time.",
+      confirmLabel: "Allow Slack posts",
+      cancelLabel: "Not now",
+      onConfirm: () => {
+        markWritebackConfirmed("slack");
+        void persist(next);
+        void logEvent("accept_suggestion", {
+          tier: "modal",
+          template_name: "writeback_first_time_slack",
+        });
+      },
+      onCancel: () => {
+        // Revert the local state so the checkbox reflects "still off".
+        setCfg(cfg);
+        void logEvent("dismiss_suggestion", {
+          surface_id: "slack-writeback-first-time",
+          modal_kind: "writeback_first_time_slack",
+        });
+      },
+    });
   }
 
   function recordOutcome(o: WritebackOutcome) {
@@ -238,7 +310,7 @@ export default function SlackSourceRoute() {
                     description="When a calendar event matches a memory atom, post a markdown brief to the linked channel 5 minutes before it starts."
                     checked={cfg.postPreMeetingBrief}
                     onChange={(v) =>
-                      persist({ ...cfg, postPreMeetingBrief: v })
+                      persistWithConfirm({ ...cfg, postPreMeetingBrief: v })
                     }
                   />
                   <ToggleRow
@@ -246,7 +318,7 @@ export default function SlackSourceRoute() {
                     description="When a meeting atom flips to status: finalized, post a summary (decisions + action items) to the linked channel."
                     checked={cfg.postPostMeetingSummary}
                     onChange={(v) =>
-                      persist({ ...cfg, postPostMeetingSummary: v })
+                      persistWithConfirm({ ...cfg, postPostMeetingSummary: v })
                     }
                   />
                   {saving && (

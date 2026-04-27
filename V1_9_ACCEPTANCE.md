@@ -66,17 +66,57 @@ Each template fires when its trigger condition is met AND the resulting
 | P2.D.5 | Frontend listener forwards every signal flag | Synthetic event with `is_irreversible: true` → bus routes to modal queue. With `is_completion_signal: true` → toast. | `template-listener.test.tsx::"forwards every signal flag"` |
 | P2.D.6 | Telemetry per-emit observability | Every emitted match logs `template_matches_emitted: N` to the heartbeat observation log. | `agi/observations/{date}.md` line shape `templates=N` |
 
-## Phase 3 — Modal + dismiss-suppression (v1.9.0-beta.3, planned)
+## Phase 3 — Suppression + modal confirms + polish (v1.9.0-beta.3)
 
-Stubs for the next phase — gates not yet enforceable in CI.
+Three workstreams land together in beta.3:
 
-| # | Gate | Concrete user action → expected outcome | Mechanism |
-|---|------|-----------------------------------------|-----------|
-| P3.1 | Dismiss × 3 → 30d suppression of `{template}:{atom}` | Dismiss the same `decision_drift:{atom}` 3× within 7d → 4th heartbeat that would fire it drops with telemetry `dismiss_promoted_to_suppressed`. | TBD — extend `lib/ambient.ts` with `dismissCounts` slice |
-| P3.2 | Suppression auto-prune | Entries older than 30d are removed on every write to `dismissCounts`. | TBD — `pruneSuppressed` mirror of existing `pruneDismissed` |
-| P3.3 | Modal renders only when user is at-keyboard | Modal tier checks `lastInputFocusEvent < 5s` before rendering; otherwise queues for next keystroke. | TBD — `<ModalHost/>` extension |
+- **P3-A** — telemetry-driven dismiss-to-suppression backend
+- **P3-B** — modal confirms for the two irreversible canvas / Slack actions
+- **P3-C** — dark-mode polish + a11y + suggestion routing edge cases
+
+Each workstream owns its gates below; the bus + tier components are shared.
+
+### Gate P3.1 — Suppression mechanism (P3-A)
+
+- [ ] Telemetry-driven: dismiss `deadline_approaching` for atom A 3 times within 7 days → entry in `~/.tangerine-memory/.tangerine/suppression.json` with `suppressed_until = now + 30d`, `count = 3`, telemetry log `dismiss_promoted_to_suppressed`.
+- [ ] After suppression: same `{template, scope}` no longer triggers (`pushSuggestion` returns with `reason: suppressed`).
+- [ ] Different scope (atom B, or `surface_id` swap) still triggers — suppression is per-scope, not global.
+- [ ] Suppression expires after 30d (test via mocked `now` 31d in the future → entry purged on next read).
+- [ ] Settings → AGI tab shows suppressed list (`st-agi-suppression-{template}`); Clear button (`st-agi-clear-suppression`) wipes the file + clears the in-memory snapshot.
+- [ ] Bus consults suppression via `suppressionCheckImpl` seam — tests can stub for determinism.
+
+### Gate P3.2 — Modal confirm for irreversible actions (P3-B)
+
+- [ ] Canvas "Propose as decision" → modal "Lock this as a decision?" first; Cancel does not write the atom.
+- [ ] Modal Confirm → decision atom appears at `/memory/decisions/canvas-{topic}-{stickyid}.md` with frontmatter `is_decision: true`.
+- [ ] Modal Cancel → no decision atom written, no telemetry `decision_locked` event.
+- [ ] First Slack writeback toggle → modal "Tangerine wants to publish to #channel — confirm?" before publishing; second toggle in the same session skips modal (session-scoped opt-in stored in zustand `slackPublishConfirmed`).
+- [ ] Modal budget per spec §3.4: ≤ 1 modal per session. The 4th proactive `pushSuggestion` with `is_irreversible: true` demotes to a banner + logs `modal_budget_exceeded` (the bus already enforces this; the modal-confirm UI inherits the cap).
+- [ ] Programmatic confirms (canvas / Slack) are exempt from the budget — they are user-initiated, not AGI-proactive.
+
+### Gate P3.3 — Polish coherence (P3-C)
+
+- [ ] Dark mode token coherence: Banner / Modal card / Toast (suggestion variant) all respect `--ti-bg-elevated`; backdrop alpha is 40% in light, 60% in dark; 🍊 dot stays `#CC5500` in both modes (no filter).
+- [ ] Modal Esc → cancel still works (P1-B regression check).
+- [ ] Banner × button is dismissable via Tab + Enter (default `<button>` semantics) and has `focus-visible:ring` so keyboard users see focus.
+- [ ] Banner has `role="alert"` aria attribute; Modal has `role="dialog"` + `aria-modal="true"` + `aria-labelledby` pointing at the title.
+- [ ] Suggestion accept (chip CTA / Banner CTA / Modal Confirm) → 200ms green flash via `.ti-accept-flash` keyframe before the host pops the entry off the queue.
+- [ ] Silent volume + irreversible exception: `agiVolume === "silent"` drops banner / toast / chip with `reason: agi_volume_silent`, but STILL shows modal when `is_irreversible === true` (Polish 3 — covered by `suggestion-bus.test.tsx::"silent volume STILL shows an irreversible modal"`).
+
+### Gate P3.4 — 6 disciplines re-check
+
+| Discipline | Test |
+|---|---|
+| 1. Max 1 active suggestion per tier | open route, push 2 banners → only highest-priority renders (`bannerStack — Discipline 1`) |
+| 2. Confidence > 0.7 floor | `pushSuggestion` w/ confidence 0.5 → dropped (`respects confidence floor`) |
+| 3. Dismiss × 3 → 30d | covered by P3.1 |
+| 4. 4 visual tiers | manual Storybook test — chip / banner / toast / modal each render distinctly (P5.3 automates this) |
+| 5. Rule-based < 10ms | `agi::templates::registry::test_evaluate_all_caps_at_max` proves dispatch is sync; benchmark in P5.1 verifies p95 |
+| 6. Off switch | `agiParticipation === false` → all surfaces silent. **Modal exempt only when `is_irreversible === true`** per Polish 3 (silent ≠ off; off blocks everything including modal). |
 
 ## Phase 4 — LLM hook (v1.9.0 final, planned)
+
+Stubs for the next phase — gates not yet enforceable in CI. v1.9.0 final ships when these land plus any remaining Phase-3 polish bugs.
 
 | # | Gate | Concrete user action → expected outcome | Mechanism |
 |---|------|-----------------------------------------|-----------|
@@ -85,22 +125,29 @@ Stubs for the next phase — gates not yet enforceable in CI.
 | P4.3 | LLM hallucination protection | Sentinel without `template=llm_<slug>` prefix OR confidence < 0.85 → silent drop, no fallback rendering. | TBD — parser unit tests |
 | P4.4 | LLM cost rate limit | Max 1 LLM-suggest per 30 min globally; subsequent invocations reuse the cached suggestion until window elapses. | TBD — token bucket in `agi_suggest_async` |
 | P4.5 | LLM call never blocks UI | Mock LLM with 5s delay → input field stays responsive throughout. | TBD — integration test |
+| P4.6 | Final polish bug-bash | Any P3-C polish bugs surfaced during beta.3 dogfooding (focus-trap edge cases, dark-mode contrast, token drift) close before GA tag. | TBD — bug list in this file's "P4 punchlist" subsection |
 
-## Phase 5 — Polish + CI grid (v1.9.0 GA, planned)
+## Phase 5 — v2.0 visualization pillar (planned)
+
+Phase 5 is no longer "v1.9 GA polish" — that work merged forward into Phase 4
+once beta.3 closed the polish gap. Phase 5 is now the **v2.0 visualization
+pillar** (real-time graph view of the AGI's grounding, see `V2_0_SPEC.md`).
 
 | # | Gate | Concrete user action → expected outcome | Mechanism |
 |---|------|-----------------------------------------|-----------|
-| P5.1 | Each template detector < 1ms p95 | `cargo bench --bench templates` — 7-template eval on a 1k-atom memory dir < 7ms p95. | TBD — `app/src-tauri/benches/templates.rs` |
+| P5.1 | Each rule-based template detector < 1ms p95 | `cargo bench --bench templates` — 7-template eval on a 1k-atom memory dir < 7ms p95. | TBD — `app/src-tauri/benches/templates.rs` |
 | P5.2 | Cloud-sync telemetry opt-in default OFF | Fresh install: `agi.cloud_sync_telemetry` is false; only event/template/tier sync, never atom content. | TBD — Settings → AGI tab |
 | P5.3 | Visual regression for 4 tiers | Storybook stories pass screenshot diff for chip / banner / toast / modal in light + dark themes. | TBD — `app/.storybook/` + Chromatic |
 | P5.4 | Acceptance grid runs in CI on every PR | GitHub Actions runs `cargo test --all` + `npm test` + storybook visual diff; PR cannot merge with any phase-claimed gate failing. | TBD — `.github/workflows/v1_9_acceptance.yml` |
+| P5.5 | Live grounding graph | `/co-thinker` route renders a force-directed graph of the last 50 heartbeats × the atoms they grounded against; suggestion sources are colour-coded by tier. | TBD — `V2_0_SPEC.md` §2 |
+| P5.6 | "Why this suggestion?" inspector | Click any active chip / banner / toast / modal → side panel shows template, confidence, atoms used, prior suppressions. | TBD — `V2_0_SPEC.md` §3 |
 
 ## Sign-off
 
 | Phase | Status | Sign-off |
 |-------|--------|----------|
 | Phase 1 — beta.1 | All gates green | 2026-04-26 |
-| Phase 2 — beta.2 | All gates green (this PR) | 2026-04-26 |
-| Phase 3 — beta.3 | Stubs only — not yet implemented | — |
-| Phase 4 — final  | Stubs only — not yet implemented | — |
-| Phase 5 — GA     | Stubs only — not yet implemented | — |
+| Phase 2 — beta.2 | All gates green | 2026-04-26 |
+| Phase 3 — beta.3 | P3-A + P3-B + P3-C gates listed; gates close as each workstream merges | 2026-04-26 (this PR — P3-C polish landed) |
+| Phase 4 — final  | LLM hook + final polish bug-bash; stubs only | — |
+| Phase 5 — v2.0   | Visualization pillar (`V2_0_SPEC.md`); stubs only | — |

@@ -10,7 +10,9 @@ import { MemoryRouter } from "react-router-dom";
 
 import { AgiPeer } from "../src/components/canvas/AgiPeer";
 import { AgiStickyAffordances } from "../src/components/canvas/AgiStickyAffordances";
+import { ModalHost } from "../src/components/suggestions/ModalHost";
 import * as tauri from "../src/lib/tauri";
+import { useStore } from "../src/lib/store";
 import type { Sticky } from "../src/lib/canvas";
 
 // ============================================================
@@ -37,6 +39,16 @@ function makeSticky(overrides: Partial<Sticky> = {}): Sticky {
  * In tests we render that host inline so the portal has a target.
  */
 function renderHostsAndAffordances(stickies: Sticky[]) {
+  // v1.9.0-beta.3 P3-B — propose-lock now goes through a modal, so we
+  // mount ModalHost alongside the affordances so confirm/cancel
+  // interactions resolve in tests.
+  useStore.setState((s) => ({
+    ui: {
+      ...s.ui,
+      modalQueue: [],
+      modalsShownThisSession: 0,
+    },
+  }));
   const hosts = (
     <div>
       {stickies.map((s) => (
@@ -56,6 +68,7 @@ function renderHostsAndAffordances(stickies: Sticky[]) {
         topic="v1-8-ideation"
         stickies={stickies}
       />
+      <ModalHost />
     </MemoryRouter>,
   );
 }
@@ -172,6 +185,15 @@ describe("AgiStickyAffordances", () => {
       fireEvent.click(btn);
     });
 
+    // v1.9.0-beta.3 P3-B — click pushes a modal, doesn't fire directly.
+    expect(proposeMock).not.toHaveBeenCalled();
+
+    // Confirm the modal → Rust call lands now.
+    const confirm = await screen.findByTestId("suggestion-modal-confirm");
+    await act(async () => {
+      fireEvent.click(confirm);
+    });
+
     expect(proposeMock).toHaveBeenCalledWith(
       "tangerine",
       "v1-8-ideation",
@@ -208,6 +230,13 @@ describe("AgiStickyAffordances", () => {
 
     await act(async () => {
       fireEvent.click(btn);
+    });
+
+    // v1.9.0-beta.3 P3-B — confirm the modal first to actually trigger
+    // the Rust call that errors.
+    const confirm = await screen.findByTestId("suggestion-modal-confirm");
+    await act(async () => {
+      fireEvent.click(confirm);
     });
 
     // The button re-enables after the error path resolves.

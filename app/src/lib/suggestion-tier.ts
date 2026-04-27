@@ -61,6 +61,12 @@ export interface SuggestionRequest {
   /** Anchor surface id for chip tier — when provided + no other signal
    *  fires, we render inline next to the input. */
   surface_id?: string;
+  /** v1.9.0-beta.3 P3-A — atom paths the upstream template cited (for
+   *  grounding + dismiss-suppression scope). The bus reads `atom_refs[0]`
+   *  as the preferred scope qualifier when calling
+   *  `suppression_check`. Optional — the bus falls back to `surface_id`
+   *  then `"global"`. Repo-relative forward-slash paths. */
+  atom_refs?: string[];
   /** 0..10; higher wins when a banner slot is contested. Default 5. */
   priority?: number;
   /** Optional CTA + handler. Renders a button in banner / toast / modal. */

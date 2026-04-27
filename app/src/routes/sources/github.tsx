@@ -41,6 +41,11 @@ import {
   type WritebackLogEntry,
 } from "@/lib/tauri";
 import { useStore } from "@/lib/store";
+// v1.9.0-beta.3 P3-B — first-time writeback confirm. Posting comments
+// onto external PRs is irreversible (the team sees them; deleting leaves
+// an audit trail). Per spec §3.4 gate the first OFF→ON apply behind a
+// modal; subsequent toggles in the same session bypass.
+import { logEvent } from "@/lib/telemetry";
 
 type SectionId = "capture" | "writeback";
 
@@ -115,6 +120,16 @@ function mergeWritebackIntoYaml(
 
 export default function GithubSourceRoute() {
   const pushToast = useStore((s) => s.ui.pushToast);
+  const pushModal = useStore((s) => s.ui.pushModal);
+  const firstWritebackConfirmed = useStore(
+    (s) => s.ui.firstWritebackConfirmedThisSession,
+  );
+  const markWritebackConfirmed = useStore(
+    (s) => s.ui.markWritebackConfirmed,
+  );
+  const unmarkWritebackConfirmed = useStore(
+    (s) => s.ui.unmarkWritebackConfirmed,
+  );
 
   const [openSection, setOpenSection] = useState<SectionId | null>("writeback");
   const [loading, setLoading] = useState(true);
@@ -181,7 +196,7 @@ export default function GithubSourceRoute() {
     };
   }, []);
 
-  async function applyWriteback(next: GithubWritebackConfig) {
+  async function persistWriteback(next: GithubWritebackConfig) {
     setSaving(true);
     try {
       const newYaml = mergeWritebackIntoYaml(yamlBody, next);
@@ -214,6 +229,53 @@ export default function GithubSourceRoute() {
     } finally {
       setSaving(false);
     }
+  }
+
+  /**
+   * v1.9.0-beta.3 P3-B — gate the first OFF→ON Apply behind a confirm
+   * modal. Disabling is reversible (we just stop posting); re-enabling
+   * after a disable in the same session skips the modal. Login-only
+   * edits (no enabled change) also skip.
+   */
+  async function applyWriteback(next: GithubWritebackConfig): Promise<void> {
+    const turningOn = next.enabled && !cfg.enabled;
+    if (!turningOn) {
+      await persistWriteback(next);
+      // Once fully disabled again, clear the latch so a future
+      // re-enable re-confirms on the user's next intentional flip.
+      if (!next.enabled && firstWritebackConfirmed.has("github")) {
+        unmarkWritebackConfirmed("github");
+      }
+      return;
+    }
+    if (firstWritebackConfirmed.has("github")) {
+      await persistWriteback(next);
+      return;
+    }
+    pushModal({
+      id: "github-writeback-first-time",
+      emoji: "🍊",
+      title: "Post comments to GitHub on Tangerine's behalf?",
+      body:
+        "When enabled, Tangerine will post decision summaries as markdown comments on the linked PR or issue. Each comment is automated — no per-message confirm.\n\n" +
+        "This is a one-time confirm. Disable any time.",
+      confirmLabel: "Allow GitHub posts",
+      cancelLabel: "Not now",
+      onConfirm: () => {
+        markWritebackConfirmed("github");
+        void persistWriteback(next);
+        void logEvent("accept_suggestion", {
+          tier: "modal",
+          template_name: "writeback_first_time_github",
+        });
+      },
+      onCancel: () => {
+        void logEvent("dismiss_suggestion", {
+          surface_id: "github-writeback-first-time",
+          modal_kind: "writeback_first_time_github",
+        });
+      },
+    });
   }
 
   return (

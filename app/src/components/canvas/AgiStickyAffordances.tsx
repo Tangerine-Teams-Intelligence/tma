@@ -171,22 +171,27 @@ function AffordanceOverlay({
 }) {
   const navigate = useNavigate();
   const pushToast = useStore((s) => s.ui.pushToast);
+  // v1.9.0-beta.3 P3-B — propose-lock now goes through a confirm modal.
+  // Drafting a decision atom in `~/.tangerine-memory/decisions/` is
+  // irreversible (the file is written to disk + tracked by the watcher)
+  // so per spec §3.4 we gate it behind a single "are you sure?" step.
+  const pushModal = useStore((s) => s.ui.pushModal);
   const [busy, setBusy] = useState(false);
   const [hover, setHover] = useState(false);
 
-  const onPropose = async () => {
+  const runProposeLock = async () => {
     setBusy(true);
-    // v1.9.0-beta.1 P1-A — log on click, before the Rust call. We stamp
-    // the event regardless of the outcome so the engine sees "user
-    // attempted to propose-lock 3×" even if every attempt errored.
-    void logEvent("canvas_propose_lock", {
-      project,
-      topic,
-      sticky_id: sticky.id,
-    });
     try {
       const path = await canvasProposeLock(project, topic, sticky.id);
-      pushToast("success", `Decision draft created: ${shortPath(path)}`);
+      pushToast(
+        "success",
+        `Decision draft created: ${shortPath(path)}`,
+      );
+      void logEvent("accept_suggestion", {
+        tier: "modal",
+        template_name: "propose_lock_decision",
+        atom_ref: `sticky:${project}/${topic}/${sticky.id}`,
+      });
     } catch (e) {
       pushToast(
         "error",
@@ -195,6 +200,41 @@ function AffordanceOverlay({
     } finally {
       setBusy(false);
     }
+  };
+
+  const onPropose = () => {
+    // v1.9.0-beta.1 P1-A — log on click, before the modal opens. We stamp
+    // the event regardless of the outcome so the engine sees "user
+    // attempted to propose-lock 3×" even if every attempt was cancelled.
+    void logEvent("canvas_propose_lock", {
+      project,
+      topic,
+      sticky_id: sticky.id,
+    });
+    const trimmed =
+      sticky.body.length > 200
+        ? sticky.body.slice(0, 200) + "…"
+        : sticky.body;
+    const surfaceId = `propose-lock-${sticky.id}`;
+    pushModal({
+      id: surfaceId,
+      emoji: "🍊",
+      title: "Lock this as a decision?",
+      body:
+        `Tangerine will draft a decision atom from this sticky and put it in /memory/decisions/. You can edit before it's final.\n\n` +
+        trimmed,
+      confirmLabel: "Draft decision",
+      cancelLabel: "Cancel",
+      onConfirm: () => {
+        void runProposeLock();
+      },
+      onCancel: () => {
+        void logEvent("dismiss_suggestion", {
+          surface_id: surfaceId,
+          modal_kind: "propose_lock_decision",
+        });
+      },
+    });
   };
 
   const onViewReasoning = () => {

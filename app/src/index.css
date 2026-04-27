@@ -11,6 +11,9 @@
   --ti-orange-600: #B84900;
   --ti-orange-700: #A03F00;
   --ti-orange-50: #FFF4EA;
+  --ti-orange-100: #FFE4CD;
+  --ti-orange-200: #FFD0A8;
+  --ti-orange-300: #FFB477;
   --ti-navy-900: #1A1A2E;
   --ti-navy-700: #2A2A4E;
   --ti-paper-50: #FFFBF5;
@@ -22,6 +25,12 @@
   --ti-ink-300: #A8A29E;
   --ti-border-faint: #E7E5E4;
   --ti-border-default: #D6D3D1;
+
+  /* Polish 1 (v1.9.0-beta.3) — `--ti-bg-elevated` is the surface tone for
+     suggestion-tier components (Banner / Modal card / Toast). In light it's
+     a touch above paper-50 so banners read as "above" the route content; in
+     dark it's slightly lifted from paper-100 to keep the same hierarchy. */
+  --ti-bg-elevated: #FFFFFF;
 
   --ti-font-sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
   --ti-font-mono: "JetBrains Mono", Consolas, "SF Mono", monospace;
@@ -55,6 +64,10 @@
   --ti-ink-300: #4A4A5E;
   --ti-border-faint: #2A2A3A;
   --ti-border-default: #353545;
+
+  /* Polish 1 (v1.9.0-beta.3) — elevated surface in dark sits above
+     --ti-paper-100 (the body bg) so suggestion strips read as "lifted". */
+  --ti-bg-elevated: #20203A;
 
   --background: var(--ti-paper-100);
   --foreground: var(--ti-ink-900);
@@ -137,6 +150,22 @@ body {
   outline-offset: 2px;
   border-radius: 4px;
   transition: background-color 1.6s ease-out, outline-color 1.6s ease-out;
+}
+
+/* v1.9.0-beta.3 Polish 4 — green flash when the user accepts a
+   suggestion (chip / banner / toast / modal CTA). 200ms total — 100ms
+   ramp up to a soft emerald wash, 100ms ramp back, then the host
+   unmounts the surface. The keyframe targets background only so the
+   text + border stay visually anchored during the flash. The class is
+   added imperatively (handleAccept → setTimeout(unmount, 200)). */
+@keyframes ti-accept-flash {
+  0%   { background-color: var(--ti-bg-elevated); }
+  50%  { background-color: rgba(45, 134, 89, 0.28); }
+  100% { background-color: rgba(45, 134, 89, 0.0); }
+}
+
+.ti-accept-flash {
+  animation: ti-accept-flash 200ms ease-out forwards;
 }
 
 /* ============================================================

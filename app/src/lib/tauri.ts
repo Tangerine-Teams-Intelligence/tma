@@ -1661,3 +1661,77 @@ export async function telemetryClear(): Promise<number> {
   return safeInvoke<number>("telemetry_clear", undefined, () => 0);
 }
 // === end v1.9 P1-A telemetry ===
+
+// === v1.9 P3-A suppression ===
+// v1.9.0-beta.3 — dismiss × 3 → 30d suppression. The frontend
+// `pushSuggestion` calls `suppressionCheck(template, scope)` before
+// dispatching; suppressed matches drop with a `suggestion_dropped`
+// telemetry record. Settings consumes `suppressionList` /
+// `suppressionClear` for visibility + escape hatch. The daemon owns
+// the recompute path — these are read-side wrappers only.
+//
+// Mock fallbacks: outside Tauri (vitest, browser dev) `suppressionCheck`
+// returns false so the bus never gates a suggestion on a missing
+// bridge; `suppressionList` returns []; `suppressionClear` is a no-op.
+
+/** Mirror of `agi::suppression::SuppressionEntry`. Kept in lockstep
+ *  with the Rust struct — adding a field there means adding it here. */
+export interface SuppressionEntry {
+  /** `"{template}:{scope}"` composite key. */
+  key: string;
+  /** Template id (e.g. `"deadline_approaching"`). */
+  template: string;
+  /** Atom path / surface_id / `"global"` — the qualifier within which
+   *  the dismisses are accumulated. */
+  scope: string;
+  /** Count of dismisses observed in the last 30d window. */
+  dismiss_count: number;
+  /** ISO 8601 timestamp of the most recent dismiss for this pair. */
+  last_dismiss_at: string;
+  /** ISO 8601 timestamp until which the pair is suppressed. `null` means
+   *  the threshold hasn't tripped yet. */
+  suppressed_until: string | null;
+}
+
+/**
+ * Returns `true` when `{template, scope}` is currently suppressed (≥ 3
+ * dismisses in the last 30d, suppressed_until in the future). The bus
+ * calls this from `pushSuggestion` before dispatching.
+ *
+ * Mock fallback: `false` — the bus's tests don't exercise the bridge,
+ * and a missing bridge in browser dev would otherwise silently silence
+ * every suggestion.
+ */
+export async function suppressionCheck(
+  template: string,
+  scope: string,
+): Promise<boolean> {
+  return safeInvoke<boolean>(
+    "suppression_check",
+    { template, scope },
+    () => false,
+  );
+}
+
+/** Dump every suppression entry. Used by AGI Settings to render the
+ *  "Suppressed suggestions" list. Mock returns []. */
+export async function suppressionList(): Promise<SuppressionEntry[]> {
+  return safeInvoke<SuppressionEntry[]>("suppression_list", undefined, () => []);
+}
+
+/** Wipe the suppression file. Backs the Settings "Clear suppression list"
+ *  button. Mock is a no-op. */
+export async function suppressionClear(): Promise<void> {
+  return safeInvoke<void>("suppression_clear", undefined, () => {
+    // eslint-disable-next-line no-console
+    console.info("[mock] suppression_clear");
+  });
+}
+
+/** Recompute the suppression map from telemetry on demand. Returns the
+ *  count of currently-suppressed templates. Settings can call this
+ *  after a clear to force a fresh tally. */
+export async function suppressionRecompute(): Promise<number> {
+  return safeInvoke<number>("suppression_recompute", undefined, () => 0);
+}
+// === end v1.9 P3-A suppression ===

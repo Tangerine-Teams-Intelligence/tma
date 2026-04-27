@@ -239,6 +239,10 @@ export function AppShell() {
             // Forward to the bus. The bus enforces the master off-switch,
             // confidence floor, modal budget, and tier selection — we do
             // NOT pre-filter here so the disciplines stay in one place.
+            // v1.9.0-beta.3 P3-A: atom_refs flows through so the
+            // bus's suppression-check derives the scope chain
+            // (atom_refs[0] → surface_id → "global") in lockstep with
+            // the Rust recompute.
             void pushSuggestion({
               template: p.template,
               body: p.body,
@@ -247,6 +251,7 @@ export function AppShell() {
               is_completion_signal: p.is_completion_signal,
               is_cross_route: p.is_cross_route,
               surface_id: p.surface_id ?? undefined,
+              atom_refs: p.atom_refs,
               priority: p.priority,
             });
           },

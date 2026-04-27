@@ -21,8 +21,12 @@
  * affected by any overflow-clipping ancestor.
  */
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+
+/** Polish 4 (v1.9.0-beta.3) — duration of the green flash applied to the
+ *  modal card after Confirm. Mirrors `ACCEPT_FLASH_MS` in `Banner.tsx`. */
+const ACCEPT_FLASH_MS = 200;
 
 export interface ModalProps {
   /** Stable id for queue identity. */
@@ -55,11 +59,20 @@ export function Modal({
   dangerous = false,
 }: ModalProps) {
   const cardRef = useRef<HTMLDivElement | null>(null);
+  // Polish 4 (v1.9.0-beta.3) — flash green on Confirm before unmount.
+  const [confirming, setConfirming] = useState(false);
 
   // Esc → cancel. We listen on document so the modal can be dismissed
   // even when focus is somewhere odd.
   const handleCancel = useCallback(() => onCancel(), [onCancel]);
-  const handleConfirm = useCallback(() => onConfirm(), [onConfirm]);
+  const handleConfirm = useCallback(() => {
+    setConfirming(true);
+    // The flash needs to paint, but the parent host (`<ModalHost/>`)
+    // pops us off the queue eagerly so the user's onConfirm fires first.
+    // We let the keyframe run for ACCEPT_FLASH_MS as a visual confirmation;
+    // the modal card unmounts once dismissModal hits zustand.
+    onConfirm();
+  }, [onConfirm]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -98,18 +111,33 @@ export function Modal({
     <div
       data-testid="suggestion-modal-backdrop"
       data-modal-id={id}
+      // Polish 2 (v1.9.0-beta.3) — explicit role + aria-modal lets screen
+      // readers treat the rest of the page as inert while the modal is up.
+      // aria-labelledby points at the title `<h2>` so the announcement
+      // includes the prompt rather than just "dialog".
       role="dialog"
       aria-modal="true"
       aria-labelledby={`modal-title-${id}`}
       onClick={onBackdropClick}
       style={{ position: "fixed", inset: 0, zIndex: 100 }}
-      className="flex items-center justify-center bg-black/40 backdrop-blur-sm animate-fade-in"
+      // Polish 1 (v1.9.0-beta.3) — backdrop alpha tuned for dark mode:
+      // 40% black in light is enough to dim the navy paper, but in dark
+      // we need 60% to actually dim a near-black background. The
+      // dark: variant takes care of it.
+      className="flex items-center justify-center bg-black/40 backdrop-blur-sm animate-fade-in dark:bg-black/60"
     >
       <div
         ref={cardRef}
         data-testid="suggestion-modal-card"
         onClick={(e) => e.stopPropagation()}
-        className="w-[480px] max-w-[90vw] rounded-md border border-stone-200 bg-stone-50 p-5 shadow-xl dark:border-stone-700 dark:bg-stone-900"
+        // Polish 1 (v1.9.0-beta.3) — card uses --ti-bg-elevated so it
+        // sits above the backdrop in both modes. The border token swaps
+        // automatically via the dark vars.
+        // Polish 4 — accept-flash class wraps the card on Confirm.
+        className={
+          "w-[480px] max-w-[90vw] rounded-md border border-[var(--ti-border-default)] bg-[var(--ti-bg-elevated)] p-5 shadow-xl" +
+          (confirming ? " ti-accept-flash" : "")
+        }
       >
         <div className="flex items-start gap-3">
           <span
@@ -122,11 +150,12 @@ export function Modal({
           <div className="min-w-0 flex-1">
             <h2
               id={`modal-title-${id}`}
-              className="font-display text-base font-semibold tracking-tight text-stone-900 dark:text-stone-100"
+              // Polish 1 — ink-900 token swaps light/dark automatically.
+              className="font-display text-base font-semibold tracking-tight text-[var(--ti-ink-900)]"
             >
               {title}
             </h2>
-            <p className="mt-2 text-sm leading-relaxed text-stone-700 dark:text-stone-300">
+            <p className="mt-2 text-sm leading-relaxed text-[var(--ti-ink-700)]">
               {body}
             </p>
           </div>
@@ -136,7 +165,8 @@ export function Modal({
             type="button"
             onClick={handleCancel}
             data-testid="suggestion-modal-cancel"
-            className="rounded border border-stone-300 bg-white px-3 py-1.5 text-[12px] text-stone-700 hover:bg-stone-100 dark:border-stone-700 dark:bg-stone-800 dark:text-stone-200 dark:hover:bg-stone-700"
+            // Polish 2 — focus-visible ring for keyboard users.
+            className="rounded border border-[var(--ti-border-default)] bg-[var(--ti-paper-50)] px-3 py-1.5 text-[12px] text-[var(--ti-ink-700)] hover:bg-[var(--ti-paper-200)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ti-orange-500)]"
           >
             {cancelLabel}
           </button>
@@ -146,8 +176,8 @@ export function Modal({
             data-testid="suggestion-modal-confirm"
             className={
               dangerous
-                ? "rounded border border-rose-500 bg-rose-500 px-3 py-1.5 text-[12px] font-medium text-white hover:bg-rose-600"
-                : "rounded border border-[var(--ti-orange-500,#CC5500)] bg-[var(--ti-orange-500,#CC5500)] px-3 py-1.5 text-[12px] font-medium text-white hover:bg-[var(--ti-orange-700,#A04400)]"
+                ? "rounded border border-rose-500 bg-rose-500 px-3 py-1.5 text-[12px] font-medium text-white hover:bg-rose-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-300"
+                : "rounded border border-[var(--ti-orange-500)] bg-[var(--ti-orange-500)] px-3 py-1.5 text-[12px] font-medium text-white hover:bg-[var(--ti-orange-700)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ti-orange-300)]"
             }
           >
             {confirmLabel}

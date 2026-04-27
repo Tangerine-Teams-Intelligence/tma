@@ -144,6 +144,18 @@ pub mod canvas_agi;
 pub mod telemetry;
 // === end v1.9 P1-A telemetry ===
 
+// === v1.9 P3-A suppression ===
+// v1.9.0-beta.3: dismiss × 3 → 30d suppression. The frontend
+// `pushSuggestion` calls `suppression_check` before dispatching to drop
+// matches whose `{template, scope}` pair has been dismissed 3+ times in
+// the last 30 days. Storage at
+// `~/.tangerine-memory/.tangerine/suppression.json`; the daemon
+// recomputes the map on every heartbeat from the telemetry jsonl. The
+// AGI Settings page consumes `suppression_list` + `suppression_clear`
+// to give the user visibility + an escape hatch.
+pub mod suppression;
+// === end v1.9 P3-A suppression ===
+
 mod error;
 mod paths;
 mod runner;
@@ -380,6 +392,12 @@ macro_rules! tmi_invoke_handler {
             $crate::commands::telemetry::telemetry_read_window,
             $crate::commands::telemetry::telemetry_clear,
             // === end v1.9 P1-A telemetry ===
+            // === v1.9 P3-A suppression ===
+            $crate::commands::suppression::suppression_check,
+            $crate::commands::suppression::suppression_recompute,
+            $crate::commands::suppression::suppression_clear,
+            $crate::commands::suppression::suppression_list,
+            // === end v1.9 P3-A suppression ===
         ]
     };
 }

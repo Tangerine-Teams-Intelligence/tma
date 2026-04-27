@@ -19,8 +19,13 @@
  * picks the highest-priority entry in `bannerStack`.
  */
 
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { X } from "lucide-react";
+
+/** Polish 4 (v1.9.0-beta.3) — duration of the green accept-flash. Kept
+ *  in sync with the `ti-accept-flash` keyframe in `index.css`. The host
+ *  waits this long before popping the banner off the queue. */
+const ACCEPT_FLASH_MS = 200;
 
 export interface BannerProps {
   /** Stable id for dismiss tracking + queue identity. */
@@ -56,7 +61,17 @@ export function Banner({
   onAccept,
   dismissable = true,
 }: BannerProps) {
+  // Polish 4 (v1.9.0-beta.3) — flash green for ACCEPT_FLASH_MS before
+  // running the user's onAccept. We don't want to swallow the click —
+  // the parent's handler still fires immediately so any side-effects
+  // (navigation, queue pop) happen synchronously.
+  const [accepting, setAccepting] = useState(false);
+
   const handleAccept = useCallback(() => {
+    setAccepting(true);
+    // Use a microtask so the className change paints before the
+    // host unmounts us. We keep the original onAccept eager so the
+    // queue pop happens within the 200ms window.
     if (onAccept) {
       onAccept();
       return;
@@ -76,9 +91,22 @@ export function Banner({
     <div
       data-testid="suggestion-banner"
       data-banner-id={id}
-      role="status"
+      // Polish 2 (v1.9.0-beta.3) — banners are non-blocking but they
+      // are time-sensitive content the AGI surfaced to the user.
+      // role="alert" + aria-live="polite" lets screen readers announce
+      // the body without yanking focus. The combination is the
+      // recommended pattern for non-modal advisory strips.
+      role="alert"
       aria-live="polite"
-      className="ti-no-select flex items-center gap-3 border-b border-l-4 border-stone-200 border-l-[var(--ti-orange-500,#CC5500)] bg-[var(--ti-orange-50,#FFF5EC)] px-4 py-2 text-[12px] text-stone-700 dark:border-stone-700 dark:border-l-[var(--ti-orange-500,#CC5500)] dark:bg-stone-900 dark:text-stone-200"
+      className={
+        // Polish 1 (v1.9.0-beta.3) — base background uses --ti-bg-elevated
+        // so the strip sits above the route content in both light + dark.
+        // The orange-50 wash from beta.1 is preserved as a layered tint via
+        // the left border + top-light backdrop; in dark we drop the wash to
+        // keep contrast against the navy body bg.
+        "ti-no-select flex items-center gap-3 border-b border-l-4 border-[var(--ti-border-default)] border-l-[var(--ti-orange-500)] bg-[var(--ti-bg-elevated)] px-4 py-2 text-[12px] text-[var(--ti-ink-700)]" +
+        (accepting ? " ti-accept-flash" : "")
+      }
     >
       <span
         aria-hidden
@@ -96,7 +124,11 @@ export function Banner({
           type="button"
           onClick={handleAccept}
           data-testid="suggestion-banner-cta"
-          className="rounded border border-[var(--ti-orange-300,#FFB477)] bg-[var(--ti-orange-100,#FFE4CD)] px-2 py-0.5 font-mono text-[11px] text-[var(--ti-orange-700,#A04400)] hover:bg-[var(--ti-orange-200,#FFD0A8)] dark:border-stone-600 dark:bg-stone-800 dark:text-[var(--ti-orange-500,#CC5500)] dark:hover:bg-stone-700"
+          // Polish 2 — focusable button is keyboard-accessible by default
+          // (Tab → focus → Enter → click). focus-visible styles add an
+          // outline so the user can see where focus is. The orange tokens
+          // are shared light/dark via the keyword vars added in Polish 1.
+          className="rounded border border-[var(--ti-orange-300)] bg-[var(--ti-orange-100)] px-2 py-0.5 font-mono text-[11px] text-[var(--ti-orange-700)] hover:bg-[var(--ti-orange-200)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ti-orange-500)] dark:border-stone-600 dark:bg-stone-800 dark:text-[var(--ti-orange-500)] dark:hover:bg-stone-700"
         >
           {ctaLabel}
         </button>
@@ -107,7 +139,10 @@ export function Banner({
           onClick={onDismiss}
           aria-label="Dismiss"
           data-testid="suggestion-banner-dismiss"
-          className="text-stone-500 hover:text-stone-800 dark:text-stone-400 dark:hover:text-stone-100"
+          // Polish 2 — Tab + Enter on the × dismisses (default <button>
+          // semantics). focus-visible adds a ring so keyboard users can
+          // see where focus landed.
+          className="rounded text-[var(--ti-ink-500)] hover:text-[var(--ti-ink-900)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ti-orange-500)]"
         >
           <X size={12} />
         </button>

@@ -392,6 +392,77 @@ async fn do_heartbeat(cfg: &DaemonConfig, control: &Arc<DaemonControl>) {
     if let Err(e) = co_thinker_tick(cfg, control).await {
         control.record_error("co_thinker_tick", e);
     }
+
+    // 10. v1.9.0-beta.3 P3-A — recompute the dismiss-suppression map.
+    //
+    // Walks the last 30 days of telemetry jsonl, groups dismiss events
+    // by `{template, scope}`, and promotes any pair with count ≥ 3
+    // into a 30d suppression window. Cheap (~ms) and idempotent — we
+    // can run it every heartbeat without piling work up.
+    //
+    // Errors are swallowed and recorded; a single failed recompute
+    // must never kill the daemon. The bus's `pushSuggestion` reads the
+    // file directly via `suppression_check` so a transient failure
+    // here just means the next heartbeat fixes the staleness.
+    if let Err(e) = recompute_suppression(cfg).await {
+        control.record_error("suppression_recompute", e);
+    }
+}
+
+/// One suppression-map recompute. Walks the telemetry log, derives the
+/// suppression db, writes it atomically. Best-effort — a missing
+/// memory root or unwritable disk turns into an error string the
+/// daemon records but the loop continues.
+///
+/// Side effect: when a `{template, scope}` pair flips from "not
+/// suppressed" to "suppressed" between the prior and current
+/// recompute (i.e. the 3rd dismiss just landed), append a
+/// `dismiss_count_threshold_reached` telemetry event so analytics can
+/// see the promotion. The event is analytics-only — the bus reads
+/// `suppression_check` directly for the runtime gate.
+async fn recompute_suppression(cfg: &DaemonConfig) -> Result<(), String> {
+    let memory_root = cfg.memory_root.clone();
+    let prior = crate::agi::suppression::read_suppression_db(&memory_root)
+        .await
+        .map_err(|e| e.to_string())?;
+    let next = crate::agi::suppression::recompute_from_telemetry(&memory_root)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Detect newly-promoted entries: present + suppressed in `next`,
+    // but not present (or not suppressed) in `prior`.
+    for (key, entry) in &next {
+        let was_suppressed = prior
+            .get(key)
+            .and_then(|p| p.suppressed_until)
+            .is_some();
+        let is_suppressed = entry.suppressed_until.is_some();
+        if is_suppressed && !was_suppressed {
+            let until_iso = entry
+                .suppressed_until
+                .map(|t| t.to_rfc3339())
+                .unwrap_or_default();
+            let ev = crate::agi::telemetry::TelemetryEvent {
+                event: "dismiss_count_threshold_reached".to_string(),
+                ts: Utc::now().to_rfc3339(),
+                user: "daemon".to_string(),
+                payload: serde_json::json!({
+                    "template": entry.template,
+                    "scope": entry.scope,
+                    "suppressed_until": until_iso,
+                }),
+            };
+            // Best-effort — a failed append must not block the
+            // recompute (the next heartbeat will still write the
+            // promoted state via `write_suppression_db`).
+            let _ = crate::agi::telemetry::append_event(&memory_root, ev).await;
+        }
+    }
+
+    crate::agi::suppression::write_suppression_db(&memory_root, &next)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 /// One co-thinker brain tick. Initialises the long-lived engine on first
