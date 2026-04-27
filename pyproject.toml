@@ -29,7 +29,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=7", "mypy>=1.8", "ruff>=0.4", "types-PyYAML"]
+dev = ["pytest>=7", "pytest-cov>=4", "mypy>=1.8", "ruff>=0.4", "types-PyYAML"]
 
 [project.scripts]
 tmi = "tmi.cli:app"
