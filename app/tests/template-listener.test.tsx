@@ -34,8 +34,12 @@ import * as bus from "../src/lib/suggestion-bus";
  * Mirrors the Rust `agi::templates::common::TemplateMatch` shape and the
  * AppShell-local `TemplateMatchPayload` type. Kept in sync with
  * `app/src/components/layout/AppShell.tsx`.
+ *
+ * v1.9.0 P4-A — `match_id` added so the Stage 2 enrichment listener
+ * can correlate the rule emit with the enriched emit.
  */
 interface TemplateMatchPayload {
+  match_id: string;
   template: string;
   body: string;
   confidence: number;
@@ -50,6 +54,7 @@ interface TemplateMatchPayload {
 /** Build a minimal payload — used by every test. */
 function payload(over: Partial<TemplateMatchPayload> = {}): TemplateMatchPayload {
   return {
+    match_id: "test-match-id",
     template: "deadline_approaching",
     body: "Patent attorney RFP — 2 days",
     confidence: 0.95,
@@ -97,6 +102,7 @@ function HarnessShell({
         is_cross_route: p.is_cross_route,
         surface_id: p.surface_id ?? undefined,
         priority: p.priority,
+        match_id: p.match_id,
       });
     };
     return () => {

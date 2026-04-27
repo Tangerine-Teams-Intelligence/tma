@@ -45,6 +45,14 @@ export interface BannerProps {
   priority?: number;
   /** When false, the × is hidden and only `onAccept` can clear the banner. */
   dismissable?: boolean;
+  /** v1.9.0 P4-A — Rust-side `TemplateMatch.match_id`. Plumbed end-to-end
+   *  so the Stage 2 enrichment listener can find this banner by id and
+   *  swap `body` in place via `updateSuggestion`. Undefined for non-AGI
+   *  banners (e.g. localOnly strip) which never get enriched. */
+  match_id?: string;
+  /** v1.9.0 P4-A — set briefly after enrichment to trigger the
+   *  ti-pulse animation. Cleared by the host's effect. */
+  enriched?: boolean;
 }
 
 /**

@@ -31,6 +31,17 @@ use crate::commands::AppError;
 
 /// One telemetry entry. Shape matches `app/src/lib/telemetry.ts::TelemetryEvent`
 /// — both sides serialize/deserialize the same JSON.
+///
+/// Event taxonomy (kept loose — `event` is just a string so a forward-
+/// compatible payload from the frontend never gets rejected here):
+///   * v1.9.0-beta.1 P1-A — navigate_route / edit_atom / dismiss_chip /
+///     accept_suggestion / mute_channel / etc. (see frontend
+///     `TelemetryEventName`).
+///   * v1.9.0 P4-A — `suggestion_enriched`,
+///     `suggestion_enrichment_failed`. The enrichment events let the
+///     suggestion engine reason about which rules benefit from LLM
+///     polish vs. which keep getting silently skipped (e.g. session
+///     unavailable / citation check rejected the response).
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct TelemetryEvent {
     /// Event name. See `TelemetryEventName` in the frontend for the closed

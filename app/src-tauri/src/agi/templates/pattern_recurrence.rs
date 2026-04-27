@@ -152,6 +152,7 @@ pub(crate) fn evaluate_window(events: &[TelemetryEvent]) -> Vec<TemplateMatch> {
         let atom_refs = a.last_atom.clone().map(|p| vec![p]).unwrap_or_default();
 
         out.push(TemplateMatch {
+            match_id: String::new(),
             template: "pattern_recurrence".into(),
             body,
             confidence,

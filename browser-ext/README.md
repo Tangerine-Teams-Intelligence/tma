@@ -2,6 +2,16 @@
 
 > **Align every AI tool on your team with your team's actual workflow.**
 
+[![License: Apache-2.0 (current)](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](../PRIOR-LICENSE-APACHE-2.0.txt)
+[![License: AGPL v3 + Commercial (transition draft)](https://img.shields.io/badge/license-AGPL_v3_+_Commercial-orange.svg)](../LICENSE)
+
+## License — transition in progress (2026-04)
+
+Tangerine is moving from Apache 2.0 to AGPL v3 + Dual Commercial License.
+See `LICENSE` (draft AGPL v3 + dual) and `COMMERCIAL-LICENSE.md` (draft
+commercial terms). Until ratification announced, codebase is governed
+by Apache 2.0 — see `PRIOR-LICENSE-APACHE-2.0.txt`.
+
 Your team uses Cursor, Claude, ChatGPT — but each AI sees a different slice of what your team's actually doing. This extension is the Sink that aligns ChatGPT / Claude.ai / Gemini with one source of team workflow, so your AIs stop giving different answers.
 
 A small Chrome extension (Manifest V3) that adds a 🍊 button next to your prompt
@@ -196,4 +206,6 @@ npm run zip        # tangerine-ext-0.1.0.zip
 
 ## License
 
-Apache-2.0. See [`LICENSE`](LICENSE).
+**Currently effective:** Apache-2.0. See [`PRIOR-LICENSE-APACHE-2.0.txt`](../PRIOR-LICENSE-APACHE-2.0.txt).
+
+**Transition draft (pending CEO + legal counsel ratification):** AGPL v3 + Dual Commercial. See [`LICENSE`](../LICENSE) and [`COMMERCIAL-LICENSE.md`](../COMMERCIAL-LICENSE.md).

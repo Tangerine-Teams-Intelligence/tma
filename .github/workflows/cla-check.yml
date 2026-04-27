@@ -1,0 +1,9 @@
+name: CLA check (stub)
+on: [pull_request_target]
+jobs:
+  cla:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "CLA check stub — install cla-assistant.io after CEO ratification"
+          echo "Until then, contributors are auto-approved"

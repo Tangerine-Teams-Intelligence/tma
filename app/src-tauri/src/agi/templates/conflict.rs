@@ -153,6 +153,7 @@ pub(crate) fn evaluate_pairs(
             );
 
             out.push(TemplateMatch {
+                match_id: String::new(),
                 template: "conflict_detection".into(),
                 body,
                 confidence: CONFIDENCE,

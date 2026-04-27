@@ -40,6 +40,17 @@ use crate::agi::telemetry::TelemetryEvent;
 /// in a `SuggestionRequest` and forwards it to `pushSuggestion(...)`.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct TemplateMatch {
+    /// v1.9.0 P4-A — UUID v4 stamped at emission time so the LLM-enrichment
+    /// path (Stage 2) can update the same suggestion in place via
+    /// `template_match_enriched`. The dispatcher (`registry::evaluate_and_emit`)
+    /// fills this in when the field is empty so existing templates don't have
+    /// to set it themselves. Stable across the rule emit → enrich emit pair.
+    ///
+    /// Backward-compat: `#[serde(default)]` lets old payloads (no `match_id`
+    /// field) deserialise cleanly — the dispatcher fills the value before
+    /// any sink sees it.
+    #[serde(default)]
+    pub match_id: String,
     /// Template id (e.g. `"deadline_approaching"`). Used by the frontend bus
     /// for telemetry payloads + dedup keys.
     pub template: String,
@@ -111,6 +122,12 @@ pub trait EventSink: Send + Sync {
     /// to the frontend; mock sinks just record. Failures are absorbed —
     /// dropping a single template-match must never break the heartbeat.
     fn emit_template_match(&self, m: &TemplateMatch);
+
+    /// v1.9.0 P4-A — emit an *enriched* template match. Carries the same
+    /// `match_id` as the original rule emit; the frontend listener replaces
+    /// the existing suggestion's body in place via `updateSuggestion`.
+    /// Default impl is a no-op so existing test sinks compile unchanged.
+    fn emit_template_match_enriched(&self, _m: &TemplateMatch) {}
 }
 
 /// No-op sink — used by the daemon path until v1.9.0 final wires the
@@ -120,6 +137,7 @@ pub struct NoopSink;
 
 impl EventSink for NoopSink {
     fn emit_template_match(&self, _m: &TemplateMatch) {}
+    fn emit_template_match_enriched(&self, _m: &TemplateMatch) {}
 }
 
 /// Production sink — wraps a `tauri::AppHandle` and forwards each match
@@ -149,6 +167,14 @@ impl<R: tauri::Runtime> EventSink for TauriEventSink<R> {
         use tauri::Emitter;
         let _ = self.app.emit("template_match", m);
     }
+
+    fn emit_template_match_enriched(&self, m: &TemplateMatch) {
+        // v1.9.0 P4-A — same fire-and-forget path as the rule emit. The
+        // frontend `template_match_enriched` listener calls
+        // `updateSuggestion(match_id, body)` to swap the body in place.
+        use tauri::Emitter;
+        let _ = self.app.emit("template_match_enriched", m);
+    }
 }
 
 /// Test sink that appends every emit into a shared `Vec`. Production code
@@ -157,6 +183,9 @@ impl<R: tauri::Runtime> EventSink for TauriEventSink<R> {
 #[cfg(test)]
 pub struct InMemorySink {
     pub matches: parking_lot::Mutex<Vec<TemplateMatch>>,
+    /// v1.9.0 P4-A — enrichment emits land here so tests can assert on
+    /// "the second event with the same match_id".
+    pub enriched: parking_lot::Mutex<Vec<TemplateMatch>>,
 }
 
 #[cfg(test)]
@@ -164,10 +193,14 @@ impl InMemorySink {
     pub fn new() -> Arc<Self> {
         Arc::new(Self {
             matches: parking_lot::Mutex::new(Vec::new()),
+            enriched: parking_lot::Mutex::new(Vec::new()),
         })
     }
     pub fn snapshot(&self) -> Vec<TemplateMatch> {
         self.matches.lock().clone()
+    }
+    pub fn enriched_snapshot(&self) -> Vec<TemplateMatch> {
+        self.enriched.lock().clone()
     }
 }
 
@@ -175,6 +208,9 @@ impl InMemorySink {
 impl EventSink for InMemorySink {
     fn emit_template_match(&self, m: &TemplateMatch) {
         self.matches.lock().push(m.clone());
+    }
+    fn emit_template_match_enriched(&self, m: &TemplateMatch) {
+        self.enriched.lock().push(m.clone());
     }
 }
 

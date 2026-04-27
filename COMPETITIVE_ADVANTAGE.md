@@ -16,11 +16,23 @@ This sentence is the exclusion test. Every word kills a competitor:
 
 If a feature proposal violates any of these five clauses, we don't ship it. This is the scope discipline rule.
 
-## 1. The 5 Moats (priority-ordered)
+## 0.5 — We are NOT the concept's first mover. Be honest about that.
 
-### Moat 1: Cross-vendor agnostic
+The "agent-native" / "every action is a prompt" paradigm is already mature in industry thought leadership and framework layers as of 2026 Q1:
 
-v1.8 already ships **10/10 AI tool surface coverage**: Cursor, Claude Code, Codex, Windsurf, Claude.ai, ChatGPT, Gemini, GitHub Copilot, v0, Ollama. See `app/src/lib/ai-tools-config.ts` for the registry.
+- **Thought leadership**: Dan Shipper(Every) — agent-native essays, 2026 January. Sam Keen — *Agent Native Architecture: calibrating autonomy and predictability in agent systems*. Anthropic / OpenAI / Cognition Labs all publishing.
+- **Framework layer**: Marvin AI(Prefect)— `@ai_classifier`, `@ai_fn` Python decorators since 2023-2024. LangChain agents. Vercel AI SDK. OpenAI Assistants API.
+- **Applied SaaS**: 飞书 AI(ByteDance)— sidekick-style AI in productivity SaaS. Microsoft Copilot for Workspaces. Cursor / Devin IDE-side agents.
+
+Tangerine's claim is **NOT** "we invented agent-native paradigm." We didn't. **Tangerine's claim is execution-layer:** the first OSS desktop instantiation of agent-native team OS pattern, running cross-AI-tool, with file + git native data, free for self-host forever.
+
+Concept is commoditized. Execution isn't. Thought leaders publish essays. Framework devs ship libraries. Closed products lock vendors. Nobody has shipped the OSS desktop cross-vendor implementation. That gap is the entire opportunity.
+
+## 1. The 5 Moats (execution, not concept)
+
+### Moat 1: Cross-vendor agnostic execution
+
+The concept of "AI tool agnostic" was discussed by Sam Keen and Marvin docs years ago. Nobody shipped it for desktop teams. We did. v1.8 already ships **10/10 AI tool surface coverage**: Cursor, Claude Code, Codex, Windsurf, Claude.ai, ChatGPT, Gemini, GitHub Copilot, v0, Ollama. See `app/src/lib/ai-tools-config.ts` for the registry.
 
 Compare actual coverage today:
 - Cursor: 1/10 (only itself)
@@ -59,7 +71,9 @@ We add a citation grounding rule: every claim the AI makes about "what the team 
 
 This matters for two reasons. (1) Trust — users won't let an AI act on their team's behalf if they can't audit what it remembers. (2) Composability — brain files can be checked into the team's main repo, reviewed in PR, branched per project. Memory becomes infrastructure, not a black box.
 
-### Moat 5: OSS + builder voice + 21yo Berkeley founder
+### Moat 5: Execution velocity moat (OSS shipping speed)
+
+This is the moat the others don't have. Thought leaders write essays — Dan Shipper publishes Every newsletter weekly, Sam Keen drops architecture papers, Anthropic posts research. They don't ship product. Framework authors build libraries — Marvin's been shipping decorators since 2023, LangChain since 2022. They don't ship desktop apps for end-users. Closed products like Cursor and Devin ship vendor-locked SaaS. Nobody is shipping production OSS desktop agent-native team OS. We are.
 
 5 viral surfaces from 1 engineering effort:
 1. GitHub stars (open AGPL repo)
@@ -71,6 +85,8 @@ This matters for two reasons. (1) Trust — users won't let an AI act on their t
 Granola, Mem0, Glean don't have this narrative. They have polished marketing teams pushing enterprise content. We have a 21yo who actually ships and posts the ugly screenshots. That's the cheapest distribution in 2026 — every dev under 30 who follows AI Twitter has seen 50 SaaS launches and 0 indie OSS launches in this category.
 
 Berkeley + family-factory + dual-pillar (TII + TPI) is also a unique pitch. Investors hear "AI memory startup #47 from a16z" all day. They've never heard "Berkeley undergrad with a hardware factory inheritance who's open-sourcing the OS layer."
+
+The argument: in a space where the concept has been talked about for 2 years and the framework layer has existed for 18 months, **whoever ships the production OSS desktop product first wins the niche by default**. Speed is the moat. Daizhe shipping v1.8 in <6 months from cold start, while Marvin still hasn't shipped a desktop app and Cursor still hasn't gone OSS, is the asymmetric bet.
 
 ## 2. Honest competitive table
 
@@ -92,23 +108,28 @@ We are objectively last on funding and brand. We are objectively first on cross-
 
 ## 3. Honest risks (what could kill us)
 
-1. **Brand 0** — Notion has 50M users. Mem0 has a16z. Cursor has $9B valuation. We have a Berkeley undergrad and 0 customers. Cold outbound to a CTO gets ignored.
-2. **Capital** — Mem0 raised $13M. Glean has $260M. We have $80K SAFE from CEO's dad. If sales cycle slips by 6 months, we're out of runway before product-market fit.
-3. **0 enterprise sales motion** — Glean has Fortune 500 clients with 18-month procurement cycles. We have a Discord. Even if our product is better, enterprise IT won't sign with a 21yo over Zoom.
-4. **Vendor distribution** — MS owns GitHub + 365 + Teams. They can ship Tangerine-like UX inside Copilot Workspaces and reach 400M users tomorrow. Our cross-vendor moat is real but their distribution is a bigger moat. We win only if AI-native devs reject MS distribution on principle (likely in our segment, untested at scale).
-5. **First-time founder, 21yo** — credibility gap with enterprise CIOs. They want grey hair, exits, and SOC 2. We have a hoodie and an AGPL repo.
-6. **AGPL fear** — many enterprise legal teams blanket-ban AGPL. Even if engineers love it, procurement kills the deal. Mitigation = dual-license w/ commercial tier, but that adds product complexity.
-7. **DeepSeek policy risk** — if US/EU bans DeepSeek inference for enterprise, our cost story breaks. Mitigation = abstract the model layer (we already do), swap to Llama-class self-hosted. Adds friction.
+1. **Concept已 commoditized** — agent-native paradigm 不是稀缺概念, thought leadership(Dan Shipper / Sam Keen)+ framework(Marvin)+ closed product(Cursor / Devin)+ SaaS(飞书)都已 occupied space。Tangerine 没 first-mover advantage 在概念层面。
+   - Mitigation:
+     - 定位 reframe 为 execution-leader,不是 concept-creator
+     - 速度跟上 thought leadership(读 / cite Dan Shipper / Sam Keen 建立 community 信誉)
+     - OSS + cross-vendor + desktop 三个 niche 防御 SaaS players
+2. **Brand 0** — Notion has 50M users. Mem0 has a16z. Cursor has $9B valuation. We have a Berkeley undergrad and 0 customers. Cold outbound to a CTO gets ignored.
+3. **Capital** — Mem0 raised $13M. Glean has $260M. We have $80K SAFE from CEO's dad. If sales cycle slips by 6 months, we're out of runway before product-market fit.
+4. **0 enterprise sales motion** — Glean has Fortune 500 clients with 18-month procurement cycles. We have a Discord. Even if our product is better, enterprise IT won't sign with a 21yo over Zoom.
+5. **Vendor distribution** — MS owns GitHub + 365 + Teams. They can ship Tangerine-like UX inside Copilot Workspaces and reach 400M users tomorrow. Our cross-vendor moat is real but their distribution is a bigger moat. We win only if AI-native devs reject MS distribution on principle (likely in our segment, untested at scale).
+6. **First-time founder, 21yo** — credibility gap with enterprise CIOs. They want grey hair, exits, and SOC 2. We have a hoodie and an AGPL repo.
+7. **AGPL fear** — many enterprise legal teams blanket-ban AGPL. Even if engineers love it, procurement kills the deal. Mitigation = dual-license w/ commercial tier, but that adds product complexity.
+8. **DeepSeek policy risk** — if US/EU bans DeepSeek inference for enterprise, our cost story breaks. Mitigation = abstract the model layer (we already do), swap to Llama-class self-hosted. Adds friction.
 
 We do not pretend any of these are solved. We bet that segment-fit (AI-native teams, not F500) makes them survivable in years 1-2.
 
 ## 4. 6 sell scripts (vs each competitor)
 
 ### vs Mem0
-"Mem0 sells you an SDK to add memory to YOUR app. Tangerine IS the app — and we're free. If you're building memory infra, Mem0. If you're a team that wants memory NOW, us. Different product, different buyer."
+"Mem0 sells you an SDK to add memory to YOUR app. Tangerine IS the OSS desktop app — and we're free for self-host. If you're building memory infra, Mem0. If you're a team that wants memory NOW, us. Different product, different buyer."
 
 ### vs Notion AI
-"Notion AI works inside Notion. Tangerine works across Cursor, Claude, ChatGPT, Slack — every AI tool your team already uses. Memory shouldn't be locked to one vendor. Keep Notion for docs. Use us for cross-tool team context."
+"Notion AI works inside Notion. Tangerine is an OSS cross-AI agnostic memory layer — works across Cursor, Claude, ChatGPT, Slack, every AI tool your team already uses. Memory shouldn't be locked to one vendor. Keep Notion for docs. Use us for cross-tool team context."
 
 ### vs Glean
 "Glean's $25-50/seat enterprise search. We're $5/team/month flat with the same source coverage and you keep your own data. Glean for IBM. Us for the team that doesn't have a 6-month procurement cycle."
@@ -117,10 +138,13 @@ We do not pretend any of these are solved. We bet that segment-fit (AI-native te
 "Granola makes meeting notes for humans to read later. Tangerine makes meeting context for your AI to read tomorrow. Granola optimizes the human's recall. We optimize the AI's grounding. Different customer, different output."
 
 ### vs MS Copilot for Workspaces
-"MS Copilot routes through OpenAI on Microsoft's data plane. Cool if you're 100% M365. We work with whatever AI you've already paid for and your data stays on your laptop. M365 for Fortune 500 with a Microsoft contract. Us for everyone with a Linux preference."
+"MS Copilot routes through OpenAI on Microsoft's data plane. Cool if you're 100% M365. We're an OSS desktop instantiation of agent-native team OS that works with whatever AI you've already paid for and your data stays on your laptop. M365 for Fortune 500 with a Microsoft contract. Us for everyone with a Linux preference."
 
 ### vs Cursor Teams
-"Cursor Teams is great IDE-side. But your team also uses ChatGPT, Slack, Claude.ai, Gemini. Cursor doesn't see those. We do. Don't replace Cursor — bolt us on. $5/team/month vs $40/seat is rounding error."
+"Cursor Teams is great IDE-side. But your team also uses ChatGPT, Slack, Claude.ai, Gemini. Cursor doesn't see those. We do — OSS, cross-vendor, desktop. Don't replace Cursor — bolt us on. $5/team/month vs $40/seat is rounding error."
+
+### vs Marvin AI / agent-native frameworks
+"Marvin gives Python developers `@ai_classifier` decorators since 2023. Sam Keen wrote the architecture paper. Dan Shipper publishes the essays. We didn't invent the agent-native paradigm — we shipped the OSS desktop implementation of it for whole teams, not just Python devs. Read Marvin if you're building. Install Tangerine if you're running a team."
 
 ## 5. Defensibility timeline
 
@@ -128,27 +152,28 @@ We do not pretend any of these are solved. We bet that segment-fit (AI-native te
 |---|---|---|---|
 | 0-6mo | Cross-vendor coverage + OSS narrative | Concept is easy to copy (execution is not) | Lock 10/10 to 12/12; ship marketplace API |
 | 6-18mo | Marketplace network effect + DeepSeek price floor | MS could fork concept, but P&L conflict blocks them | Reach 1k self-host installs; sign 5 design partners |
-| 18mo+ | Universal team-context standard (proto-MCP) | Standards body politics (OpenAI/Anthropic forks) | Get our brain-doc format adopted by 1+ major IDE |
+| 18mo+ | OSS team-context standard (proto-MCP candidate) | Standards body politics (OpenAI/Anthropic forks) | Get our brain-doc format adopted by 1+ major IDE |
 
 Three windows, three different moats. We don't bet the company on any single one.
 
 ## 6. Internal use cases for this doc
 
-- **Investor pitch** — North Star line + 5 moats + risks honest. Investors weed out founders who hide §3.
-- **Sales objection handling** — 6 sell scripts above. Memorize, don't read off slide.
-- **Recruiting** — "we're not building another SaaS, we're building the OS layer for AI-native teams" pitch. Top-tier engineers want OS-level scope, not CRUD.
+- **Investor pitch** — North Star line + §0.5 honesty + 5 execution moats + risks honest. Investors weed out founders who hide §3.
+- **Sales objection handling** — 7 sell scripts above. Memorize, don't read off slide.
+- **Recruiting** — "we're not building another SaaS, we're shipping the OSS desktop layer for AI-native teams" pitch. Top-tier engineers want OS-level scope, not CRUD.
 - **Team alignment** — when scope creep happens (it will), apply §0 exclusion test. If a feature would violate any of the 5 clauses, kill it. No exceptions.
 - **Press/podcast** — §1 Moats 1-3 are the public talking points. Moats 4-5 stay internal until v2.0.
+
+**Pitch discipline:** Never claim "Tangerine invented agent-native" — the term is already in industry circulation. Always claim "we are the first to ship a complete OSS desktop implementation, running cross-AI-tool, for real teams." Founder pitch must reference Dan Shipper / Sam Keen / Marvin for credibility — positions Tangerine as the **execution heir** to industry thought leadership rather than fake-claim category creator. Words to ban from public copy: "we invented," "first agent-native," "category-defining," "pioneering the paradigm." Words to use: "OSS desktop instantiation," "execution-leader," "first to ship X for Y."
 
 ## 7. Open questions for CEO
 
 These are the calls Daizhe needs to make before next investor cycle. No "let's table this" answers — pick one.
 
-1. **Messaging tone** — builder-direct (current voice, 21yo founder, AGPL pride) or polished enterprise voice for CIO outreach? Probably both, in two separate decks. Decide ICP first.
-2. **Honest risk acknowledgement** — include §3 in public sales deck or keep internal? Recommendation: keep internal, but add a "what we don't claim" slide to investor deck (signals self-awareness).
-3. **Pricing transparency** — publish DeepSeek wholesale + 1.5x markup math publicly? Pro: forces competitors to defend their margins. Con: signals to MS/Cursor exactly what they need to undercut. Probably yes for OSS narrative, no for enterprise tier.
-4. **Sell scripts §4** — enterprise version (10x detail, with TCO calc + compliance checklist) for v2.0+ enterprise tier? Yes, but block on having ≥1 enterprise design partner first.
-5. **MS positioning** — aggressive ("OpenAI lock-in trap," "you don't own your data") or polite ("M365 for them, us for everyone else")? Public = polite. Investor pitch + podcast = aggressive. Don't mix.
-6. **AGPL fork strategy** — if a competitor forks our repo and ships their own SaaS, do we sue, ignore, or absorb? Decide pre-launch. Default = ignore for first 18mo, focus on shipping.
+1. **Cite intellectual heritage publicly?** — should we publicly cite Dan Shipper / Sam Keen / Marvin in our GTM / README / pitch deck as intellectual heritage? (我推 yes — building credibility via attribution. Reframes us from "claim-jumper" to "execution heir," which is the truthful and stronger position anyway.)
+2. **Contact Dan Shipper for Every newsletter feature?** — His newsletter has 60k+ AI builders subscribed. 1 mention = 1000 OSS installs. Pitch angle: "OSS desktop instantiation of the agent-native pattern you've been writing about." Worth a cold email this week.
+3. **Cite Sam Keen's framework in SUGGESTION_ENGINE_SPEC?** — should we cite Sam Keen's "calibrating autonomy and predictability" framework in our SUGGESTION_ENGINE_SPEC §1 6 disciplines? (我推 yes — strengthens academic credibility, signals we've done the reading, positions us as builders-on-shoulders not founders-from-nowhere.)
+4. **Open a "Comparisons" doc?** — explicit row-by-row showing how Tangerine differs from Marvin / 飞书 / Cursor / Devin? (我推 yes — buyer awareness. The §2 honest competitive table is a start but a dedicated doc with framework-vs-product distinction will reduce buyer confusion. Frame: "we are not a Marvin competitor, we are a Marvin consumer's product layer.")
+5. **Apply for YC W26 batch as execution-speed story?** — pitch = "we already shipped, no novel concept claim, just speed + traction." Possibly lower acceptance odds because not novel, but stronger product traction (v1.8 + 10/10 coverage). Decide by W26 deadline.
 
-End of doc. Update when (a) a new competitor crosses 5/10 cross-AI coverage, (b) DeepSeek economics shift >20%, (c) we close first paying customer.
+End of doc. Update when (a) a new competitor crosses 5/10 cross-AI coverage, (b) DeepSeek economics shift >20%, (c) we close first paying customer, (d) Dan Shipper / Sam Keen replies to outreach.

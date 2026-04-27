@@ -2,6 +2,16 @@
 
 > **Align every AI tool on your team with your team's actual workflow.**
 
+[![License: Apache-2.0 (current)](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](../PRIOR-LICENSE-APACHE-2.0.txt)
+[![License: AGPL v3 + Commercial (transition draft)](https://img.shields.io/badge/license-AGPL_v3_+_Commercial-orange.svg)](../LICENSE)
+
+## License — transition in progress (2026-04)
+
+Tangerine is moving from Apache 2.0 to AGPL v3 + Dual Commercial License.
+See `LICENSE` (draft AGPL v3 + dual) and `COMMERCIAL-LICENSE.md` (draft
+commercial terms). Until ratification announced, codebase is governed
+by Apache 2.0 — see `PRIOR-LICENSE-APACHE-2.0.txt`.
+
 Your team uses Cursor, Claude, ChatGPT — but each AI sees a different slice of what your team's actually doing. This MCP server is the Sink that aligns them: it exposes Tangerine team memory to Claude Code, Cursor, Claude Desktop, and any other MCP-compatible AI client.
 
 Once installed, your AI tool gains 7 tools it can call autonomously — no copy-paste, no manual injection:
@@ -262,4 +272,6 @@ npm test
 
 ## License
 
-Apache-2.0 — see [LICENSE](./LICENSE).
+**Currently effective:** Apache-2.0 — see [PRIOR-LICENSE-APACHE-2.0.txt](../PRIOR-LICENSE-APACHE-2.0.txt).
+
+**Transition draft (pending CEO + legal counsel ratification):** AGPL v3 + Dual Commercial. See [`LICENSE`](../LICENSE) and [`COMMERCIAL-LICENSE.md`](../COMMERCIAL-LICENSE.md).

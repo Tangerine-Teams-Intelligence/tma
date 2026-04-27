@@ -88,6 +88,7 @@ impl Template for CatchupHint {
             );
 
             let m = TemplateMatch {
+                match_id: String::new(),
                 template: TEMPLATE_ID.into(),
                 body,
                 confidence: CONFIDENCE,

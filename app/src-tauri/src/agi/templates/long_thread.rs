@@ -111,6 +111,7 @@ pub(crate) fn evaluate_one(rel_path: &str, raw: &str) -> Option<TemplateMatch> {
     );
 
     Some(TemplateMatch {
+        match_id: String::new(),
         template: TEMPLATE_ID.into(),
         body: body_text,
         confidence: CONFIDENCE,

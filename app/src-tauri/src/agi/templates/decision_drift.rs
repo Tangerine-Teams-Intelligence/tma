@@ -361,6 +361,7 @@ fn build_match(project: &str, a: &ParsedAtom, b: &ParsedAtom, drift: &Drift) -> 
         b_date = b.mtime.format("%Y-%m-%d"),
     );
     TemplateMatch {
+        match_id: String::new(),
         template: TEMPLATE_ID.into(),
         body,
         confidence: CONFIDENCE,

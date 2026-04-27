@@ -2,6 +2,16 @@
 
 > **Align every AI tool on your team with your team's actual workflow.**
 
+[![License: Apache-2.0 (current)](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](../PRIOR-LICENSE-APACHE-2.0.txt)
+[![License: AGPL v3 + Commercial (transition draft)](https://img.shields.io/badge/license-AGPL_v3_+_Commercial-orange.svg)](../LICENSE)
+
+## License — transition in progress (2026-04)
+
+Tangerine is moving from Apache 2.0 to AGPL v3 + Dual Commercial License.
+See `LICENSE` (draft AGPL v3 + dual) and `COMMERCIAL-LICENSE.md` (draft
+commercial terms). Until ratification announced, codebase is governed
+by Apache 2.0 — see `PRIOR-LICENSE-APACHE-2.0.txt`.
+
 Tauri 2.x desktop shell that wraps Tangerine's capture pipeline and exposes the team-memory layer to every AI tool on the team. Wraps the Python `tmi` CLI and Node Discord bot in a native Windows app. Top-level flow: sign in → install the Meeting skill → first meeting. Spec lives in `../APP-INTERFACES.md`.
 
 ## Status

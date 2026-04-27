@@ -91,6 +91,7 @@ impl Template for NewcomerOnboarding {
 /// canonical body string without re-deriving it.
 pub(crate) fn build_match() -> TemplateMatch {
     TemplateMatch {
+        match_id: String::new(),
         template: "newcomer_onboarding".into(),
         body:
             "Welcome 🍊. Connect a source so Tangerine can see your team's actual workflow. \

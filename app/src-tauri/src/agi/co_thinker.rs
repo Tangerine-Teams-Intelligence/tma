@@ -463,6 +463,14 @@ impl CoThinkerEngine {
     ///
     /// Returns the number of matches emitted (post-throttle), which the
     /// caller threads into `HeartbeatOutcome::template_matches_emitted`.
+    ///
+    /// v1.9.0 P4-A — routes through `evaluate_and_emit_with_enrichment`
+    /// so the rule emit kicks off a fire-and-forget LLM enrichment task
+    /// per match (subject to the per-heartbeat budget). Enrichment is
+    /// always enabled at this layer; the bus + frontend gate per-user
+    /// preference (agiVolume / agiParticipation). The daemon-driven
+    /// heartbeat carries no `primary_tool_id` — the session_borrower
+    /// falls back through its priority list.
     async fn evaluate_templates(&self, now: DateTime<Utc>) -> usize {
         // 7 days = 168 hours. Spec §4 row 4 (pattern_recurrence) anchors the
         // window length; other templates ignore the field.
@@ -480,7 +488,14 @@ impl CoThinkerEngine {
             now,
             recent_telemetry,
         };
-        templates_registry::evaluate_and_emit(&ctx, self.event_sink.as_ref()).await
+        templates_registry::evaluate_and_emit_with_enrichment(
+            &ctx,
+            Arc::clone(&self.event_sink),
+            self.memory_root.clone(),
+            None,
+            true,
+        )
+        .await
     }
 }
 

@@ -5,7 +5,15 @@
 > Your team uses Cursor, Claude, ChatGPT — but each AI sees a different slice of what your team's actually doing. We align them all with one source of team workflow. So your AIs stop giving different answers.
 
 [![Latest Release](https://img.shields.io/github/v/release/Tangerine-Intelligence/tangerine-meeting-live?include_prereleases)](https://github.com/Tangerine-Intelligence/tangerine-meeting-live/releases/latest)
-[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![License: Apache-2.0 (current)](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](PRIOR-LICENSE-APACHE-2.0.txt)
+[![License: AGPL v3 + Commercial (transition draft)](https://img.shields.io/badge/license-AGPL_v3_+_Commercial-orange.svg)](LICENSE)
+
+## License — transition in progress (2026-04)
+
+Tangerine is moving from Apache 2.0 to AGPL v3 + Dual Commercial License.
+See `LICENSE` (draft AGPL v3 + dual) and `COMMERCIAL-LICENSE.md` (draft
+commercial terms). Until ratification announced, codebase is governed
+by Apache 2.0 — see `PRIOR-LICENSE-APACHE-2.0.txt`.
 
 We're sometimes called the team's Auto Chief of Staff — same idea, this is what it means specifically: Tangerine listens in every corner of your team's comms (meetings, decisions, threads, code), structures it into team memory in your own dir, and feeds it back to every AI tool you already pay for (Claude Pro, ChatGPT, Cursor, Claude Code) through Sinks (browser extension, MCP server). North star metric: **same-screen rate** — the share of your team (and their AI tools) that's working from the same up-to-date context.
 
@@ -142,7 +150,9 @@ Git is the database. Every artifact is a markdown or YAML file in a repo you con
 
 ## License
 
-[Apache-2.0](LICENSE). Copyright 2026 Tangerine Intelligence Inc.
+**Currently effective:** [Apache-2.0](PRIOR-LICENSE-APACHE-2.0.txt). Copyright 2026 Tangerine Intelligence Inc.
+
+**Transition draft (pending CEO + legal counsel ratification):** [AGPL v3 + Dual Commercial](LICENSE). See `COMMERCIAL-LICENSE.md` for commercial terms.
 
 ## Owner
 

@@ -73,7 +73,25 @@ export type TelemetryEventName =
   // state. Analytics-only — the bus reads `suppression_check` directly
   // for the gate. Payload shape:
   //   { template: string, scope: string, suppressed_until: string }
-  | "dismiss_count_threshold_reached";
+  | "dismiss_count_threshold_reached"
+  // v1.9.0 P4-A — Stage 2 LLM enrichment outcomes. Fired by the
+  // frontend listener when a `template_match_enriched` event lands
+  // (success path) and by the rule-emit path when enrichment is
+  // skipped (failure path). Lets the suggestion engine compare
+  // rule-only vs. enriched accept rates and surface enrichment
+  // latency regressions.
+  //
+  // Payload shapes (also documented at each call site):
+  //   - suggestion_enriched         : { match_id: string,
+  //                                      original_body_size: number,
+  //                                      new_body_size: number,
+  //                                      latency_ms: number }
+  //   - suggestion_enrichment_failed: { match_id: string,
+  //                                      reason: "no_llm_available"
+  //                                            | "validation_failed"
+  //                                            | "timeout" }
+  | "suggestion_enriched"
+  | "suggestion_enrichment_failed";
 
 /** One telemetry record. Mirrors `app/src-tauri/src/agi/telemetry.rs::TelemetryEvent`. */
 export interface TelemetryEvent {

@@ -221,6 +221,22 @@ interface UiSlice {
   dismissBanner: (id: string) => void;
   pushModal: (m: ModalProps) => void;
   dismissModal: (id: string) => void;
+  /**
+   * v1.9.0 P4-A — replace a suggestion's body in place after Stage 2
+   * LLM enrichment. Searches `bannerStack` / `modalQueue` / `toasts`
+   * for an entry whose `match_id` equals the supplied id and updates
+   * `body` (or the equivalent text field — `msg` for toasts) without
+   * popping/re-pushing.
+   *
+   * Also flips `enriched: true` so the renderer can play a 200ms
+   * ti-pulse animation as a "got smarter" cue. The flag clears the
+   * next time the entry is touched (re-render path) so a stale
+   * pulse doesn't replay.
+   *
+   * If no entry matches the id (e.g. user dismissed in the gap
+   * between rule emit and enrichment), this is a silent no-op.
+   */
+  updateSuggestion: (matchId: string, newBody: string) => void;
   setTheme: (t: ThemeMode) => void;
   cycleTheme: () => void;
   setMemoryRoot: (path: string) => void;
@@ -269,6 +285,15 @@ export interface ToastEntry {
   /** Auto-dismiss after this many ms. Default 4000 for suggestion toasts;
    *  undefined → never auto-dismiss (system errors stay until clicked). */
   durationMs?: number;
+  /** v1.9.0 P4-A — Rust-side `TemplateMatch.match_id`. Stamped on
+   *  rule-emit so the Stage 2 enrichment pass can find this entry by
+   *  id and replace `msg`/`text` in place via `updateSuggestion`.
+   *  Undefined for system toasts (never enriched). */
+  match_id?: string;
+  /** v1.9.0 P4-A — set briefly to `true` after `updateSuggestion`
+   *  swaps the body, so the renderer can play a 200ms ti-pulse to
+   *  signal "enriched". Cleared by the renderer's effect on a timer. */
+  enriched?: boolean;
 }
 
 /** Rich toast input. Either form is accepted. */
@@ -281,6 +306,9 @@ export type PushToastInput =
       ctaHref?: string;
       onAccept?: () => void;
       durationMs?: number;
+      /** v1.9.0 P4-A — match_id from the Rust side, plumbed end-to-end
+       *  through the bus → toast surface. Used by `updateSuggestion`. */
+      match_id?: string;
     };
 
 export type PushToastFn = {
@@ -535,6 +563,10 @@ export const useStore = create<Store>()(
                   ctaHref: input.ctaHref,
                   onAccept: input.onAccept,
                   durationMs: input.durationMs ?? defaultDuration,
+                  // v1.9.0 P4-A — plumb match_id end-to-end so
+                  // `updateSuggestion` can find this toast on
+                  // enrichment.
+                  match_id: input.match_id,
                 } satisfies ToastEntry,
               ],
             },
@@ -602,6 +634,64 @@ export const useStore = create<Store>()(
               modalQueue: s.ui.modalQueue.filter((m) => m.id !== id),
             },
           })),
+        // ---- v1.9.0 P4-A — Stage 2 enrichment body swap ----
+        // The frontend listener for `template_match_enriched` calls
+        // this with the rule emit's `match_id`. We walk all three
+        // suggestion surfaces and update the first entry whose
+        // `match_id` matches. Returning state unchanged (when nothing
+        // matches) is the silent-skip contract — the user may have
+        // already dismissed, in which case the late enrichment is
+        // moot.
+        updateSuggestion: (matchId, newBody) =>
+          set((s) => {
+            const banners = s.ui.bannerStack;
+            const modals = s.ui.modalQueue;
+            const toasts = s.ui.toasts;
+
+            const bannerIdx = banners.findIndex(
+              (b) => b.match_id === matchId,
+            );
+            if (bannerIdx >= 0) {
+              const next = banners.slice();
+              next[bannerIdx] = {
+                ...next[bannerIdx],
+                body: newBody,
+                enriched: true,
+              };
+              return { ui: { ...s.ui, bannerStack: next } };
+            }
+
+            const modalIdx = modals.findIndex(
+              (m) => m.match_id === matchId,
+            );
+            if (modalIdx >= 0) {
+              const next = modals.slice();
+              next[modalIdx] = {
+                ...next[modalIdx],
+                body: newBody,
+                enriched: true,
+              };
+              return { ui: { ...s.ui, modalQueue: next } };
+            }
+
+            const toastIdx = toasts.findIndex(
+              (t) => t.match_id === matchId,
+            );
+            if (toastIdx >= 0) {
+              const next = toasts.slice();
+              const t = next[toastIdx];
+              next[toastIdx] = {
+                ...t,
+                msg: newBody,
+                text: newBody,
+                enriched: true,
+              };
+              return { ui: { ...s.ui, toasts: next } };
+            }
+
+            // No match — silent no-op. Documented above.
+            return s;
+          }),
         // ---- v1.9.0-beta.3 P3-B writeback confirm latch ----
         markWritebackConfirmed: (source) =>
           set((s) => {

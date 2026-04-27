@@ -4,6 +4,7 @@ import { Sidebar } from "./Sidebar";
 import { CommandPalette } from "@/components/CommandPalette";
 import { ActivityFeed } from "@/components/ActivityFeed";
 import { WhatsNewBanner } from "@/components/WhatsNewBanner";
+import { LicenseTransitionBanner } from "@/components/LicenseTransitionBanner";
 import { AmbientInputObserver } from "@/components/ambient/AmbientInputObserver";
 // v1.9.0-beta.1 — banner + modal hosts. The bus pushes into bannerStack /
 // modalQueue and these hosts read the top entry. The hosts MUST live
@@ -41,8 +42,13 @@ export const MEMORY_REFRESHED_EVENT = "tangerine:memory-refreshed";
  * AppShell layer and a flat local type keeps the bus + AppShell
  * decoupled (the bus exports `SuggestionRequest`, which is a strict
  * superset of this payload).
+ *
+ * v1.9.0 P4-A added `match_id` (UUID v4 stamped on the Rust side at
+ * `evaluate_all` time). Required for Stage 2 enrichment so the
+ * `template_match_enriched` listener can find the suggestion to update.
  */
 interface TemplateMatchPayload {
+  match_id: string;
   template: string;
   body: string;
   confidence: number;
@@ -243,6 +249,9 @@ export function AppShell() {
             // bus's suppression-check derives the scope chain
             // (atom_refs[0] → surface_id → "global") in lockstep with
             // the Rust recompute.
+            // v1.9.0 P4-A: match_id flows through so the Stage 2
+            // enrichment listener (below) can find the same suggestion
+            // by id and swap `body` in place via `updateSuggestion`.
             void pushSuggestion({
               template: p.template,
               body: p.body,
@@ -253,6 +262,7 @@ export function AppShell() {
               surface_id: p.surface_id ?? undefined,
               atom_refs: p.atom_refs,
               priority: p.priority,
+              match_id: p.match_id,
             });
           },
         );
@@ -267,6 +277,67 @@ export function AppShell() {
     };
   }, []);
   // === end v1.9 P2 template event listener ===
+
+  // === v1.9.0 P4-A Stage 2 enrichment listener ===
+  // Listens for `template_match_enriched` Tauri events emitted by the
+  // backend's `templates::registry::evaluate_and_emit_with_enrichment`
+  // path AFTER the rule emit. The payload shares the same `match_id`
+  // as the original rule emit; we forward to `updateSuggestion(...)`
+  // which finds the existing suggestion in bannerStack / modalQueue /
+  // toasts by `match_id` and swaps `body` in place. Visual cue: the
+  // store flips an `enriched: true` flag so the renderer can briefly
+  // play a ti-pulse animation as a "got smarter" signal.
+  //
+  // No-op when:
+  //   * The user already dismissed the suggestion (no match in any
+  //     surface → silent skip in `updateSuggestion`).
+  //   * The Tauri bridge is missing (vitest / browser dev) — same
+  //     try/catch as the rule listener above.
+  //   * The body equals the existing body (e.g. backend re-emitted
+  //     because the cache lost the original) — store still applies the
+  //     update; pulse fires harmlessly.
+  useEffect(() => {
+    let unlistenFn: (() => void) | null = null;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { listen } = await import("@tauri-apps/api/event");
+        if (cancelled) return;
+        unlistenFn = await listen<TemplateMatchPayload>(
+          "template_match_enriched",
+          (e) => {
+            const p = e.payload;
+            if (!p.match_id) return;
+            const ui = useStore.getState().ui;
+            // Pre-snapshot bodies so the telemetry payload reports the
+            // before/after sizes accurately.
+            const before =
+              ui.bannerStack.find((b) => b.match_id === p.match_id)?.body ??
+              ui.modalQueue.find((m) => m.match_id === p.match_id)?.body ??
+              ui.toasts.find((t) => t.match_id === p.match_id)?.msg ??
+              "";
+            ui.updateSuggestion(p.match_id, p.body);
+            // Telemetry — fire-and-forget. The "no-op" path (no
+            // matching entry) still logs as enriched-but-no-target so
+            // analytics can see the late arrivals.
+            void logEvent("suggestion_enriched", {
+              match_id: p.match_id,
+              original_body_size: before.length,
+              new_body_size: p.body.length,
+              latency_ms: 0,
+            });
+          },
+        );
+      } catch {
+        // No Tauri bridge — silent no-op.
+      }
+    })();
+    return () => {
+      cancelled = true;
+      if (unlistenFn) unlistenFn();
+    };
+  }, []);
+  // === end v1.9.0 P4-A Stage 2 enrichment listener ===
 
   // v1.9.0-beta.1 P1-A — user-initiated toast dismiss. Wraps `dismissToast`
   // so the click + Esc paths log telemetry, while the auto-dismiss timer
@@ -317,6 +388,12 @@ export function AppShell() {
         <Sidebar />
 
         <div className="flex min-w-0 flex-1 flex-col">
+          {/* v1.9.0 P4-B — License flip banner. Sits above the WhatsNew /
+              local-only strips so the transition notice is the very first
+              thing in the content column. Self-dismissing; honours
+              localStorage so it never nags after the user clicks ×.
+              Always visible in dev mode for contributor awareness. */}
+          <LicenseTransitionBanner />
           <WhatsNewBanner />
           {localOnly && (
             <div className="ti-no-select flex h-7 items-center justify-center border-b border-[var(--ti-orange-500)]/30 bg-[var(--ti-orange-50)] px-4 text-[11px] font-medium text-[var(--ti-orange-700)] dark:border-[var(--ti-orange-500)]/30 dark:bg-stone-900 dark:text-[var(--ti-orange-500)]">

@@ -67,6 +67,12 @@ export interface SuggestionRequest {
    *  `suppression_check`. Optional — the bus falls back to `surface_id`
    *  then `"global"`. Repo-relative forward-slash paths. */
   atom_refs?: string[];
+  /** v1.9.0 P4-A — Rust-side `TemplateMatch.match_id`. Plumbed end-to-end
+   *  so the Stage 2 enrichment listener can find this suggestion by id
+   *  on the second `template_match_enriched` event and call
+   *  `updateSuggestion(match_id, body)`. Undefined for callers that
+   *  don't originate from a Rust template (purely-frontend pushes). */
+  match_id?: string;
   /** 0..10; higher wins when a banner slot is contested. Default 5. */
   priority?: number;
   /** Optional CTA + handler. Renders a button in banner / toast / modal. */

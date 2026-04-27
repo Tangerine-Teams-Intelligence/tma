@@ -4,6 +4,8 @@
   "version": "1.9.0-beta.3",
   "type": "module",
   "description": "Tangerine AI Teams v1.6 desktop shell (Tauri 2.x + React 19) — adds team memory sync.",
+  "_license_note": "DRAFT — license flip pending CEO + legal counsel ratification. Until ratification the active license is Apache-2.0 (see ../PRIOR-LICENSE-APACHE-2.0.txt). The SPDX expression below encodes the post-ratification dual-license target.",
+  "license": "AGPL-3.0-or-later AND LicenseRef-Tangerine-Commercial",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",

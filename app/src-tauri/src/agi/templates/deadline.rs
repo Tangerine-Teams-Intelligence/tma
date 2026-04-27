@@ -118,6 +118,7 @@ pub(crate) fn evaluate_one(
     );
 
     Some(TemplateMatch {
+        match_id: String::new(),
         template: "deadline_approaching".into(),
         body,
         confidence: CONFIDENCE,

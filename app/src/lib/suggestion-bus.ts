@@ -164,6 +164,9 @@ export function deriveSuppressionScope(req: SuggestionRequest): string {
  * supplies the dismiss handler so `<BannerHost/>` sees the right entry
  * pop off the queue. Callers may still set their own `onDismiss` for
  * side effects — we wrap it.
+ *
+ * v1.9.0 P4-A — `match_id` from the Rust template stamp is forwarded
+ * verbatim so the Stage 2 enrichment listener can swap `body` in place.
  */
 function toBannerProps(
   req: SuggestionRequest,
@@ -177,6 +180,7 @@ function toBannerProps(
     onAccept: req.onAccept,
     priority: req.priority ?? 5,
     dismissable: true,
+    match_id: req.match_id,
   };
 }
 
@@ -195,6 +199,7 @@ function toModalProps(
     // is the user's "they confirmed" callback.
     onConfirm: req.onAccept ?? (() => {}),
     onCancel: () => {},
+    match_id: req.match_id,
   };
 }
 
@@ -332,6 +337,7 @@ export async function pushSuggestion(req: SuggestionRequest): Promise<void> {
           ctaLabel: req.ctaLabel,
           ctaHref: req.ctaHref,
           onAccept: req.onAccept,
+          match_id: req.match_id,
         });
       }
       return;
@@ -348,6 +354,7 @@ export async function pushSuggestion(req: SuggestionRequest): Promise<void> {
         ctaLabel: req.ctaLabel,
         ctaHref: req.ctaHref,
         onAccept: req.onAccept,
+        match_id: req.match_id,
       });
       return;
     }

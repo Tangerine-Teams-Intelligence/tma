@@ -45,6 +45,13 @@ export interface ModalProps {
   onConfirm: () => void;
   /** When true, the confirm button is styled red (destructive action). */
   dangerous?: boolean;
+  /** v1.9.0 P4-A — Rust-side `TemplateMatch.match_id`. The Stage 2
+   *  enrichment pass calls `updateSuggestion(match_id, body)` which
+   *  matches against this field and swaps `body` in place. Undefined
+   *  for one-off confirmations (writeback, etc.) not tied to a template. */
+  match_id?: string;
+  /** v1.9.0 P4-A — pulse animation latch after body swap. */
+  enriched?: boolean;
 }
 
 export function Modal({
