@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation } from "react-router-dom";
-import { Brain, RotateCw, Pencil, Save, X } from "lucide-react";
+import { Brain, RotateCw, Pencil, Save, X, AlertCircle } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 
 import { Button } from "@/components/ui/button";
+import { Skeleton, SkeletonText } from "@/components/ui/Skeleton";
 import { useStore } from "@/lib/store";
 import {
   coThinkerReadBrain,
@@ -50,6 +51,7 @@ export default function CoThinkerRoute() {
   const [content, setContent] = useState<string>("");
   const [status, setStatus] = useState<CoThinkerStatus | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<string>("");
   const [saving, setSaving] = useState(false);
@@ -95,10 +97,13 @@ export default function CoThinkerRoute() {
 
   const refresh = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const [doc, st] = await Promise.all([coThinkerReadBrain(), coThinkerStatus()]);
       setContent(doc);
       setStatus(st);
+    } catch (e: unknown) {
+      setError(typeof e === "string" ? e : (e as Error)?.message ?? "Could not read co-thinker brain doc.");
     } finally {
       setLoading(false);
     }
@@ -227,9 +232,32 @@ export default function CoThinkerRoute() {
         </div>
 
         {loading ? (
-          <p className="font-mono text-[11px] text-stone-500 dark:text-stone-400">
-            Loading brain doc…
-          </p>
+          <div data-testid="co-thinker-loading" aria-busy="true" className="space-y-4">
+            <Skeleton className="h-5 w-1/3" />
+            <SkeletonText lines={4} />
+            <Skeleton className="h-5 w-1/4" />
+            <SkeletonText lines={3} />
+          </div>
+        ) : error ? (
+          <div
+            role="alert"
+            className="rounded-md border border-[var(--ti-danger)]/40 bg-[var(--ti-danger)]/5 p-6 text-center"
+          >
+            <AlertCircle size={20} className="mx-auto text-[var(--ti-danger)]" />
+            <p className="mt-3 text-[12px] text-stone-700 dark:text-stone-300">
+              Couldn't read the brain doc.
+            </p>
+            <p className="mt-1 font-mono text-[10px] text-stone-500 dark:text-stone-400">
+              {error}
+            </p>
+            <button
+              type="button"
+              onClick={() => void refresh()}
+              className="mt-3 rounded border border-stone-300 px-2 py-0.5 font-mono text-[11px] text-stone-700 hover:bg-stone-100 dark:border-stone-700 dark:text-stone-200 dark:hover:bg-stone-800"
+            >
+              Retry
+            </button>
+          </div>
         ) : isEmpty ? (
           <EmptyState
             primaryToolName={primaryToolName}

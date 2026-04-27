@@ -13,8 +13,8 @@ interface Flag {
 
 const SEVERITY_BORDER: Record<Flag["severity"], string> = {
   info: "#5B21B6",
-  warn: "#B8860B",
-  error: "#B83232",
+  warn: "var(--ti-warn)",
+  error: "var(--ti-danger)",
 };
 
 function parseFlags(md: string): Flag[] {

@@ -242,7 +242,7 @@ function StatusDot({ status }: { status: AgentActivity["status"] }) {
   if (status === "error") {
     return (
       <span
-        className="h-1.5 w-1.5 shrink-0 rounded-full bg-rose-500 dark:bg-rose-400"
+        className="h-1.5 w-1.5 shrink-0 rounded-full bg-ti-danger"
         title="Error"
         aria-label="Error"
         data-testid="status-dot-error"

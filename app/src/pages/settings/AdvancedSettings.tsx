@@ -45,7 +45,7 @@ export function AdvancedSettings(_props: Props) {
           </p>
         )}
         {error && (
-          <p className="mt-2 text-xs text-[#B83232]">{error}</p>
+          <p className="mt-2 text-xs text-[var(--ti-danger)]">{error}</p>
         )}
       </section>
 

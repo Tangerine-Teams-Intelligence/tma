@@ -172,7 +172,7 @@ export default function BillingRoute() {
         </CardHeader>
         <CardContent className="space-y-4">
           {error && (
-            <p className="flex items-center gap-1 text-xs text-[#B83232]">
+            <p className="flex items-center gap-1 text-xs text-[var(--ti-danger)]">
               <AlertCircle size={12} /> {error}
             </p>
           )}
@@ -233,7 +233,7 @@ export default function BillingRoute() {
               )}
 
               {isTrialActive && tier === "critical" && (
-                <div className="rounded-md border-2 border-[#B83232]/70 bg-[#B83232]/5 px-4 py-3 text-sm text-[#B83232]">
+                <div className="rounded-md border-2 border-[var(--ti-danger)]/70 bg-[var(--ti-danger)]/5 px-4 py-3 text-sm text-[var(--ti-danger)]">
                   <div className="flex items-start gap-2">
                     <AlertTriangle size={16} className="mt-0.5 shrink-0" />
                     <div className="space-y-2">
@@ -247,7 +247,7 @@ export default function BillingRoute() {
                         size="sm"
                         onClick={subscribe}
                         disabled={busy}
-                        className="bg-[#B83232] hover:bg-[#A02828]"
+                        className="bg-[var(--ti-danger)] hover:bg-[#A02828]"
                       >
                         {busy ? (
                           <>
@@ -269,7 +269,7 @@ export default function BillingRoute() {
                   on `active` state below so the user can't accidentally
                   cancel an expired-but-uncancelled trial. */}
               {status.status === "past_due" && (
-                <div className="rounded-md border-2 border-[#B83232]/60 bg-[#B83232]/5 px-4 py-4 text-sm text-[#B83232]">
+                <div className="rounded-md border-2 border-[var(--ti-danger)]/60 bg-[var(--ti-danger)]/5 px-4 py-4 text-sm text-[var(--ti-danger)]">
                   <div className="flex items-start gap-3">
                     <Lock size={20} className="mt-0.5 shrink-0" />
                     <div className="space-y-2">

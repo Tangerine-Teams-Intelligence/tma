@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   Activity,
+  AlertCircle,
   ArrowLeft,
   ArrowRight,
   Disc,
@@ -17,6 +18,7 @@ import {
 } from "@/lib/views";
 import { TangerineNotes } from "@/components/TangerineNotes";
 import { AlignmentBars } from "@/components/AlignmentBars";
+import { Skeleton } from "@/components/ui/Skeleton";
 
 /**
  * /alignment — real same-screen rate dashboard.
@@ -38,20 +40,34 @@ export default function AlignmentRoute() {
   const [data, setData] = useState<AlignmentData | null>(null);
   const [recent, setRecent] = useState<TimelineEvent[]>([]);
   const [notes, setNotes] = useState<TangerineNote[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const load = () => {
+    setLoading(true);
+    setError(null);
     let cancel = false;
-    void readAlignment().then((d) => {
-      if (cancel) return;
-      setData(d);
-      setNotes(d.notes);
-    });
-    void readTimelineRecent(500).then((d) => {
-      if (!cancel) setRecent(d.events);
-    });
+    Promise.all([readAlignment(), readTimelineRecent(500)])
+      .then(([d, t]) => {
+        if (cancel) return;
+        setData(d);
+        setNotes(d.notes);
+        setRecent(t.events);
+        setLoading(false);
+      })
+      .catch((e: unknown) => {
+        if (cancel) return;
+        setError(typeof e === "string" ? e : (e as Error)?.message ?? "Could not read alignment data.");
+        setLoading(false);
+      });
     return () => {
       cancel = true;
     };
+  };
+
+  useEffect(() => {
+    return load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const stats7d = useMemo(() => statsForRange(recent, 7), [recent]);
@@ -103,6 +119,44 @@ export default function AlignmentRoute() {
           </div>
         </header>
 
+        {error ? (
+          <div
+            role="alert"
+            className="mt-8 rounded-md border border-[var(--ti-danger)]/40 bg-[var(--ti-danger)]/5 p-6 text-center"
+          >
+            <AlertCircle size={20} className="mx-auto text-[var(--ti-danger)]" />
+            <p className="mt-3 text-[12px] text-stone-700 dark:text-stone-300">
+              Couldn't read alignment snapshot.
+            </p>
+            <p className="mt-1 font-mono text-[10px] text-stone-500 dark:text-stone-400">
+              {error}
+            </p>
+            <button
+              type="button"
+              onClick={load}
+              className="mt-3 rounded border border-stone-300 px-2 py-0.5 font-mono text-[11px] text-stone-700 hover:bg-stone-100 dark:border-stone-700 dark:text-stone-200 dark:hover:bg-stone-800"
+            >
+              Retry
+            </button>
+          </div>
+        ) : loading ? (
+          <div className="mt-8 space-y-6" data-testid="alignment-loading" aria-busy="true">
+            <div className="rounded-md border border-stone-200 bg-stone-50 p-6 dark:border-stone-800 dark:bg-stone-900">
+              <Skeleton className="h-3 w-24" />
+              <Skeleton className="mt-4 h-12 w-40" />
+              <Skeleton className="mt-4 h-2 w-full" />
+            </div>
+            <div className="rounded-md border border-stone-200 bg-stone-50 p-6 dark:border-stone-800 dark:bg-stone-900">
+              <Skeleton className="h-3 w-32" />
+              <div className="mt-4 space-y-2">
+                <Skeleton className="h-3 w-full" />
+                <Skeleton className="h-3 w-5/6" />
+                <Skeleton className="h-3 w-2/3" />
+              </div>
+            </div>
+          </div>
+        ) : (
+          <>
         {/* Hero metric */}
         <section className="mt-8 rounded-md border border-stone-200 bg-stone-50 p-6 dark:border-stone-800 dark:bg-stone-900">
           <p className="ti-section-label">Team alignment</p>
@@ -205,6 +259,8 @@ export default function AlignmentRoute() {
             ? new Date(data.latest.computed_at).toLocaleString()
             : "(never)"}
         </p>
+          </>
+        )}
       </div>
     </div>
   );

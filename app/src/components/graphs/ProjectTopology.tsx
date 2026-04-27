@@ -109,9 +109,26 @@ export function ProjectTopology() {
     return (
       <div
         data-testid="topology-graph-loading"
-        className="flex h-[480px] w-full items-center justify-center rounded-md border border-stone-200 bg-stone-50/50 dark:border-stone-800 dark:bg-stone-900/40"
+        aria-busy="true"
+        aria-label="Project topology loading"
+        className="relative h-[480px] w-full overflow-hidden rounded-md border border-stone-200 bg-stone-50/50 dark:border-stone-800 dark:bg-stone-900/40"
       >
-        <p className="font-mono text-[11px] text-stone-500 dark:text-stone-400">
+        {/* Three project squares with branched member dots — close to
+            the resolved topology shape so the layout doesn't reflow. */}
+        <div className="absolute left-1/2 top-12 -translate-x-1/2 flex gap-12">
+          <div className="h-12 w-12 animate-pulse rounded-md bg-[var(--ti-paper-200)]" />
+          <div className="h-12 w-12 animate-pulse rounded-md bg-[var(--ti-paper-200)]" />
+          <div className="h-12 w-12 animate-pulse rounded-md bg-[var(--ti-paper-200)]" />
+        </div>
+        <div className="absolute inset-x-12 top-40 grid grid-cols-3 justify-items-center gap-x-4 gap-y-3">
+          {Array.from({ length: 9 }).map((_, i) => (
+            <div
+              key={i}
+              className="h-8 w-8 animate-pulse rounded-full bg-[var(--ti-paper-200)]"
+            />
+          ))}
+        </div>
+        <p className="absolute bottom-4 left-1/2 -translate-x-1/2 font-mono text-[11px] text-stone-500 dark:text-stone-400">
           Loading topology…
         </p>
       </div>

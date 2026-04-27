@@ -343,7 +343,7 @@ function QuorumBar({
       </div>
       <div className="relative h-2 w-full overflow-hidden rounded bg-stone-200 dark:bg-stone-800">
         <div
-          className="absolute inset-y-0 left-0 bg-emerald-500"
+          className="absolute inset-y-0 left-0 bg-ti-success"
           style={{ width: `${pct}%` }}
         />
         <div

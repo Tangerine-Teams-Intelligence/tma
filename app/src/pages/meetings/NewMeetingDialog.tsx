@@ -153,12 +153,12 @@ export function NewMeetingDialog({ open, onOpenChange, onCreated, team }: Props)
               })}
             </div>
             {participants.length === 0 && (
-              <p className="mt-1 text-xs text-[#B83232]">Pick at least one participant.</p>
+              <p className="mt-1 text-xs text-[var(--ti-danger)]">Pick at least one participant.</p>
             )}
           </div>
 
           {error && (
-            <p className="text-xs text-[#B83232]" role="alert">
+            <p className="text-xs text-[var(--ti-danger)]" role="alert">
               {error}
             </p>
           )}

@@ -341,7 +341,7 @@ export default function EmailSourceRoute() {
           <p
             className={
               "mt-3 flex items-center gap-1 text-xs " +
-              (testResult.ok ? "text-[#2D8659]" : "text-[#B83232]")
+              (testResult.ok ? "text-[var(--ti-success)]" : "text-[var(--ti-danger)]")
             }
           >
             {testResult.ok ? <CheckCircle2 size={12} /> : <AlertCircle size={12} />}

@@ -283,7 +283,7 @@ export function PersonalAgentsSettings() {
                       {last.errors.length > 0 && (
                         <>
                           {", errors: "}
-                          <span className="text-[#B83232]">{last.errors.length}</span>
+                          <span className="text-[var(--ti-danger)]">{last.errors.length}</span>
                         </>
                       )}
                     </p>

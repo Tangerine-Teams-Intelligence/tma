@@ -106,7 +106,7 @@ export function AIToolsSettings() {
             Re-detect
           </Button>
           {error ? (
-            <span className="text-xs text-[#B83232]">{error}</span>
+            <span className="text-xs text-[var(--ti-danger)]">{error}</span>
           ) : null}
         </div>
 

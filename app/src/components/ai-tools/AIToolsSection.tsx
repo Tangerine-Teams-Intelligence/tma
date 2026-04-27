@@ -137,7 +137,7 @@ function StatusDot({ status }: { status: AIToolStatus["status"] }) {
   if (status === "needs_setup" || status === "browser_ext_required") {
     return (
       <span
-        className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500 dark:bg-amber-400"
+        className="h-1.5 w-1.5 shrink-0 rounded-full bg-ti-warn"
         title={status === "needs_setup" ? "Needs setup" : "Needs browser ext"}
         aria-label={status === "needs_setup" ? "Needs setup" : "Needs browser extension"}
       />

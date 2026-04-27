@@ -15,6 +15,7 @@ import { Bot, FileText, Users, Diamond as DiamondIcon } from "lucide-react";
 
 import { listAtoms, type AtomEntry } from "@/lib/atoms";
 import { useStore } from "@/lib/store";
+import { Skeleton } from "@/components/ui/Skeleton";
 import {
   layoutGraph,
   rankForKind,
@@ -101,11 +102,32 @@ export function WorkflowGraph() {
     return (
       <div
         data-testid="workflow-graph-loading"
-        className="flex h-[480px] w-full items-center justify-center rounded-md border border-stone-200 bg-stone-50/50 dark:border-stone-800 dark:bg-stone-900/40"
+        aria-busy="true"
+        aria-label="Workflow graph loading"
+        className="relative h-[480px] w-full overflow-hidden rounded-md border border-stone-200 bg-stone-50/50 dark:border-stone-800 dark:bg-stone-900/40"
       >
-        <p className="font-mono text-[11px] text-stone-500 dark:text-stone-400">
-          Loading workflow…
-        </p>
+        {/* Faux-graph skeleton — three node-clusters + edge bars so the
+            loading shell roughly matches the resolved layout density. */}
+        <div className="absolute left-12 top-16 flex flex-col gap-3">
+          <Skeleton className="h-9 w-28 rounded-md" />
+          <Skeleton className="h-9 w-32 rounded-md" />
+          <Skeleton className="h-9 w-24 rounded-md" />
+        </div>
+        <div className="absolute left-1/2 top-12 -translate-x-1/2 flex flex-col gap-3">
+          <Skeleton className="h-9 w-9 rounded-full" />
+          <Skeleton className="h-9 w-9 rotate-45" />
+          <Skeleton className="h-9 w-9 rounded-full" />
+        </div>
+        <div className="absolute right-12 top-16 flex flex-col gap-3">
+          <Skeleton className="h-9 w-28 rounded-md" />
+          <Skeleton className="h-9 w-24 rounded-md" />
+          <Skeleton className="h-9 w-32 rounded-md" />
+        </div>
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2">
+          <p className="font-mono text-[11px] text-stone-500 dark:text-stone-400">
+            Loading workflow…
+          </p>
+        </div>
       </div>
     );
   }

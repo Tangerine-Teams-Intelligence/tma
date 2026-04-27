@@ -263,13 +263,13 @@ export default function NotionSourceRoute() {
               </p>
             )}
             {validation && validation.ok && (
-              <p className="flex items-center gap-1 text-xs text-[#2D8659]">
+              <p className="flex items-center gap-1 text-xs text-[var(--ti-success)]">
                 <CheckCircle2 size={12} /> Connected
                 {validation.botName ? ` — ${validation.botName}` : ""}.
               </p>
             )}
             {validation && !validation.ok && (
-              <p className="flex items-center gap-1 text-xs text-[#B83232]">
+              <p className="flex items-center gap-1 text-xs text-[var(--ti-danger)]">
                 <AlertCircle size={12} /> {validation.error ?? "Validation failed."}
               </p>
             )}

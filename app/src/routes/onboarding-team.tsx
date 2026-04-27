@@ -271,7 +271,10 @@ export default function OnboardingTeamRoute() {
         <h1 className="font-display text-2xl tracking-tight text-stone-900 dark:text-stone-100">
           Something went wrong
         </h1>
-        <p className="mt-3 flex items-center gap-2 text-sm text-rose-600 dark:text-rose-400">
+        <p
+          role="alert"
+          className="mt-3 flex items-center gap-2 text-sm text-[var(--ti-danger)]"
+        >
           <AlertCircle size={14} /> {error}
         </p>
         <div className="mt-6 flex gap-3">
@@ -286,9 +289,44 @@ export default function OnboardingTeamRoute() {
 
   return (
     <FullPage>
-      <h1 className="font-display text-2xl tracking-tight text-stone-900 dark:text-stone-100">
+      {/* === polish onboarding refine === */}
+      {/* Hero state: empty memory + first-launch user. Steers them straight
+          at "Solo + connect first source" (the actual fast path). The full
+          picker is still below for users who want Team-from-day-one. */}
+      <div
+        className="mb-6 rounded-md border border-[var(--ti-orange-500)]/40 bg-[var(--ti-orange-50)] p-5 dark:bg-stone-900"
+        data-testid="onboarding-hero"
+      >
+        <p className="font-mono text-[10px] uppercase tracking-wider text-[var(--ti-orange-700)] dark:text-[var(--ti-orange-500)]">
+          Welcome
+        </p>
+        <h1 className="mt-2 font-display text-2xl tracking-tight text-stone-900 dark:text-stone-100">
+          Solo + a connected source = working CoS in 30 seconds.
+        </h1>
+        <p className="mt-2 text-sm leading-relaxed text-stone-700 dark:text-stone-300">
+          Pick Solo, connect Discord / GitHub / Slack, and the daemon starts
+          writing your team memory while you keep working. Switch to Team mode
+          from Settings whenever you're ready to share.
+        </p>
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <Button onClick={chooseSolo} data-testid="onboarding-quickstart">
+            Start solo + connect a source <ArrowRight size={14} />
+          </Button>
+          <button
+            type="button"
+            onClick={chooseSolo}
+            data-testid="onboarding-skip"
+            className="rounded px-2 py-1 font-mono text-[11px] text-stone-500 underline-offset-2 hover:text-stone-900 hover:underline dark:text-stone-400 dark:hover:text-stone-100"
+          >
+            Skip onboarding for now
+          </button>
+        </div>
+      </div>
+      {/* === end polish onboarding refine === */}
+
+      <h2 className="font-display text-xl tracking-tight text-stone-900 dark:text-stone-100">
         Where will your team's memory live?
-      </h1>
+      </h2>
       <p className="mt-2 text-sm text-stone-700 dark:text-stone-300">
         Tangerine stores meetings, decisions, and AI context as markdown files
         your team can share via git.

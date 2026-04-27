@@ -1,6 +1,6 @@
 # Component Inventory — Tangerine Meeting-Live
 
-**Status:** Wave 3 cross-cut audit (2026-04-26)
+**Status:** Polish wave (2026-04-26 PM)
 **Spec:** `VISUAL_DESIGN_SPEC.md` v2.0
 **Owner:** UI/UX
 
@@ -83,7 +83,7 @@ App-shell scaffolding.
 |---|---|---|---|---|
 | `AppShell` | `layout/AppShell.tsx` | `tailwind-stone` | OK | Top-level `bg-stone-50 dark:bg-stone-950` flips via paired classes. Toast strip uses `animate-fade-in`. |
 | `Sidebar` | `layout/Sidebar.tsx` | `tailwind-stone` | OK | Left nav. Uses paired stone classes; AI Tools section + active-agents section embedded. |
-| `ActiveAgentsSection` | `layout/ActiveAgentsSection.tsx` | `tailwind-stone` | OK | Status dots use `bg-emerald-500` / `bg-amber-500` / `bg-rose-500`. Eligible to migrate to `bg-ti-success` / `bg-ti-warn` / `bg-ti-danger` (new tokens this wave). |
+| `ActiveAgentsSection` | `layout/ActiveAgentsSection.tsx` | `tokens` | OK | Status dots use `bg-ti-danger` (and the canonical `ti-live-dot`). Polish wave migrated rose-500 → semantic token. |
 
 ---
 
@@ -91,7 +91,7 @@ App-shell scaffolding.
 
 | Component | Path | Tokens | Dark mode | Notes |
 |---|---|---|---|---|
-| `AIToolsSection` | `ai-tools/AIToolsSection.tsx` | `tailwind-stone` | OK | Tool list inside Sidebar. |
+| `AIToolsSection` | `ai-tools/AIToolsSection.tsx` | `tokens` | OK | Tool list inside Sidebar. Polish wave migrated amber-500 → `bg-ti-warn`. |
 | `AIToolSetupPage` | `ai-tools/AIToolSetupPage.tsx` | `tailwind-stone` | partial | Setup form uses paired stone classes. Some error-state colors are still raw hex; eligible for `var(--ti-danger)` migration. |
 
 ---
@@ -161,14 +161,14 @@ Route components live in `app/src/routes/*.tsx`. They are thin wrappers around t
 | `canvas.tsx` | `tailwind-stone` | Hosts `CanvasView`. |
 | `co-thinker.tsx` | `tailwind-stone` | Co-thinker reasoning log. |
 | `alignment.tsx` | `tailwind-stone` | Alignment bars. |
-| `billing.tsx` | `mixed` | Trial-countdown banner uses `var(--ti-orange-500)/30` + `var(--ti-orange-50)`. Critical-tier urgency uses `#B83232` raw hex (eligible for `var(--ti-danger)`). |
-| `auth.tsx` | `mixed` | Sign-in form. Error text uses `text-[#B83232]` raw hex (eligible for `var(--ti-danger)`). |
+| `billing.tsx` | `tokens` | Trial-countdown banner uses `var(--ti-orange-500)/30` + `var(--ti-orange-50)`. Critical-tier urgency uses `var(--ti-danger)` (Polish wave). |
+| `auth.tsx` | `tokens` | Sign-in form. Error text uses `var(--ti-danger)` (Polish wave). |
 | `marketplace/index.tsx` | `tailwind-stone` | Template grid. |
 | `marketplace/[id].tsx` | `tailwind-stone` | Template detail. |
 | `decisions/lineage.tsx` | `tailwind-stone` | Hosts `DecisionLineageTree`. |
 | `projects/topology.tsx` | `tailwind-stone` | Hosts `ProjectTopology`. |
 | `people/social.tsx` | `tailwind-stone` | Hosts `SocialGraph`. |
-| `sources/*.tsx` (calendar, discord, email, github, linear, loom, notion, slack, voice-notes, zoom) | `mixed` | Each source connector uses `text-[#2D8659]` (success) and `text-[#B83232]` (error) for connection-state lines. Eligible for `var(--ti-success)` / `var(--ti-danger)` migration. |
+| `sources/*.tsx` (calendar, discord, email, github, linear, loom, notion, slack, voice-notes, zoom) | `tokens` | Each source connector uses `text-[var(--ti-success)]` (success) and `text-[var(--ti-danger)]` (error) — Polish wave migrated from raw hex. |
 
 ---
 
@@ -201,13 +201,32 @@ Per spec §6:
 
 ## §15 Migration backlog (ordered by impact)
 
-These are **incremental** opportunities surfaced by this audit. They are intentionally NOT done in this wave per spec ("DO NOT do massive sweeping renames — incremental, safe replacements only"). Future waves can pick them up one component at a time when those files are otherwise touched.
+The Polish wave (2026-04-26 PM) closed items 1, 2, and 5 below. Counts:
 
-1. **Source connector status lines** (`routes/sources/*.tsx`, ~10 files). Replace `text-[#2D8659]` → `text-[var(--ti-success)]` and `text-[#B83232]` → `text-[var(--ti-danger)]`. Highest reach (every source route).
-2. **`auth.tsx` + `billing.tsx` error states**. Replace `text-[#B83232]` and `bg-[#B83232]/5` → `var(--ti-danger)` token form. Two routes, ~6 sites.
+| Wave 3 audit | Polish wave | Delta |
+|---|---|---|
+| ~30 raw-hex sites flagged in TSX | 0 raw `#B83232 / #2D8659 / #FFC107` in TSX | -57 sites in 22 files (Tailwind class-form replacements) + 4 sites in 3 files (string-literal replacements) = **-61 sites total** |
+| `bg-emerald/amber/rose-500` status dots | `bg-ti-success/warn/danger` | -3 sites in `ActiveAgentsSection`, `AIToolsSection`, `ReviewPanel` |
+
+Remaining incremental items (not blocking):
+
+1. ~~**Source connector status lines**~~ ✅ closed Polish wave.
+2. ~~**`auth.tsx` + `billing.tsx` error states**~~ ✅ closed Polish wave.
 3. **`StatePill.tsx` meeting-state palette**. Currently a 9-state hardcoded hex map (`#E7E5E4`, `#DBEAFE`, etc.). Wave 3 token set covers `success/warn/danger`; `live`/`pending`/`reviewed`/`merged` etc. don't have direct tokens. Defer until categorical-state tokens are added (likely v3.5 enterprise themes).
 4. **`Card` UI primitive** to default to `bg-[var(--ti-bg-elevated)]` per spec §2 base card.
-5. **`ActiveAgentsSection` status dots** to use Wave 3 `bg-ti-success` / `bg-ti-warn` / `bg-ti-danger`.
+5. ~~**`ActiveAgentsSection` status dots**~~ ✅ closed Polish wave.
+6. **`Modal` destructive CTA** in `suggestions/Modal.tsx` still uses `rose-500/600/300` for the dangerous-confirm path. Categorical tone is intentional contrast vs. inline `text-[var(--ti-danger)]`; defer until danger-shade tokens land.
+7. **`marketplace/index.tsx` LaunchGateBanner** uses categorical `amber-*` (paywall meter, not warn semantic). Intentional accent, no token migration needed.
+
+## §17 Polish wave additions (2026-04-26 PM)
+
+* **`Skeleton` UI primitive** — `components/ui/Skeleton.tsx`. Renders an `aria-hidden` placeholder with `animate-pulse`, plus `SkeletonText` (multi-line stack) and `SkeletonCard` (header + 3 lines). Used by `/inbox`, `/alignment`, `/reviews`, `/canvas`, `/marketplace`, `/threads`, `/people`, `/projects`, `/co-thinker`, and the four graph surfaces (`WorkflowGraph`, `DecisionLineageTree`, `SocialGraph`, `ProjectTopology`).
+* **Empty / loading / error state consistency** — every list / data route now renders the same shape on each branch:
+  - **Loading** — Skeleton placeholder shaped like the resolved layout (`aria-busy="true"`, `data-testid="<route>-loading"`).
+  - **Error** — `role="alert"`, `AlertCircle` icon, single-line cause + retry button. Retry triggers a re-fetch via `setRefreshKey((k) => k + 1)`.
+  - **Empty** — domain-specific icon, heading + 1-line subtitle in builder voice (no generic "Loading…" or "No data.").
+* **A11y polish** — added a global `:focus-visible` default to `index.css` so any interactive element without a bespoke ring picks up a token-driven 2px outline. Replaced `text-rose-600 dark:text-rose-400` in `inbox.tsx` AlertCard with `text-[var(--ti-danger)]` (now respects dark-mode token swap rather than forking dark variant). `onboarding-team.tsx` error path got a proper `role="alert"`.
+* **Onboarding hero state** — `onboarding-team.tsx` now opens with a hero card "Solo + a connected source = working CoS in 30 seconds." with two CTAs: a primary `Start solo + connect a source` button and a prominent `Skip onboarding for now` text link. Marker block: `// === polish onboarding refine ===`.
 
 ---
 

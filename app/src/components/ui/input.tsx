@@ -13,7 +13,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
       className={cn(
         "flex h-10 w-full rounded-md border bg-[var(--ti-paper-50)] px-3 py-2 text-sm text-[var(--ti-ink-900)] placeholder:text-[var(--ti-ink-500)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50",
         invalid
-          ? "border-[#B83232] focus-visible:ring-[#B83232]"
+          ? "border-[var(--ti-danger)] focus-visible:ring-[var(--ti-danger)]"
           : "border-[var(--ti-border-default)]",
         className
       )}

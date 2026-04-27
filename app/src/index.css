@@ -275,3 +275,15 @@ body {
 [lang="zh-Hans"] body {
   line-height: 1.57;
 }
+
+/* Polish wave — global :focus-visible default. Any interactive element
+   that doesn't define its own focus-ring still picks up a clear, branded
+   outline so keyboard users always see where focus lands. The token-
+   driven outline matches the design-system orange ring without leaking
+   the raw hex into call sites. Buttons / inputs that already define
+   focus-visible:* utilities keep their bespoke ring (those override). */
+:where(a, button, [role="button"], summary, [tabindex]:not([tabindex="-1"])):focus-visible {
+  outline: 2px solid var(--ti-orange-500);
+  outline-offset: 2px;
+  border-radius: 4px;
+}

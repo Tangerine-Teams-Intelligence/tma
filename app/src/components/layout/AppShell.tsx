@@ -471,7 +471,7 @@ export function AppShell() {
           {/* === v2.5 trial gate === */}
           {/* Paywall hint — surfaces when trial expired and no paid sub. */}
           {billingStatusVal === "past_due" && (
-            <div className="ti-no-select flex h-7 items-center justify-center gap-2 border-b border-[#B83232]/30 bg-[#B83232]/5 px-4 text-[11px] font-medium text-[#B83232]">
+            <div className="ti-no-select flex h-7 items-center justify-center gap-2 border-b border-[var(--ti-danger)]/30 bg-[var(--ti-danger)]/5 px-4 text-[11px] font-medium text-[var(--ti-danger)]">
               Trial expired · Upgrade to keep cloud sync running ·{" "}
               <a href="/billing" className="underline-offset-2 hover:underline">
                 Open billing

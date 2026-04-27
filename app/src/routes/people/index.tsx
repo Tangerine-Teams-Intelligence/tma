@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Users } from "lucide-react";
+import { Users, AlertCircle } from "lucide-react";
 import {
   readPeopleList,
   formatRelativeTime,
@@ -8,6 +8,7 @@ import {
   type TangerineNote,
 } from "@/lib/views";
 import { TangerineNotes } from "@/components/TangerineNotes";
+import { Skeleton } from "@/components/ui/Skeleton";
 
 /**
  * /people — list of every alias Tangerine has captured atoms for. Auto-
@@ -21,19 +22,29 @@ export default function PeopleListRoute() {
   const [rows, setRows] = useState<PersonRow[]>([]);
   const [notes, setNotes] = useState<TangerineNote[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     let cancel = false;
-    void readPeopleList().then((d) => {
-      if (cancel) return;
-      setRows(d.people);
-      setNotes(d.notes);
-      setLoading(false);
-    });
+    setLoading(true);
+    setError(null);
+    readPeopleList()
+      .then((d) => {
+        if (cancel) return;
+        setRows(d.people);
+        setNotes(d.notes);
+        setLoading(false);
+      })
+      .catch((e: unknown) => {
+        if (cancel) return;
+        setError(typeof e === "string" ? e : (e as Error)?.message ?? "Could not read people.");
+        setLoading(false);
+      });
     return () => {
       cancel = true;
     };
-  }, []);
+  }, [refreshKey]);
 
   return (
     <div className="bg-stone-50 dark:bg-stone-950">
@@ -57,15 +68,40 @@ export default function PeopleListRoute() {
 
         <section className="mt-8 overflow-hidden rounded-md border border-stone-200 dark:border-stone-800">
           {loading ? (
-            <p className="px-4 py-6 text-center text-[12px] text-stone-500 dark:text-stone-400">
-              Loading…
-            </p>
+            <div className="space-y-2 px-4 py-4" aria-busy="true" data-testid="people-loading">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="grid grid-cols-[2fr_1fr_1fr_1fr] items-center gap-3">
+                  <Skeleton className="h-3 w-24" />
+                  <Skeleton className="ml-auto h-3 w-8" />
+                  <Skeleton className="ml-auto h-3 w-12" />
+                  <Skeleton className="ml-auto h-3 w-10" />
+                </div>
+              ))}
+            </div>
+          ) : error ? (
+            <div role="alert" className="px-4 py-8 text-center">
+              <AlertCircle size={20} className="mx-auto text-[var(--ti-danger)]" />
+              <p className="mt-3 text-[12px] text-stone-700 dark:text-stone-300">
+                Couldn't read people.
+              </p>
+              <p className="mt-1 font-mono text-[10px] text-stone-500 dark:text-stone-400">
+                {error}
+              </p>
+              <button
+                type="button"
+                onClick={() => setRefreshKey((k) => k + 1)}
+                className="mt-3 rounded border border-stone-300 px-2 py-0.5 font-mono text-[11px] text-stone-700 hover:bg-stone-100 dark:border-stone-700 dark:text-stone-200 dark:hover:bg-stone-800"
+              >
+                Retry
+              </button>
+            </div>
           ) : rows.length === 0 ? (
             <div className="px-4 py-8 text-center">
-              <p className="text-[12px] text-stone-500 dark:text-stone-400">
+              <Users size={20} className="mx-auto text-stone-400" />
+              <p className="mt-3 text-[12px] text-stone-700 dark:text-stone-300">
                 No people captured yet.
               </p>
-              <p className="mt-2 text-[11px] text-stone-400 dark:text-stone-500">
+              <p className="mt-2 text-[11px] text-stone-500 dark:text-stone-400">
                 Connect a source — once an atom mentions @someone, they'll show up here.
               </p>
             </div>

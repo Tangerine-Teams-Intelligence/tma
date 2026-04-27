@@ -1,0 +1,338 @@
+
+> tangerine-meeting-app@1.9.0-beta.3 tauri:build
+> tauri build
+
+        Info Looking up installed tauri packages to check mismatched versions...
+     Running beforeBuildCommand `npm run build`
+
+> tangerine-meeting-app@1.9.0-beta.3 build
+> tsc --noEmit && vite build
+
+[36mvite v5.4.21 [32mbuilding for production...[36m[39m
+transforming...
+[32m✓[39m 2119 modules transformed.
+rendering chunks...
+[1m[33m[plugin:vite:reporter][39m[22m [33m[plugin vite:reporter] 
+(!) C:/Users/daizhe zo/Desktop/meeting-live/app/node_modules/@tauri-apps/api/core.js is dynamically imported by C:/Users/daizhe zo/Desktop/meeting-live/app/src/lib/atoms.ts, C:/Users/daizhe zo/Desktop/meeting-live/app/src/lib/git.ts, C:/Users/daizhe zo/Desktop/meeting-live/app/src/lib/github.ts, C:/Users/daizhe zo/Desktop/meeting-live/app/src/lib/tauri.ts, C:/Users/daizhe zo/Desktop/meeting-live/app/src/lib/views.ts but also statically imported by C:/Users/daizhe zo/Desktop/meeting-live/app/node_modules/@tauri-apps/api/event.js, C:/Users/daizhe zo/Desktop/meeting-live/app/node_modules/@tauri-apps/api/path.js, C:/Users/daizhe zo/Desktop/meeting-live/app/node_modules/@tauri-apps/plugin-fs/dist-js/index.js, dynamic import will not move module into another chunk.
+[39m
+[1m[33m[plugin:vite:reporter][39m[22m [33m[plugin vite:reporter] 
+(!) C:/Users/daizhe zo/Desktop/meeting-live/app/node_modules/@tauri-apps/plugin-fs/dist-js/index.js is dynamically imported by C:/Users/daizhe zo/Desktop/meeting-live/app/src/components/graphs/DecisionLineageTree.tsx, C:/Users/daizhe zo/Desktop/meeting-live/app/src/components/graphs/ProjectTopology.tsx, C:/Users/daizhe zo/Desktop/meeting-live/app/src/components/graphs/SocialGraph.tsx but also statically imported by C:/Users/daizhe zo/Desktop/meeting-live/app/src/lib/memory.ts, dynamic import will not move module into another chunk.
+[39m
+[1m[33m[plugin:vite:reporter][39m[22m [33m[plugin vite:reporter] 
+(!) C:/Users/daizhe zo/Desktop/meeting-live/app/src/lib/tauri.ts is dynamically imported by C:/Users/daizhe zo/Desktop/meeting-live/app/src/pages/meetings/components/ActionBar.tsx but also statically imported by C:/Users/daizhe zo/Desktop/meeting-live/app/src/App.tsx, C:/Users/daizhe zo/Desktop/meeting-live/app/src/components/ai-tools/AIToolSetupPage.tsx, C:/Users/daizhe zo/Desktop/meeting-live/app/src/components/ambient/AmbientInputObserver.tsx, C:/Users/daizhe zo/Desktop/meeting-live/app/src/components/canvas/AgiPeer.tsx, C:/Users/daizhe zo/Desktop/meeting-live/app/src/components/canvas/AgiStickyAffordances.tsx, C:/Users/daizhe zo/Desktop/meeting-live/app/src/components/canvas/CanvasView.tsx, C:/Users/daizhe zo/Desktop/meeting-live/app/src/components/co-thinker/HomeStrip.tsx, C:/Users/daizhe zo/Desktop/meeting-live/app/src/components/layout/ActiveAgentsSection.tsx, C:/Users/daizhe zo/Desktop/meeting-live/app/src/components/layout/AppShell.tsx, C:/Users/daizhe zo/Desktop/meeting-live/app/src/components/marketplace/TemplateDetail.tsx, C:/Users/daizhe zo/Desktop/meeting-live/app/src/components/review/ReviewPanel.tsx, C:/Users/daizhe zo/Desktop/meeting-live/app/src/lib/ai-tools.ts, C:/Users/daizhe zo/Desktop/meeting-live/app/src/lib/suggestion-bus.ts, C:/Users/daizhe zo/Desktop/meeting-live/app/src/lib/telemetry.ts, C:/Users/daizhe zo/Desktop/meeting-live/app/src/pages/meetings/ApplyStatus.tsx, C:/Users/daizhe zo/Desktop/meeting-live/app/src/pages/meetings/LivePanel.tsx, C:/Users/daizhe zo/Desktop/meeting-live/app/src/pages/meetings/MeetingDetail.tsx, C:/Users/daizhe zo/Desktop/meeting-live/app/src/pages/meetings/ReviewView.tsx, C:/Users/daizhe zo/Desktop/meeting-live/app/src/pages/meetings/components/TranscriptTail.tsx, C:/Users/daizhe zo/Desktop/meeting-live/app/src/pages/settings/AGISettings.tsx, C:/Users/daizhe zo/Desktop/meeting-live/app/src/pages/settings/AdvancedSettings.tsx, C:/Users/daizhe zo/Desktop/meeting-live/app/src/pages/settings/PersonalAgentsSettings.tsx, C:/Users/daizhe zo/Desktop/meeting-live/app/src/pages/settings/Settings.tsx, C:/Users/daizhe zo/Desktop/meeting-live/app/src/routes/auth.tsx, C:/Users/daizhe zo/Desktop/meeting-live/app/src/routes/billing.tsx, C:/Users/daizhe zo/Desktop/meeting-live/app/src/routes/canvas.tsx, C:/Users/daizhe zo/Desktop/meeting-live/app/src/routes/co-thinker.tsx, C:/Users/daizhe zo/Desktop/meeting-live/app/src/routes/join-team.tsx, C:/Users/daizhe zo/Desktop/meeting-live/app/src/routes/marketplace/[id].tsx, C:/Users/daizhe zo/Desktop/meeting-live/app/src/routes/marketplace/index.tsx, C:/Users/daizhe zo/Desktop/meeting-live/app/src/routes/memory.tsx, C:/Users/daizhe zo/Desktop/meeting-live/app/src/routes/onboarding-team.tsx, C:/Users/daizhe zo/Desktop/meeting-live/app/src/routes/reviews.tsx, C:/Users/daizhe zo/Desktop/meeting-live/app/src/routes/sources/calendar.tsx, C:/Users/daizhe zo/Desktop/meeting-live/app/src/routes/sources/discord.tsx, C:/Users/daizhe zo/Desktop/meeting-live/app/src/routes/sources/email.tsx, C:/Users/daizhe zo/Desktop/meeting-live/app/src/routes/sources/external.tsx, C:/Users/daizhe zo/Desktop/meeting-live/app/src/routes/sources/github.tsx, C:/Users/daizhe zo/Desktop/meeting-live/app/src/routes/sources/linear.tsx, C:/Users/daizhe zo/Desktop/meeting-live/app/src/routes/sources/loom.tsx, C:/Users/daizhe zo/Desktop/meeting-live/app/src/routes/sources/notion.tsx, C:/Users/daizhe zo/Desktop/meeting-live/app/src/routes/sources/slack.tsx, C:/Users/daizhe zo/Desktop/meeting-live/app/src/routes/sources/voice-notes.tsx, C:/Users/daizhe zo/Desktop/meeting-live/app/src/routes/sources/zoom.tsx, dynamic import will not move module into another chunk.
+[39m
+[1m[33m[plugin:vite:reporter][39m[22m [33m[plugin vite:reporter] 
+(!) C:/Users/daizhe zo/Desktop/meeting-live/app/src/lib/telemetry.ts is dynamically imported by C:/Users/daizhe zo/Desktop/meeting-live/app/src/lib/store.ts but also statically imported by C:/Users/daizhe zo/Desktop/meeting-live/app/src/components/ambient/InlineReaction.tsx, C:/Users/daizhe zo/Desktop/meeting-live/app/src/components/canvas/AgiStickyAffordances.tsx, C:/Users/daizhe zo/Desktop/meeting-live/app/src/components/canvas/CanvasView.tsx, C:/Users/daizhe zo/Desktop/meeting-live/app/src/components/layout/AppShell.tsx, C:/Users/daizhe zo/Desktop/meeting-live/app/src/lib/suggestion-bus.ts, C:/Users/daizhe zo/Desktop/meeting-live/app/src/routes/co-thinker.tsx, C:/Users/daizhe zo/Desktop/meeting-live/app/src/routes/memory.tsx, C:/Users/daizhe zo/Desktop/meeting-live/app/src/routes/sources/calendar.tsx, C:/Users/daizhe zo/Desktop/meeting-live/app/src/routes/sources/github.tsx, C:/Users/daizhe zo/Desktop/meeting-live/app/src/routes/sources/linear.tsx, C:/Users/daizhe zo/Desktop/meeting-live/app/src/routes/sources/slack.tsx, dynamic import will not move module into another chunk.
+[39m
+computing gzip size...
+[2mdist/[22m[32mindex.html                 [39m[1m[2m    0.40 kB[22m[1m[22m[2m │ gzip:   0.27 kB[22m
+[2mdist/[22m[35massets/index-DU16c9or.css  [39m[1m[2m   92.43 kB[22m[1m[22m[2m │ gzip:  12.78 kB[22m
+[2mdist/[22m[36massets/event-WqLzJqm4.js   [39m[1m[2m    1.31 kB[22m[1m[22m[2m │ gzip:   0.64 kB[22m
+[2mdist/[22m[36massets/index-BAZ_61J3.js   [39m[1m[33m1,078.62 kB[39m[22m[2m │ gzip: 304.33 kB[22m
+[33m
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.[39m
+[32m✓ built in 9.05s[39m
+   Compiling cfg-if v1.0.4
+   Compiling windows-link v0.2.1
+   Compiling windows-sys v0.61.2
+   Compiling serde_core v1.0.228
+   Compiling smallvec v1.15.1
+   Compiling itoa v1.0.18
+   Compiling stable_deref_trait v1.2.1
+   Compiling bytes v1.11.1
+   Compiling zerofrom v0.1.7
+   Compiling memchr v2.8.0
+   Compiling once_cell v1.21.4
+   Compiling pin-project-lite v0.2.17
+   Compiling windows-link v0.1.3
+   Compiling writeable v0.6.3
+   Compiling litemap v0.8.2
+   Compiling utf8_iter v1.0.4
+   Compiling scopeguard v1.2.0
+   Compiling percent-encoding v2.3.2
+   Compiling log v0.4.29
+   Compiling parking_lot_core v0.9.12
+   Compiling icu_normalizer_data v2.2.0
+   Compiling icu_properties_data v2.2.0
+   Compiling yoke v0.8.2
+   Compiling crossbeam-utils v0.8.21
+   Compiling lock_api v0.4.14
+   Compiling windows-result v0.3.4
+   Compiling windows-strings v0.4.2
+   Compiling regex-syntax v0.8.10
+   Compiling tracing-core v0.1.36
+   Compiling form_urlencoded v1.2.2
+   Compiling libc v0.2.186
+   Compiling zmij v1.0.21
+   Compiling windows_x86_64_msvc v0.52.6
+   Compiling windows-threading v0.1.0
+   Compiling byteorder v1.5.0
+   Compiling thiserror v2.0.18
+   Compiling powerfmt v0.2.0
+   Compiling raw-window-handle v0.6.2
+   Compiling thiserror v1.0.69
+   Compiling getrandom v0.4.2
+   Compiling windows_x86_64_msvc v0.53.1
+   Compiling unic-common v0.9.0
+   Compiling alloc-no-stdlib v2.0.4
+   Compiling unic-char-range v0.9.0
+   Compiling tauri v2.10.3
+   Compiling time-core v0.1.8
+   Compiling num-conv v0.2.1
+   Compiling windows-targets v0.52.6
+   Compiling typeid v1.0.3
+   Compiling http v1.4.0
+   Compiling parking_lot v0.12.5
+   Compiling windows-targets v0.53.5
+   Compiling deranged v0.5.8
+   Compiling windows-core v0.61.2
+   Compiling zerovec v0.11.6
+   Compiling zerotrie v0.2.4
+   Compiling aho-corasick v1.1.4
+   Compiling tracing v0.1.44
+   Compiling crossbeam-channel v0.5.15
+   Compiling alloc-stdlib v0.2.2
+   Compiling unic-char-property v0.9.0
+   Compiling unic-ucd-version v0.9.0
+   Compiling unicode-segmentation v1.13.2
+   Compiling fnv v1.0.7
+   Compiling winnow v1.0.2
+   Compiling futures-core v0.3.32
+   Compiling siphasher v1.0.2
+   Compiling dunce v1.0.5
+   Compiling windows-sys v0.60.2
+   Compiling getrandom v0.2.17
+   Compiling windows-version v0.1.7
+   Compiling option-ext v0.2.0
+   Compiling toml_writer v1.1.1+spec-1.1.0
+   Compiling brotli-decompressor v5.0.0
+   Compiling unic-ucd-ident v0.9.0
+   Compiling winnow v0.7.15
+   Compiling anyhow v1.0.102
+   Compiling glob v0.3.3
+   Compiling semver v1.0.28
+   Compiling phf_shared v0.11.3
+   Compiling windows-sys v0.59.0
+   Compiling typenum v1.20.0
+   Compiling toml_parser v1.1.2+spec-1.1.0
+   Compiling phf v0.11.3
+   Compiling tauri-macros v2.5.5
+   Compiling getrandom v0.3.4
+   Compiling futures-task v0.3.32
+   Compiling slab v0.4.12
+   Compiling zeroize v1.8.2
+   Compiling heck v0.5.0
+   Compiling futures-sink v0.3.32
+   Compiling mime v0.3.17
+   Compiling httparse v1.10.1
+   Compiling serde v1.0.228
+   Compiling tinystr v0.8.3
+   Compiling potential_utf v0.1.5
+   Compiling windows-collections v0.2.0
+   Compiling windows-numerics v0.2.0
+   Compiling windows-future v0.2.1
+   Compiling bitflags v2.11.1
+   Compiling serde_json v1.0.149
+   Compiling time v0.3.47
+   Compiling uuid v1.23.1
+   Compiling toml_datetime v0.7.5+spec-1.1.0
+   Compiling erased-serde v0.4.10
+   Compiling serde_spanned v1.1.1
+   Compiling icu_locale_core v2.2.0
+   Compiling icu_collections v2.2.0
+   Compiling brotli v8.0.2
+   Compiling serde_with v3.18.0
+   Compiling windows v0.61.3
+   Compiling futures-util v0.3.32
+   Compiling rustls-pki-types v1.14.1
+   Compiling http-body v1.0.1
+   Compiling dpi v0.1.2
+   Compiling keyboard-types v0.7.0
+   Compiling cfb v0.7.3
+   Compiling window-vibrancy v0.6.0
+   Compiling generic-array v0.14.7
+   Compiling windows_x86_64_msvc v0.48.5
+   Compiling regex-automata v0.4.14
+   Compiling untrusted v0.9.0
+   Compiling base64 v0.22.1
+   Compiling serde-untagged v0.1.9
+   Compiling windows-targets v0.48.5
+   Compiling toml v0.9.12+spec-1.1.0
+   Compiling ring v0.17.14
+   Compiling zerocopy v0.8.48
+   Compiling jsonptr v0.6.3
+   Compiling serialize-to-javascript v0.1.2
+   Compiling proc-macro2-diagnostics v0.10.1
+   Compiling tower-service v0.3.3
+   Compiling try-lock v0.2.5
+   Compiling lazy_static v1.5.0
+   Compiling crypto-common v0.1.7
+   Compiling block-buffer v0.10.4
+   Compiling infer v0.19.0
+   Compiling want v0.3.1
+   Compiling windows-sys v0.48.0
+   Compiling rand_core v0.6.4
+   Compiling futures-channel v0.3.32
+   Compiling digest v0.10.7
+   Compiling crossbeam-epoch v0.9.18
+   Compiling icu_provider v2.2.0
+   Compiling json-patch v3.0.1
+   Compiling atomic-waker v1.1.2
+   Compiling cpufeatures v0.2.17
+   Compiling yansi v1.0.1
+   Compiling subtle v2.6.1
+   Compiling cookie v0.18.1
+   Compiling icu_normalizer v2.2.0
+   Compiling icu_properties v2.2.0
+   Compiling crossbeam-deque v0.8.6
+   Compiling sync_wrapper v1.0.2
+   Compiling encoding_rs v0.8.35
+   Compiling ryu v1.0.23
+   Compiling muda v0.17.2
+   Compiling heck v0.4.1
+   Compiling minimal-lexical v0.2.1
+   Compiling ipnet v2.12.0
+   Compiling data-encoding v2.11.0
+   Compiling tower-layer v0.3.3
+   Compiling native-tls v0.2.18
+   Compiling rayon-core v1.13.0
+   Compiling num-traits v0.2.19
+   Compiling winapi v0.3.9
+   Compiling sha1 v0.10.6
+   Compiling sharded-slab v0.1.7
+   Compiling webpki-roots v1.0.7
+   Compiling tracing-log v0.2.0
+   Compiling ouroboros_macro v0.18.5
+   Compiling windows-registry v0.5.3
+   Compiling windows-core v0.52.0
+   Compiling filetime v0.2.27
+   Compiling idna_adapter v1.2.1
+   Compiling rustls-webpki v0.103.13
+   Compiling thread_local v1.1.9
+   Compiling utf-8 v0.7.6
+   Compiling idna v1.1.0
+   Compiling nom v7.1.3
+   Compiling mio v1.2.0
+   Compiling socket2 v0.6.3
+   Compiling winapi-util v0.1.11
+   Compiling softbuffer v0.4.8
+   Compiling regex v1.12.3
+   Compiling dirs-sys v0.5.0
+   Compiling tray-icon v0.21.3
+   Compiling same-file v1.0.6
+   Compiling url v2.5.8
+   Compiling dirs v6.0.0
+   Compiling tauri-plugin-fs v2.5.0
+   Compiling walkdir v2.5.0
+   Compiling tauri-plugin-deep-link v2.4.7
+   Compiling matchers v0.2.0
+   Compiling rustls v0.23.39
+   Compiling tauri-plugin-shell v2.3.5
+   Compiling tauri-plugin-process v2.3.1
+   Compiling tokio v1.52.1
+   Compiling schannel v0.1.29
+   Compiling nu-ansi-term v0.50.3
+   Compiling either v1.15.0
+   Compiling aliasable v0.1.3
+   Compiling urlpattern v0.3.0
+   Compiling iri-string v0.7.12
+   Compiling static_assertions v1.1.0
+   Compiling hashbrown v0.17.0
+   Compiling equivalent v1.0.2
+   Compiling tauri-plugin-dialog v2.7.0
+   Compiling notify v6.1.1
+   Compiling charset v0.1.5
+   Compiling windows v0.52.0
+   Compiling chrono v0.4.44
+   Compiling imap-proto v0.16.7
+   Compiling ppv-lite86 v0.2.21
+   Compiling os_pipe v1.2.3
+   Compiling ntapi v0.4.3
+   Compiling dirs-sys v0.4.1
+   Compiling serde_urlencoded v0.7.1
+   Compiling rfd v0.16.0
+   Compiling shared_child v1.1.1
+   Compiling http-body-util v0.1.3
+   Compiling open v5.3.4
+   Compiling rayon v1.12.0
+   Compiling windows-sys v0.52.0
+   Compiling ouroboros v0.18.5
+   Compiling tangerine-meeting v1.9.0-beta.3 (C:\Users\daizhe zo\Desktop\meeting-live\app\src-tauri)
+   Compiling bufstream v0.1.4
+   Compiling symlink v0.1.0
+   Compiling tracing-subscriber v0.3.23
+   Compiling quoted_printable v0.5.2
+   Compiling unsafe-libyaml v0.2.11
+   Compiling dirs v5.0.1
+   Compiling sha2 v0.10.9
+   Compiling tauri-utils v2.8.3
+   Compiling indexmap v2.14.0
+   Compiling mailparse v0.15.0
+   Compiling async-trait v0.1.89
+   Compiling urlencoding v2.1.3
+   Compiling hex v0.4.3
+   Compiling rand_chacha v0.3.1
+   Compiling notify-debouncer-mini v0.4.1
+   Compiling rand v0.8.6
+   Compiling keyring v2.3.3
+   Compiling serde_yaml v0.9.34+deprecated
+   Compiling imap v3.0.0-alpha.15
+   Compiling tungstenite v0.21.0
+   Compiling tracing-appender v0.2.5
+   Compiling hyper v1.9.0
+   Compiling tower v0.5.3
+   Compiling tokio-rustls v0.26.4
+   Compiling tokio-tungstenite v0.21.0
+   Compiling tokio-stream v0.1.18
+   Compiling tower-http v0.6.8
+   Compiling hyper-util v0.1.20
+   Compiling hyper-rustls v0.27.9
+   Compiling reqwest v0.12.28
+   Compiling webview2-com-sys v0.38.2
+   Compiling tao v0.34.8
+   Compiling webview2-com v0.38.2
+   Compiling sysinfo v0.30.13
+   Compiling tauri-runtime v2.10.1
+   Compiling wry v0.54.4
+   Compiling tauri-runtime-wry v2.10.1
+   Compiling tauri-plugin-single-instance v2.4.0
+warning: unused import: `Serialize`
+ --> src\commands\meetings.rs:6:26
+  |
+6 | use serde::{Deserialize, Serialize};
+  |                          ^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+warning: unused import: `Manager`
+  --> src\commands\external.rs:10:24
+   |
+10 | use tauri::{AppHandle, Manager, Runtime, State};
+   |                        ^^^^^^^
+
+warning: function `paths_as_strings` is never used
+   --> src\commands\runner.rs:328:8
+    |
+328 | pub fn paths_as_strings(paths: &[PathBuf]) -> Result<Vec<String>, AppError> {
+    |        ^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` on by default
+
+warning: `tangerine-meeting` (lib) generated 3 warnings (run `cargo fix --lib -p tangerine-meeting` to apply 1 suggestion)
+    Finished `release` profile [optimized] target(s) in 4m 58s
+       Built application at: C:\Users\daizhe zo\Desktop\meeting-live\app\src-tauri\target\release\tangerine-meeting.exe
+        Info Patching C:\Users\daizhe zo\Desktop\meeting-live\app\src-tauri\target\release\tangerine-meeting.exe with bundle type information: nsis
+        Info Verifying NSIS package
+ Downloading https://github.com/tauri-apps/binary-releases/releases/download/nsis-3.11/nsis-3.11.zip
+        Info validating hash
+        Info extracting NSIS
+ Downloading https://github.com/tauri-apps/nsis-tauri-utils/releases/download/nsis_tauri_utils-v0.5.3/nsis_tauri_utils.dll
+        Info validating hash
+        Info Target: x64
+     Running makensis to produce C:\Users\daizhe zo\Desktop\meeting-live\app\src-tauri\target\release\bundle\nsis\Tangerine AI Teams_1.9.0-beta.3_x64-setup.exe
+    Finished 1 bundle at:
+        C:\Users\daizhe zo\Desktop\meeting-live\app\src-tauri\target\release\bundle\nsis\Tangerine AI Teams_1.9.0-beta.3_x64-setup.exe
+

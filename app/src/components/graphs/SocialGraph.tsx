@@ -111,9 +111,29 @@ export function SocialGraph({
     return (
       <div
         data-testid="social-graph-loading"
-        className="flex h-[480px] w-full items-center justify-center rounded-md border border-stone-200 bg-stone-50/50 dark:border-stone-800 dark:bg-stone-900/40"
+        aria-busy="true"
+        aria-label="Social graph loading"
+        className="relative h-[480px] w-full overflow-hidden rounded-md border border-stone-200 bg-stone-50/50 dark:border-stone-800 dark:bg-stone-900/40"
       >
-        <p className="font-mono text-[11px] text-stone-500 dark:text-stone-400">
+        {/* Cluster of skeleton circles arranged loosely so the loading
+            shell hints at the people-graph layout without committing to
+            specific node count. */}
+        {[
+          "left-[15%] top-[25%]",
+          "left-[40%] top-[15%]",
+          "left-[65%] top-[30%]",
+          "left-[20%] top-[55%]",
+          "left-[45%] top-[60%]",
+          "left-[70%] top-[55%]",
+          "left-[35%] top-[80%]",
+          "left-[60%] top-[80%]",
+        ].map((pos, i) => (
+          <div
+            key={i}
+            className={`absolute ${pos} h-12 w-12 animate-pulse rounded-full bg-[var(--ti-paper-200)]`}
+          />
+        ))}
+        <p className="absolute bottom-4 left-1/2 -translate-x-1/2 font-mono text-[11px] text-stone-500 dark:text-stone-400">
           Loading social graph…
         </p>
       </div>

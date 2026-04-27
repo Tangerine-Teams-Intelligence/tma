@@ -423,7 +423,7 @@ function Section({ title, done, open, onToggle, children }: SectionProps) {
           <span className="font-medium text-[var(--ti-ink-900)]">{title}</span>
         </div>
         {done ? (
-          <span className="flex items-center gap-1 text-xs text-[#2D8659]">
+          <span className="flex items-center gap-1 text-xs text-[var(--ti-success)]">
             <CheckCircle2 size={14} /> On
           </span>
         ) : (
@@ -610,11 +610,11 @@ function LogRow({ entry }: { entry: WritebackLogEntry }) {
   const o = entry.outcome;
   const colour =
     o.status === "posted"
-      ? "#2D8659"
+      ? "var(--ti-success)"
       : o.status === "already_done"
         ? "var(--ti-ink-500)"
         : o.status === "failed"
-          ? "#B83232"
+          ? "var(--ti-danger)"
           : "var(--ti-ink-500)";
   return (
     <li className="rounded-md border border-stone-200 bg-white px-3 py-2 text-xs dark:border-stone-800 dark:bg-stone-900">
@@ -646,7 +646,7 @@ function LogRow({ entry }: { entry: WritebackLogEntry }) {
         </button>
       )}
       {o.status === "failed" && (
-        <p className="mt-1 text-[11px] text-[#B83232]">{o.error}</p>
+        <p className="mt-1 text-[11px] text-[var(--ti-danger)]">{o.error}</p>
       )}
       {o.status === "not_applicable" && (
         <p className="mt-1 text-[11px] italic text-[var(--ti-ink-500)]">

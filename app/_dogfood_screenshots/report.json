@@ -1,0 +1,150 @@
+[
+  {
+    "route": "/auth",
+    "name": "auth",
+    "loadOk": true,
+    "status": 200,
+    "bodyLen": 2008,
+    "bodySnippet": "Tangerine Ctrl+K VIEWS Today / week / people / projects 今天 This week People Projects Threads Alignment Inbox Canvas Co-thinker Reviews Marketplace GRAPHS Lineage Social Topology MEMORY ~ /memory m",
+    "consoleErrs": [
+      "[warning] [supabase] VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY missing — running in STUB mode. Auth screens will fake successful login. Set both env vars in app/.env to enable real auth.",
+      "[warning] [stripe] VITE_STRIPE_PUBLISHABLE_KEY missing — running in STUB mode. Billing UI renders a placeholder; subscribe falls through to billing_subscribe stub.",
+      "[warning] ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.",
+      "[warning] ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.",
+      "[warning] [React Flow]: It looks like you've created a new nodeTypes or edgeTypes object. If this wasn't on purpose please define the nodeTypes/edgeTypes outside of the component or memoize them. Help: https://reactflow.dev/error#002",
+      "[warning] [React Flow]: It looks like you've created a new nodeTypes or edgeTypes object. If this wasn't on purpose please define the nodeTypes/edgeTypes outside of the component or memoize them. Help: https://reactflow.dev/error#002"
+    ],
+    "pageErrs": [],
+    "failedReqs": []
+  },
+  {
+    "route": "/today",
+    "name": "today",
+    "loadOk": true,
+    "status": 200,
+    "bodyLen": 2008,
+    "bodySnippet": "Tangerine Ctrl+K VIEWS Today / week / people / projects 今天 This week People Projects Threads Alignment Inbox Canvas Co-thinker Reviews Marketplace GRAPHS Lineage Social Topology MEMORY ~ /memory m",
+    "consoleErrs": [
+      "[warning] [supabase] VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY missing — running in STUB mode. Auth screens will fake successful login. Set both env vars in app/.env to enable real auth.",
+      "[warning] [stripe] VITE_STRIPE_PUBLISHABLE_KEY missing — running in STUB mode. Billing UI renders a placeholder; subscribe falls through to billing_subscribe stub.",
+      "[warning] ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.",
+      "[warning] ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.",
+      "[warning] [React Flow]: It looks like you've created a new nodeTypes or edgeTypes object. If this wasn't on purpose please define the nodeTypes/edgeTypes outside of the component or memoize them. Help: https://reactflow.dev/error#002",
+      "[warning] [React Flow]: It looks like you've created a new nodeTypes or edgeTypes object. If this wasn't on purpose please define the nodeTypes/edgeTypes outside of the component or memoize them. Help: https://reactflow.dev/error#002"
+    ],
+    "pageErrs": [],
+    "failedReqs": []
+  },
+  {
+    "route": "/memory",
+    "name": "memory",
+    "loadOk": true,
+    "status": 200,
+    "bodyLen": 505,
+    "bodySnippet": "Where will your team's memory live? Tangerine stores meetings, decisions, and AI context as markdown files your team can share via git. Create new GitHub repo RECOMMENDED Tangerine creates a privat",
+    "consoleErrs": [
+      "[warning] [supabase] VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY missing — running in STUB mode. Auth screens will fake successful login. Set both env vars in app/.env to enable real auth.",
+      "[warning] [stripe] VITE_STRIPE_PUBLISHABLE_KEY missing — running in STUB mode. Billing UI renders a placeholder; subscribe falls through to billing_subscribe stub.",
+      "[warning] ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.",
+      "[warning] ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath."
+    ],
+    "pageErrs": [],
+    "failedReqs": []
+  },
+  {
+    "route": "/co-thinker",
+    "name": "co-thinker",
+    "loadOk": true,
+    "status": 200,
+    "bodyLen": 2064,
+    "bodySnippet": "Tangerine Ctrl+K VIEWS Today / week / people / projects 今天 This week People Projects Threads Alignment Inbox Canvas Co-thinker Reviews Marketplace GRAPHS Lineage Social Topology MEMORY ~ /memory m",
+    "consoleErrs": [
+      "[warning] [supabase] VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY missing — running in STUB mode. Auth screens will fake successful login. Set both env vars in app/.env to enable real auth.",
+      "[warning] [stripe] VITE_STRIPE_PUBLISHABLE_KEY missing — running in STUB mode. Billing UI renders a placeholder; subscribe falls through to billing_subscribe stub.",
+      "[warning] ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.",
+      "[warning] ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath."
+    ],
+    "pageErrs": [],
+    "failedReqs": []
+  },
+  {
+    "route": "/canvas",
+    "name": "canvas",
+    "loadOk": true,
+    "status": 200,
+    "bodyLen": 1904,
+    "bodySnippet": "Tangerine Ctrl+K VIEWS Today / week / people / projects 今天 This week People Projects Threads Alignment Inbox Canvas Co-thinker Reviews Marketplace GRAPHS Lineage Social Topology MEMORY ~ /memory m",
+    "consoleErrs": [
+      "[warning] [supabase] VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY missing — running in STUB mode. Auth screens will fake successful login. Set both env vars in app/.env to enable real auth.",
+      "[warning] [stripe] VITE_STRIPE_PUBLISHABLE_KEY missing — running in STUB mode. Billing UI renders a placeholder; subscribe falls through to billing_subscribe stub.",
+      "[warning] ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.",
+      "[warning] ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath."
+    ],
+    "pageErrs": [],
+    "failedReqs": []
+  },
+  {
+    "route": "/reviews",
+    "name": "reviews",
+    "loadOk": true,
+    "status": 200,
+    "bodyLen": 1718,
+    "bodySnippet": "Tangerine Ctrl+K VIEWS Today / week / people / projects 今天 This week People Projects Threads Alignment Inbox Canvas Co-thinker Reviews Marketplace GRAPHS Lineage Social Topology MEMORY ~ /memory m",
+    "consoleErrs": [
+      "[warning] [supabase] VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY missing — running in STUB mode. Auth screens will fake successful login. Set both env vars in app/.env to enable real auth.",
+      "[warning] [stripe] VITE_STRIPE_PUBLISHABLE_KEY missing — running in STUB mode. Billing UI renders a placeholder; subscribe falls through to billing_subscribe stub.",
+      "[warning] ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.",
+      "[warning] ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath."
+    ],
+    "pageErrs": [],
+    "failedReqs": []
+  },
+  {
+    "route": "/marketplace",
+    "name": "marketplace",
+    "loadOk": true,
+    "status": 200,
+    "bodyLen": 2805,
+    "bodySnippet": "Tangerine Ctrl+K VIEWS Today / week / people / projects 今天 This week People Projects Threads Alignment Inbox Canvas Co-thinker Reviews Marketplace GRAPHS Lineage Social Topology MEMORY ~ /memory m",
+    "consoleErrs": [
+      "[warning] [supabase] VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY missing — running in STUB mode. Auth screens will fake successful login. Set both env vars in app/.env to enable real auth.",
+      "[warning] [stripe] VITE_STRIPE_PUBLISHABLE_KEY missing — running in STUB mode. Billing UI renders a placeholder; subscribe falls through to billing_subscribe stub.",
+      "[warning] ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.",
+      "[warning] ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath."
+    ],
+    "pageErrs": [],
+    "failedReqs": []
+  },
+  {
+    "route": "/sources/discord",
+    "name": "sources-discord",
+    "loadOk": true,
+    "status": 200,
+    "bodyLen": 2090,
+    "bodySnippet": "Tangerine Ctrl+K VIEWS Today / week / people / projects 今天 This week People Projects Threads Alignment Inbox Canvas Co-thinker Reviews Marketplace GRAPHS Lineage Social Topology MEMORY ~ /memory m",
+    "consoleErrs": [
+      "[warning] [supabase] VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY missing — running in STUB mode. Auth screens will fake successful login. Set both env vars in app/.env to enable real auth.",
+      "[warning] [stripe] VITE_STRIPE_PUBLISHABLE_KEY missing — running in STUB mode. Billing UI renders a placeholder; subscribe falls through to billing_subscribe stub.",
+      "[warning] ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.",
+      "[warning] ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath."
+    ],
+    "pageErrs": [],
+    "failedReqs": []
+  },
+  {
+    "route": "/settings",
+    "name": "settings",
+    "loadOk": true,
+    "status": 200,
+    "bodyLen": 1919,
+    "bodySnippet": "Tangerine Ctrl+K VIEWS Today / week / people / projects 今天 This week People Projects Threads Alignment Inbox Canvas Co-thinker Reviews Marketplace GRAPHS Lineage Social Topology MEMORY ~ /memory m",
+    "consoleErrs": [
+      "[warning] [supabase] VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY missing — running in STUB mode. Auth screens will fake successful login. Set both env vars in app/.env to enable real auth.",
+      "[warning] [stripe] VITE_STRIPE_PUBLISHABLE_KEY missing — running in STUB mode. Billing UI renders a placeholder; subscribe falls through to billing_subscribe stub.",
+      "[warning] ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.",
+      "[warning] ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath."
+    ],
+    "pageErrs": [],
+    "failedReqs": []
+  }
+]

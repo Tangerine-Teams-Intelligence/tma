@@ -306,12 +306,12 @@ export default function CalendarSourceRoute() {
                           {o.ok ? (
                             <CheckCircle2
                               size={14}
-                              className="mt-0.5 shrink-0 text-[#2D8659]"
+                              className="mt-0.5 shrink-0 text-[var(--ti-success)]"
                             />
                           ) : (
                             <AlertCircle
                               size={14}
-                              className="mt-0.5 shrink-0 text-[#B83232]"
+                              className="mt-0.5 shrink-0 text-[var(--ti-danger)]"
                             />
                           )}
                           <div className="min-w-0 flex-1">

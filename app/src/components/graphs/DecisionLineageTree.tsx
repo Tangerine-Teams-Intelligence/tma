@@ -145,9 +145,23 @@ export function DecisionLineageTree() {
     return (
       <div
         data-testid="lineage-tree-loading"
-        className="flex h-[480px] w-full items-center justify-center rounded-md border border-stone-200 bg-stone-50/50 dark:border-stone-800 dark:bg-stone-900/40"
+        aria-busy="true"
+        aria-label="Decision lineage loading"
+        className="relative h-[480px] w-full overflow-hidden rounded-md border border-stone-200 bg-stone-50/50 dark:border-stone-800 dark:bg-stone-900/40"
       >
-        <p className="font-mono text-[11px] text-stone-500 dark:text-stone-400">
+        <div className="absolute inset-x-0 top-12 flex justify-center">
+          <div className="h-9 w-9 rotate-45 animate-pulse rounded-sm bg-[var(--ti-paper-200)]" />
+        </div>
+        <div className="absolute inset-x-0 top-32 flex justify-center gap-12">
+          <div className="h-8 w-24 animate-pulse rounded-md bg-[var(--ti-paper-200)]" />
+          <div className="h-8 w-24 animate-pulse rounded-md bg-[var(--ti-paper-200)]" />
+        </div>
+        <div className="absolute inset-x-0 top-52 flex justify-center gap-6">
+          <div className="h-8 w-20 animate-pulse rounded-md bg-[var(--ti-paper-200)]" />
+          <div className="h-8 w-24 animate-pulse rounded-md bg-[var(--ti-paper-200)]" />
+          <div className="h-8 w-20 animate-pulse rounded-md bg-[var(--ti-paper-200)]" />
+        </div>
+        <p className="absolute bottom-4 left-1/2 -translate-x-1/2 font-mono text-[11px] text-stone-500 dark:text-stone-400">
           Loading lineage…
         </p>
       </div>

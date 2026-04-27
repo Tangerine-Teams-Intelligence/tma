@@ -5,6 +5,7 @@ import {
   Inbox as InboxIcon,
   Clock,
   AlertTriangle,
+  AlertCircle,
   CheckCircle2,
   X,
 } from "lucide-react";
@@ -15,6 +16,7 @@ import {
 } from "@/lib/views";
 import { useStore } from "@/lib/store";
 import { TangerineNotes } from "@/components/TangerineNotes";
+import { Skeleton } from "@/components/ui/Skeleton";
 
 /**
  * /inbox — pending alerts queue (real, not placeholder).
@@ -38,18 +40,32 @@ export default function InboxRoute() {
   const [alerts, setAlerts] = useState<PendingAlert[]>([]);
   const [notes, setNotes] = useState<TangerineNote[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const refresh = () => {
+    setLoading(true);
+    setError(null);
     let cancel = false;
-    void readPendingAlerts().then((d) => {
-      if (cancel) return;
-      setAlerts(d.alerts);
-      setNotes(d.notes);
-      setLoading(false);
-    });
+    readPendingAlerts()
+      .then((d) => {
+        if (cancel) return;
+        setAlerts(d.alerts);
+        setNotes(d.notes);
+        setLoading(false);
+      })
+      .catch((e: unknown) => {
+        if (cancel) return;
+        setError(typeof e === "string" ? e : (e as Error)?.message ?? "Could not read pending alerts.");
+        setLoading(false);
+      });
     return () => {
       cancel = true;
     };
+  };
+
+  useEffect(() => {
+    return refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const visible = useMemo(() => {
@@ -92,16 +108,48 @@ export default function InboxRoute() {
           </div>
         </header>
 
-        <section className="mt-8 space-y-3">
+        <section className="mt-8 space-y-3" aria-live="polite" aria-busy={loading}>
           {loading ? (
-            <p className="text-center text-[12px] text-stone-500 dark:text-stone-400">
-              Loading…
-            </p>
+            <div className="space-y-3" data-testid="inbox-loading">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="rounded-md border border-stone-200 bg-stone-50 p-4 dark:border-stone-800 dark:bg-stone-900"
+                >
+                  <Skeleton className="h-3 w-1/3" />
+                  <Skeleton className="mt-2 h-3 w-1/4" />
+                  <Skeleton className="mt-3 h-3 w-full" />
+                </div>
+              ))}
+            </div>
+          ) : error ? (
+            <div
+              role="alert"
+              className="rounded-md border border-[var(--ti-danger)]/40 bg-[var(--ti-danger)]/5 p-6 text-center"
+            >
+              <AlertCircle
+                size={20}
+                className="mx-auto text-[var(--ti-danger)]"
+              />
+              <p className="mt-3 text-[12px] text-stone-700 dark:text-stone-300">
+                Couldn't read pending alerts.
+              </p>
+              <p className="mt-1 font-mono text-[10px] text-stone-500 dark:text-stone-400">
+                {error}
+              </p>
+              <button
+                type="button"
+                onClick={refresh}
+                className="mt-3 rounded border border-stone-300 px-2 py-0.5 font-mono text-[11px] text-stone-700 hover:bg-stone-100 dark:border-stone-700 dark:text-stone-200 dark:hover:bg-stone-800"
+              >
+                Retry
+              </button>
+            </div>
           ) : visible.length === 0 ? (
             <div className="rounded-md border border-dashed border-stone-300 p-8 text-center dark:border-stone-700">
               <CheckCircle2
                 size={20}
-                className="mx-auto text-emerald-600 dark:text-emerald-400"
+                className="mx-auto text-[var(--ti-success)]"
               />
               <p className="mt-3 text-[12px] text-stone-700 dark:text-stone-300">
                 Nothing pending. The daemon hasn't found stale decisions, overdue work, or
@@ -147,9 +195,9 @@ function AlertCard({
           size={14}
           className={
             alert.severity === "high"
-              ? "text-rose-600 dark:text-rose-400"
+              ? "text-[var(--ti-danger)]"
               : alert.severity === "warn"
-                ? "text-amber-600 dark:text-amber-400"
+                ? "text-[var(--ti-warn)]"
                 : "text-stone-500 dark:text-stone-400"
           }
         />

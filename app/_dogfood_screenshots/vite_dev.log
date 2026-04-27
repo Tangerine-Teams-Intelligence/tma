@@ -1,0 +1,78 @@
+
+> tangerine-meeting-app@1.9.0-beta.3 dev
+> vite
+
+
+  [32m[1mVITE[22m v5.4.21[39m  [2mready in [0m[1m520[22m[2m[0m ms[22m
+
+  [32m➜[39m  [1mLocal[22m:   [36mhttp://localhost:[1m1420[22m/[39m
+[2m10:37:10[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/routes/sources/calendar.tsx, /src/index.css[22m
+[2m10:37:11[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/routes/sources/calendar.tsx, /src/index.css[22m
+[2m10:37:28[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/routes/auth.tsx, /src/index.css[22m
+[2m10:37:28[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/routes/billing.tsx, /src/index.css[22m
+[2m10:37:28[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/routes/sources/discord.tsx, /src/index.css[22m
+[2m10:37:28[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/routes/sources/email.tsx, /src/index.css[22m
+[2m10:37:28[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/routes/sources/github.tsx, /src/index.css[22m
+[2m10:37:28[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/routes/sources/linear.tsx, /src/index.css[22m
+[2m10:37:28[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/routes/sources/loom.tsx, /src/index.css[22m
+[2m10:37:28[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/routes/sources/notion.tsx, /src/index.css[22m
+[2m10:37:28[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/routes/sources/slack.tsx, /src/index.css[22m
+[2m10:37:28[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/routes/sources/voice-notes.tsx, /src/index.css[22m
+[2m10:37:28[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/layout/AppShell.tsx, /src/index.css[22m
+[2m10:37:28[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/ui/button.tsx, /src/index.css[22m
+[2m10:37:28[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/pages/meetings/MeetingsList.tsx[22m
+[2m10:37:28[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/settings/AdvancedSettings.tsx, /src/index.css[22m
+[2m10:37:28[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/routes/sources/zoom.tsx, /src/index.css[22m
+[2m10:37:28[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/ui/input.tsx, /src/index.css[22m
+[2m10:37:28[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/pages/meetings/NewMeetingDialog.tsx[22m
+[2m10:37:28[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/pages/meetings/PrepSession.tsx[22m
+[2m10:37:28[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/meetings/ReviewView.tsx, /src/index.css[22m
+[2m10:37:28[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/settings/AIToolsSettings.tsx, /src/index.css[22m
+[2m10:37:28[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/settings/PersonalAgentsSettings.tsx, /src/index.css[22m
+[2m10:37:28[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/settings/Settings.tsx, /src/index.css[22m
+[2m10:37:41[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/routes/sources/github.tsx, /src/index.css[22m
+[2m10:37:43[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/routes/sources/linear.tsx, /src/index.css[22m
+[2m10:37:45[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/meetings/components/ObserverPanel.tsx, /src/index.css[22m
+[2m10:38:03[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/layout/ActiveAgentsSection.tsx, /src/index.css[22m
+[2m10:38:08[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/ai-tools/AIToolsSection.tsx, /src/index.css[22m
+[2m10:38:09[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/review/ReviewPanel.tsx, /src/index.css[22m
+[2m10:39:21[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/routes/inbox.tsx, /src/index.css[22m
+[2m10:39:25[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/routes/inbox.tsx, /src/index.css[22m
+[2m10:39:35[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/routes/inbox.tsx, /src/index.css[22m
+[2m10:39:40[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/routes/inbox.tsx, /src/index.css[22m
+[2m10:39:48[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/routes/alignment.tsx, /src/index.css[22m
+[2m10:39:53[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/routes/alignment.tsx, /src/index.css[22m
+[2m10:40:01[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/routes/alignment.tsx, /src/index.css[22m
+[2m10:40:06[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/routes/alignment.tsx, /src/index.css[22m
+[2m10:40:31[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/routes/reviews.tsx, /src/index.css[22m
+[2m10:40:36[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/routes/reviews.tsx, /src/index.css[22m
+[2m10:40:44[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/routes/reviews.tsx, /src/index.css[22m
+[2m10:40:54[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/routes/canvas.tsx, /src/index.css[22m
+[2m10:40:58[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/routes/canvas.tsx, /src/index.css[22m
+[2m10:41:04[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/routes/canvas.tsx, /src/index.css[22m
+[2m10:41:29[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/routes/marketplace/index.tsx, /src/index.css[22m
+[2m10:41:35[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/routes/marketplace/index.tsx, /src/index.css[22m
+[2m10:41:44[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/routes/marketplace/index.tsx, /src/index.css[22m
+[2m10:41:50[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/routes/threads/index.tsx, /src/index.css[22m
+[2m10:41:55[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/routes/threads/index.tsx, /src/index.css[22m
+[2m10:42:02[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/routes/threads/index.tsx, /src/index.css[22m
+[2m10:42:09[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/routes/people/index.tsx, /src/index.css[22m
+[2m10:42:14[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/routes/people/index.tsx, /src/index.css[22m
+[2m10:42:21[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/routes/people/index.tsx, /src/index.css[22m
+[2m10:42:28[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/routes/projects/index.tsx, /src/index.css[22m
+[2m10:42:32[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/routes/projects/index.tsx, /src/index.css[22m
+[2m10:42:40[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/routes/projects/index.tsx, /src/index.css[22m
+[2m10:43:33[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/routes/co-thinker.tsx, /src/index.css[22m
+[2m10:43:36[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/routes/co-thinker.tsx, /src/index.css[22m
+[2m10:43:39[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/routes/co-thinker.tsx, /src/index.css[22m
+[2m10:43:45[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/routes/co-thinker.tsx, /src/index.css[22m
+[2m10:44:21[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/ui/button.tsx, /src/index.css[22m
+[2m10:44:37[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/index.css[22m
+[2m10:45:13[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/routes/onboarding-team.tsx, /src/index.css[22m
+[2m10:45:17[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/routes/onboarding-team.tsx, /src/index.css[22m
+[2m10:45:34[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/graphs/WorkflowGraph.tsx, /src/index.css[22m
+[2m10:45:41[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/graphs/WorkflowGraph.tsx, /src/index.css[22m
+[2m10:45:58[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/graphs/DecisionLineageTree.tsx, /src/index.css[22m
+[2m10:46:11[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/graphs/SocialGraph.tsx, /src/index.css[22m
+[2m10:46:20[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/graphs/ProjectTopology.tsx, /src/index.css[22m
+[2m10:47:39[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/routes/onboarding-team.tsx, /src/index.css[22m

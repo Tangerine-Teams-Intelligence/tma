@@ -97,7 +97,7 @@ export default function MeetingsList() {
       </div>
 
       {error && (
-        <div className="rounded-md border border-[#B83232] bg-[#B83232]/10 p-4 text-sm text-[#B83232]">
+        <div className="rounded-md border border-[var(--ti-danger)] bg-[var(--ti-danger)]/10 p-4 text-sm text-[var(--ti-danger)]">
           Failed to load meetings: {error}
         </div>
       )}

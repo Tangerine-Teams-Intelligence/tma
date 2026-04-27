@@ -13,13 +13,14 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
-import { GitPullRequest, RefreshCw } from "lucide-react";
+import { GitPullRequest, RefreshCw, AlertCircle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { ReviewPanel } from "@/components/review/ReviewPanel";
 import { reviewListOpen, type ReviewState } from "@/lib/tauri";
 import { useStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
+import { Skeleton } from "@/components/ui/Skeleton";
 
 type Filter = "open" | "mine" | "all";
 
@@ -28,20 +29,23 @@ export default function ReviewsRoute() {
   const [filter, setFilter] = useState<Filter>("open");
   const [reviews, setReviews] = useState<ReviewState[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     let cancel = false;
     setLoading(true);
+    setError(null);
     void reviewListOpen()
       .then((rs) => {
         if (cancel) return;
         setReviews(rs);
         setLoading(false);
       })
-      .catch(() => {
+      .catch((e: unknown) => {
         if (cancel) return;
         setReviews([]);
+        setError(typeof e === "string" ? e : (e as Error)?.message ?? "Could not load reviews.");
         setLoading(false);
       });
     return () => {
@@ -121,7 +125,39 @@ export default function ReviewsRoute() {
       </div>
 
       {loading ? (
-        <p className="text-sm text-stone-500 dark:text-stone-400">Loading…</p>
+        <div className="space-y-3" aria-busy="true" data-testid="reviews-loading">
+          {Array.from({ length: 2 }).map((_, i) => (
+            <div
+              key={i}
+              className="rounded border border-stone-200 bg-white p-4 dark:border-stone-800 dark:bg-stone-900"
+            >
+              <Skeleton className="h-3 w-1/3" />
+              <Skeleton className="mt-2 h-3 w-1/2" />
+              <Skeleton className="mt-3 h-3 w-full" />
+              <Skeleton className="mt-2 h-3 w-5/6" />
+            </div>
+          ))}
+        </div>
+      ) : error ? (
+        <div
+          role="alert"
+          className="rounded border border-[var(--ti-danger)]/40 bg-[var(--ti-danger)]/5 p-6 text-center"
+        >
+          <AlertCircle size={20} className="mx-auto text-[var(--ti-danger)]" />
+          <p className="mt-3 text-[12px] text-stone-700 dark:text-stone-300">
+            Couldn't load review queue.
+          </p>
+          <p className="mt-1 font-mono text-[10px] text-stone-500 dark:text-stone-400">
+            {error}
+          </p>
+          <button
+            type="button"
+            onClick={() => setRefreshKey((k) => k + 1)}
+            className="mt-3 rounded border border-stone-300 px-2 py-0.5 font-mono text-[11px] text-stone-700 hover:bg-stone-100 dark:border-stone-700 dark:text-stone-200 dark:hover:bg-stone-800"
+          >
+            Retry
+          </button>
+        </div>
       ) : filtered.length === 0 ? (
         <EmptyState filter={filter} />
       ) : (

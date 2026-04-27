@@ -167,7 +167,7 @@ export default function AuthRoute() {
           </div>
 
           {error && (
-            <p className="flex items-center gap-1 text-xs text-[#B83232]">
+            <p className="flex items-center gap-1 text-xs text-[var(--ti-danger)]">
               <AlertCircle size={12} /> {error}
             </p>
           )}

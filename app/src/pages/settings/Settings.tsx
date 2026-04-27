@@ -125,7 +125,7 @@ export default function Settings() {
       <footer className="flex items-center justify-between border-t border-[var(--ti-border-faint)] pt-4">
         <p className="text-xs text-[var(--ti-ink-500)]">
           {error
-            ? <span className="text-[#B83232]">{error}</span>
+            ? <span className="text-[var(--ti-danger)]">{error}</span>
             : savedAt
               ? `Saved · ${new Date(savedAt).toLocaleTimeString()}`
               : "Unsaved changes are discarded on close."}

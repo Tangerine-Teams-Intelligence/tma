@@ -136,7 +136,7 @@ export default function ReviewView() {
 
   if (!id) return null;
   if (error) {
-    return <p className="p-8 text-sm text-[#B83232]">{error}</p>;
+    return <p className="p-8 text-sm text-[var(--ti-danger)]">{error}</p>;
   }
   if (!data) {
     return <p className="p-8 text-sm text-[var(--ti-ink-500)]">Loading review…</p>;

@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { Layers, FolderKanban } from "lucide-react";
+import { Layers, FolderKanban, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { canvasListProjects } from "@/lib/tauri";
 import { CanvasView } from "@/components/canvas/CanvasView";
 import { AgiPeer } from "@/components/canvas/AgiPeer";
 import { AgiStickyAffordances } from "@/components/canvas/AgiStickyAffordances";
+import { Skeleton } from "@/components/ui/Skeleton";
 
 /**
  * /canvas — v1.8 Phase 4-B canvas surface entry point.
@@ -43,18 +44,28 @@ export default function CanvasRoute() {
 function CanvasIndex() {
   const [projects, setProjects] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     let cancel = false;
-    void canvasListProjects().then((p) => {
-      if (cancel) return;
-      setProjects(p);
-      setLoading(false);
-    });
+    setLoading(true);
+    setError(null);
+    canvasListProjects()
+      .then((p) => {
+        if (cancel) return;
+        setProjects(p);
+        setLoading(false);
+      })
+      .catch((e: unknown) => {
+        if (cancel) return;
+        setError(typeof e === "string" ? e : (e as Error)?.message ?? "Could not list canvases.");
+        setLoading(false);
+      });
     return () => {
       cancel = true;
     };
-  }, []);
+  }, [refreshKey]);
 
   return (
     <div className="bg-stone-50 dark:bg-stone-950">
@@ -81,9 +92,41 @@ function CanvasIndex() {
         </header>
 
         {loading ? (
-          <p className="font-mono text-[12px] text-stone-500 dark:text-stone-400">
-            Loading canvases…
-          </p>
+          <ul
+            className="grid grid-cols-1 gap-3 sm:grid-cols-2"
+            aria-busy="true"
+            data-testid="canvas-index-loading"
+          >
+            {Array.from({ length: 4 }).map((_, i) => (
+              <li
+                key={i}
+                className="rounded-md border border-stone-200 bg-white p-4 dark:border-stone-800 dark:bg-stone-900"
+              >
+                <Skeleton className="h-3 w-1/2" />
+                <Skeleton className="mt-2 h-3 w-1/3" />
+              </li>
+            ))}
+          </ul>
+        ) : error ? (
+          <div
+            role="alert"
+            className="rounded-md border border-[var(--ti-danger)]/40 bg-[var(--ti-danger)]/5 p-6 text-center"
+          >
+            <AlertCircle size={20} className="mx-auto text-[var(--ti-danger)]" />
+            <p className="mt-3 text-[12px] text-stone-700 dark:text-stone-300">
+              Couldn't list project canvases.
+            </p>
+            <p className="mt-1 font-mono text-[10px] text-stone-500 dark:text-stone-400">
+              {error}
+            </p>
+            <button
+              type="button"
+              onClick={() => setRefreshKey((k) => k + 1)}
+              className="mt-3 rounded border border-stone-300 px-2 py-0.5 font-mono text-[11px] text-stone-700 hover:bg-stone-100 dark:border-stone-700 dark:text-stone-200 dark:hover:bg-stone-800"
+            >
+              Retry
+            </button>
+          </div>
         ) : projects.length === 0 ? (
           <EmptyIndex />
         ) : (

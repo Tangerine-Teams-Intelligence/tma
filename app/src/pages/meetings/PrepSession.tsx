@@ -110,7 +110,7 @@ export default function PrepSession() {
                 l.source === "user"
                   ? "text-right"
                   : l.source === "stderr"
-                    ? "text-[#B83232]"
+                    ? "text-[var(--ti-danger)]"
                     : l.source === "system"
                       ? "italic text-[var(--ti-ink-500)]"
                       : ""

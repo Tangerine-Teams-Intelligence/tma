@@ -206,7 +206,7 @@ export default function VoiceNotesSourceRoute() {
                 <Button
                   size="lg"
                   variant="outline"
-                  className="h-20 w-20 rounded-full border-2 border-[#B83232] text-[#B83232]"
+                  className="h-20 w-20 rounded-full border-2 border-[var(--ti-danger)] text-[var(--ti-danger)]"
                   onClick={handleStop}
                   aria-label="Stop recording"
                 >
@@ -229,7 +229,7 @@ export default function VoiceNotesSourceRoute() {
                   }}
                   aria-label="Reset"
                 >
-                  <AlertCircle size={32} className="text-[#B83232]" />
+                  <AlertCircle size={32} className="text-[var(--ti-danger)]" />
                 </Button>
               )}
 
@@ -261,7 +261,7 @@ export default function VoiceNotesSourceRoute() {
                 </p>
               )}
               {state === "error" && error && (
-                <p className="flex items-center gap-1 text-xs text-[#B83232]">
+                <p className="flex items-center gap-1 text-xs text-[var(--ti-danger)]">
                   <AlertCircle size={12} /> {error}
                 </p>
               )}

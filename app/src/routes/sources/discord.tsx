@@ -492,7 +492,7 @@ function Section({ title, done, open, onToggle, children }: SectionProps) {
           <span className="font-medium text-[var(--ti-ink-900)]">{title}</span>
         </div>
         {done ? (
-          <span className="flex items-center gap-1 text-xs text-[#2D8659]">
+          <span className="flex items-center gap-1 text-xs text-[var(--ti-success)]">
             <CheckCircle2 size={14} /> Complete
           </span>
         ) : (
@@ -565,12 +565,12 @@ function DiscordSection(p: DiscordSectionProps) {
           </Button>
         </div>
         {p.token.length > 0 && !p.tokenValid && (
-          <p className="flex items-center gap-1 text-xs text-[#B83232]">
+          <p className="flex items-center gap-1 text-xs text-[var(--ti-danger)]">
             <AlertCircle size={12} /> Token format invalid.
           </p>
         )}
         {p.tokenValid && (
-          <p className="flex items-center gap-1 text-xs text-[#2D8659]">
+          <p className="flex items-center gap-1 text-xs text-[var(--ti-success)]">
             <CheckCircle2 size={12} /> Token format looks valid.
           </p>
         )}
@@ -618,7 +618,7 @@ function DiscordSection(p: DiscordSectionProps) {
               </div>
             ) : (
               <div className="space-y-3">
-                <div className="flex items-center gap-2 text-sm text-[#2D8659]">
+                <div className="flex items-center gap-2 text-sm text-[var(--ti-success)]">
                   <CheckCircle2 size={16} />
                   <span>
                     Bot detected in {p.guilds.length} server{p.guilds.length === 1 ? "" : "s"}.
@@ -708,7 +708,7 @@ function TranscriptionSection(p: TranscriptionSectionProps) {
               </div>
             </label>
             {localReady && (
-              <span className="flex items-center gap-1 whitespace-nowrap text-xs text-[#2D8659]">
+              <span className="flex items-center gap-1 whitespace-nowrap text-xs text-[var(--ti-success)]">
                 <CheckCircle2 size={14} /> Ready
               </span>
             )}
@@ -735,7 +735,7 @@ function TranscriptionSection(p: TranscriptionSectionProps) {
             </div>
           )}
           {p.downloadError && (
-            <p className="flex items-center gap-1 text-xs text-[#B83232]">
+            <p className="flex items-center gap-1 text-xs text-[var(--ti-danger)]">
               <AlertCircle size={12} /> {p.downloadError}
             </p>
           )}
@@ -785,12 +785,12 @@ function TranscriptionSection(p: TranscriptionSectionProps) {
                 </Button>
               </div>
               {p.keyError && (
-                <p className="flex items-center gap-1 text-xs text-[#B83232]">
+                <p className="flex items-center gap-1 text-xs text-[var(--ti-danger)]">
                   <AlertCircle size={12} /> {p.keyError}
                 </p>
               )}
               {localKeyValid && !p.keyError && (
-                <p className="flex items-center gap-1 text-xs text-[#2D8659]">
+                <p className="flex items-center gap-1 text-xs text-[var(--ti-success)]">
                   <CheckCircle2 size={12} /> Key format valid.
                 </p>
               )}
@@ -852,7 +852,7 @@ function ClaudeSection(p: ClaudeSectionProps) {
             </div>
           ) : p.claudePath ? (
             <div className="space-y-2">
-              <div className="flex items-center gap-2 text-sm text-[#2D8659]">
+              <div className="flex items-center gap-2 text-sm text-[var(--ti-success)]">
                 <CheckCircle2 size={16} /> Detected.
               </div>
               <dl className="space-y-1 text-xs text-[var(--ti-ink-700)]">
@@ -869,7 +869,7 @@ function ClaudeSection(p: ClaudeSectionProps) {
               </dl>
             </div>
           ) : (
-            <div className="flex items-center gap-2 text-sm text-[#B83232]">
+            <div className="flex items-center gap-2 text-sm text-[var(--ti-danger)]">
               <AlertCircle size={16} /> claude CLI not found on PATH.{" "}
               <button
                 className="text-[var(--ti-orange-500)] underline-offset-2 hover:underline"
@@ -895,7 +895,7 @@ function ClaudeSection(p: ClaudeSectionProps) {
             </div>
           ) : p.nodeMeetsMin ? (
             <div className="space-y-2">
-              <div className="flex items-center gap-2 text-sm text-[#2D8659]">
+              <div className="flex items-center gap-2 text-sm text-[var(--ti-success)]">
                 <CheckCircle2 size={16} /> Node {p.nodeVersion}.
               </div>
               {p.nodePath && (
@@ -905,7 +905,7 @@ function ClaudeSection(p: ClaudeSectionProps) {
               )}
             </div>
           ) : (
-            <div className="flex items-center gap-2 text-sm text-[#B83232]">
+            <div className="flex items-center gap-2 text-sm text-[var(--ti-danger)]">
               <AlertCircle size={16} />
               {p.nodePath
                 ? `Node ${p.nodeVersion ?? "?"} found, but < 20.`
@@ -994,7 +994,7 @@ function TeamSection(p: TeamSectionProps) {
       {p.errors.length > 0 && (
         <ul className="space-y-1">
           {p.errors.map((e, i) => (
-            <li key={i} className="flex items-center gap-1 text-xs text-[#B83232]">
+            <li key={i} className="flex items-center gap-1 text-xs text-[var(--ti-danger)]">
               <AlertCircle size={12} /> {e}
             </li>
           ))}

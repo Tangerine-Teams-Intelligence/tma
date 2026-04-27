@@ -12,7 +12,7 @@ const buttonVariants = cva(
         outline:
           "border border-[var(--ti-border-default)] bg-transparent text-[var(--ti-ink-900)] hover:bg-[var(--ti-paper-200)]",
         ghost: "bg-transparent text-[var(--ti-ink-700)] hover:bg-[var(--ti-paper-200)]",
-        destructive: "bg-[#B83232] text-white hover:bg-[#9a2929]",
+        destructive: "bg-[var(--ti-danger)] text-white hover:opacity-90",
         link: "text-[var(--ti-orange-500)] underline-offset-4 hover:underline",
       },
       size: {
