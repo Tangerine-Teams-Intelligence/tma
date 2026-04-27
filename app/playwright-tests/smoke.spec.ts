@@ -13,9 +13,15 @@
  *
  * Stub mode: every Tauri command falls back to its `safeInvoke` mock when
  * `window.__TAURI_INTERNALS__` is absent, so the React surfaces render
- * deterministically without a Tauri shell. The auth gate is bypassed by
- * pre-seeding `localStorage` with a stub session — the same trick used by
- * the existing `e2e/01-meetings-list-loads.spec.ts` suite.
+ * deterministically without a Tauri shell.
+ *
+ * Auth bypass: the auth gate in `lib/auth.ts` reads the localStorage key
+ * `tangerine.auth.stubSession` (NOT `tmi.stub_session.v1` — that was a
+ * stale guess from the v3.5 wave-1 draft). We seed that key directly via
+ * `addInitScript` so every navigation lands inside the AppShell instead
+ * of bouncing to /auth. We also seed `memoryConfig.mode = "solo"` in the
+ * persisted zustand store so /memory doesn't redirect to
+ * /onboarding-team on first paint.
  */
 
 import { test, expect, type ConsoleMessage, type Page } from "@playwright/test";
@@ -32,7 +38,7 @@ interface RouteCase {
    * Anchor selector or text the smoke test asserts is present. Must be
    * specific enough to fail when the route renders an error boundary.
    */
-  anchor: () => Promise<void> | void;
+  anchor: (page: Page) => Promise<void>;
 }
 
 /**
@@ -44,6 +50,8 @@ const CONSOLE_ALLOWLIST: RegExp[] = [
   /Tauri IPC unavailable/i, // safeInvoke fallback log
   /\[mock\]/i, // safeInvoke explicit mock chatter
   /Download the React DevTools/i,
+  /VITE_SUPABASE_URL/i, // stub-mode banner from supabase.ts
+  /\[supabase\]/i, // stub-mode banner from supabase.ts
 ];
 
 function shouldIgnoreConsole(msg: ConsoleMessage): boolean {
@@ -52,12 +60,30 @@ function shouldIgnoreConsole(msg: ConsoleMessage): boolean {
   return CONSOLE_ALLOWLIST.some((re) => re.test(text));
 }
 
+/**
+ * Pre-seed the auth gate + zustand store so every smoke navigation lands
+ * inside the AppShell. Two keys are written:
+ *
+ *   1. `tangerine.auth.stubSession` — read by `useAuth()` in lib/auth.ts.
+ *      Presence flips `signedIn` to true, so the App.tsx gate at line 129
+ *      stops redirecting to /auth.
+ *
+ *   2. `tangerine.skills` (zustand persist key per lib/store.ts:1047)
+ *      — pre-seeds `ui.memoryConfig.mode = "solo"` so /memory doesn't
+ *      bounce to /onboarding-team. We also pin `currentUser` and
+ *      `samplesSeeded` so the routes render their stable empty state.
+ *
+ * If the zustand persist key changes (e.g. version bump) the second seed
+ * becomes a no-op and zustand falls back to defaults — auth still works,
+ * /memory just briefly redirects. That's acceptable: the smoke goal is
+ * "route mounts without crashing", not "memory tree renders content".
+ */
 async function setupStubSession(page: Page): Promise<void> {
   await page.addInitScript(() => {
-    // Bypass the auth gate (mirror the existing /e2e/ suite pattern).
+    // (1) Auth gate bypass — actual key per lib/auth.ts.
     try {
       window.localStorage.setItem(
-        "tmi.stub_session.v1",
+        "tangerine.auth.stubSession",
         JSON.stringify({
           email: "smoke@tangerine.test",
           signedInAt: Date.now(),
@@ -66,6 +92,34 @@ async function setupStubSession(page: Page): Promise<void> {
     } catch {
       /* ignore */
     }
+
+    // (2) Zustand persist seed — keeps /memory from redirecting to
+    // /onboarding-team. Shape mirrors `partialize` in lib/store.ts.
+    try {
+      const persisted = {
+        state: {
+          ui: {
+            memoryConfig: {
+              mode: "solo",
+              personalDirEnabled: true,
+            },
+            currentUser: "smoke",
+            samplesSeeded: true,
+            sampleBannerDismissed: true,
+          },
+          skills: { meetingConfig: {} },
+        },
+        version: 0,
+      };
+      window.localStorage.setItem(
+        "tangerine.skills",
+        JSON.stringify(persisted),
+      );
+    } catch {
+      /* ignore */
+    }
+
+    // (3) Tauri command mock seed used by the existing /e2e/ suite.
     (window as unknown as { __TMI_MOCK__: unknown }).__TMI_MOCK__ = {
       config: { schema_version: 1 },
     };
@@ -76,42 +130,93 @@ const ROUTES: RouteCase[] = [
   {
     url: "/today",
     slug: "today",
-    anchor: () => undefined,
+    // /today renders <h1>{prettyDate(today)}</h1> next to a "Today"
+    // ti-section-label. Match either the pretty date heading OR the
+    // breadcrumb "~ /today" text — both are present iff the route mounted.
+    anchor: async (page) => {
+      await expect(page.locator("text=~ /today").first()).toBeVisible({ timeout: 5_000 });
+      await expect(page.locator("text=Workflow").first()).toBeVisible({ timeout: 5_000 });
+    },
   },
   {
     url: "/memory",
     slug: "memory",
-    anchor: () => undefined,
+    // /memory mounts inside AppShell; the breadcrumb "~ /memory" or the
+    // sidebar's "Memory" tab label is the safest anchor (the file tree
+    // itself is virtualized + may be empty in stub mode).
+    anchor: async (page) => {
+      // Either the route header OR the AppShell sidebar's "Memory" link.
+      const memoryHeader = page.locator("text=/memory|Memory/").first();
+      await expect(memoryHeader).toBeVisible({ timeout: 5_000 });
+    },
   },
   {
     url: "/co-thinker",
     slug: "co-thinker",
-    anchor: () => undefined,
+    // co-thinker renders an empty-state CTA "Co-thinker hasn't started
+    // thinking yet." when the brain doc is empty — the stub safeInvoke
+    // returns "" so this is the deterministic state.
+    anchor: async (page) => {
+      await expect(
+        page.getByRole("heading", { name: /Co-thinker/i, level: 1 }),
+      ).toBeVisible({ timeout: 5_000 });
+    },
   },
   {
     url: "/canvas",
     slug: "canvas",
-    anchor: () => undefined,
+    // /canvas index renders <h1>Canvas</h1> + "No canvases yet." empty
+    // state when canvasListProjects() returns []. Match the heading.
+    anchor: async (page) => {
+      await expect(
+        page.getByRole("heading", { name: /^Canvas$/, level: 1 }),
+      ).toBeVisible({ timeout: 5_000 });
+    },
   },
   {
     url: "/reviews",
     slug: "reviews",
-    anchor: () => undefined,
+    // /reviews shows "Reviews" h1 + filter chips. Empty state copy is
+    // "No open reviews. The co-thinker will propose decisions on the
+    // next heartbeat." in stub mode.
+    anchor: async (page) => {
+      await expect(
+        page.getByRole("heading", { name: /Reviews/i }),
+      ).toBeVisible({ timeout: 5_000 });
+    },
   },
   {
     url: "/marketplace",
     slug: "marketplace",
-    anchor: () => undefined,
+    // /marketplace renders <h1>Marketplace</h1> + the "Coming live when
+    // CEO triggers launch gate" stub-mode banner.
+    anchor: async (page) => {
+      await expect(
+        page.getByRole("heading", { name: /Marketplace/i }),
+      ).toBeVisible({ timeout: 5_000 });
+    },
   },
   {
     url: "/sources/discord",
     slug: "sources",
-    anchor: () => undefined,
+    // /sources/discord dispatches to DiscordSourceRoute via SourceDetailRoute,
+    // which renders <h1>Set up the Discord source</h1>.
+    anchor: async (page) => {
+      await expect(
+        page.getByRole("heading", { name: /Set up the Discord source/i }),
+      ).toBeVisible({ timeout: 5_000 });
+    },
   },
   {
     url: "/settings",
     slug: "settings",
-    anchor: () => undefined,
+    // /settings renders <h1>Settings</h1> + tabs nav (data-testid="st-0").
+    anchor: async (page) => {
+      await expect(
+        page.getByRole("heading", { name: /^Settings$/, level: 1 }),
+      ).toBeVisible({ timeout: 5_000 });
+      await expect(page.getByTestId("st-0")).toBeVisible({ timeout: 5_000 });
+    },
   },
 ];
 
@@ -135,6 +240,18 @@ test.describe("v3.5 smoke: 8 primary routes render without crashes", () => {
       // Give React 1s to mount the route content.
       await page.waitForLoadState("networkidle").catch(() => undefined);
       await page.waitForTimeout(500);
+
+      // Auth-gate sanity: the auth screen's headline copy is unique to
+      // /auth. If we still see it after the stub-session seed, the
+      // bypass broke and the rest of the assertions are vacuous.
+      const taglineLocator = page.locator(
+        "text=Align every AI tool on your team with your team's actual workflow",
+      );
+      const stillOnAuth = await taglineLocator.first().isVisible().catch(() => false);
+      expect(
+        stillOnAuth,
+        `still on /auth after stub-session seed for ${route.url} — auth bypass broke`,
+      ).toBe(false);
 
       // Snapshot whatever the route ended up rendering.
       const screenshotPath = path.join(
@@ -164,7 +281,8 @@ test.describe("v3.5 smoke: 8 primary routes render without crashes", () => {
       expect(consoleErrors.length, `console errors on ${route.url}:\n${consoleErrors.join("\n")}`)
         .toBe(0);
 
-      await route.anchor();
+      // Per-route anchor — the real "did this route mount?" check.
+      await route.anchor(page);
     });
   }
 });
