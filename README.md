@@ -1,159 +1,172 @@
-# Tangerine
+# Tangerine Teams App
 
 > **Align every AI tool on your team with your team's actual workflow.**
 >
-> Your team uses Cursor, Claude, ChatGPT — but each AI sees a different slice of what your team's actually doing. We align them all with one source of team workflow. So your AIs stop giving different answers.
+> Your team uses Cursor, Claude, ChatGPT, Codex, Devin, Copilot — but each AI sees a different slice of what your team's actually doing. We align them all with one source of team workflow. Your AIs stop giving different answers.
 
-[![Latest Release](https://img.shields.io/github/v/release/Tangerine-Intelligence/tangerine-meeting-live?include_prereleases)](https://github.com/Tangerine-Intelligence/tangerine-meeting-live/releases/latest)
+[![Latest Release](https://img.shields.io/github/v/release/Tangerine-Teams-Intelligence/tangerine-teams-app?include_prereleases)](https://github.com/Tangerine-Teams-Intelligence/tangerine-teams-app/releases/latest)
 [![License: Apache-2.0 (current)](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](PRIOR-LICENSE-APACHE-2.0.txt)
-[![License: AGPL v3 + Commercial (transition draft)](https://img.shields.io/badge/license-AGPL_v3_+_Commercial-orange.svg)](LICENSE)
+[![License: AGPL v3 + Commercial (transition)](https://img.shields.io/badge/license-AGPL_v3_+_Commercial-orange.svg)](LICENSE)
 
-## License — transition in progress (2026-04)
-
-Tangerine is moving from Apache 2.0 to AGPL v3 + Dual Commercial License.
-See `LICENSE` (draft AGPL v3 + dual) and `COMMERCIAL-LICENSE.md` (draft
-commercial terms). Until ratification announced, codebase is governed
-by Apache 2.0 — see `PRIOR-LICENSE-APACHE-2.0.txt`.
-
-We're sometimes called the team's Auto Chief of Staff — same idea, this is what it means specifically: Tangerine listens in every corner of your team's comms (meetings, decisions, threads, code), structures it into team memory in your own dir, and feeds it back to every AI tool you already pay for (Claude Pro, ChatGPT, Cursor, Claude Code) through Sinks (browser extension, MCP server). North star metric: **same-screen rate** — the share of your team (and their AI tools) that's working from the same up-to-date context.
-
-**Status (v1.5.6-beta)**: Sources = Discord (live). Sinks = none yet (browser extension + MCP server land v1.6). See the roadmap below.
-
-### Roadmap
-
-| Version | What lands |
-|---|---|
-| **v1.5** (now) | Discord source · memory tree UI · dark mode · Cmd+K memory search (stub) |
-| **v1.6** | Linear + GitHub sources · browser extension Sink · MCP server Sink · memory fulltext index |
-| **v1.7** | Calendar source · /inbox approval flow for write-back · Public API Sink |
-| **v1.8** | Slack + Notion sources |
-| **v1.9** | Loom + Zoom sources |
+**Status**: v1.9.1 internal · v1.8.1 last public release · 4 design moats truly delivered
 
 ---
 
-## Two ways to use Tangerine
+## Why Tangerine — 4 design moats, each with concrete user value
 
-- **Desktop app (recommended)**: [Download Tangerine for Windows](https://github.com/Tangerine-Intelligence/tangerine-meeting-live/releases/latest) → install → sign in → set up the Discord source → run your first meeting. Discord is the only source shipping in v1.5; Linear / Slack / Notion / GitHub / Cal / Loom / Zoom land in v1.6+. Requires Node 20+, Git, and a Claude Code subscription. Whisper transcription runs locally (bundled `faster-whisper`); first run downloads ~244 MB to your machine. OpenAI Whisper remains as an opt-in advanced toggle if you want max accuracy or have a weak CPU.
-- **CLI**: `pip install tangerine-meeting-assistant` + `npm install` for the bot. See [SETUP.md](SETUP.md).
+### 1. Borrow your existing AI Pro subscription
+**No new $20/seat/month for our LLM.**
 
----
+You already pay Cursor Pro / Claude Pro / Codex / ChatGPT Plus. Tangerine reverse-calls into your editor through the **MCP sampling protocol** — your existing LLM does the inference, we just route the prompt. Your team pays $0 in extra LLM fees.
 
-## 60-second demo
+If your team has no AI subscription, our DeepSeek-backed fallback runs ~$2-5/team/month flat (not per-seat, not per-token).
 
+How it works (Tauri ⇄ MCP server ⇄ your editor):
 ```
-$ tmi new "David sync"
-/Users/dz/tangerine-meetings/meetings/2026-04-24-david-sync
-
-$ tmi prep
-intent locked for daizhe -> intents/daizhe.md
-
-$ tmi start
-Status  live · meeting=2026-04-24-david-sync
-Tail    tail -f .../transcript.md
-Flags   tail -f .../observations.md
-Stop    tmi wrap 2026-04-24-david-sync
-
-# [meeting happens in Discord. bot transcribes. observer flags drift silently.]
-
-$ tmi wrap
-wrapped  summary=summary.md diff_blocks=4
-
-$ tmi review
-Block 1/4  ·  knowledge/session-state.md  ·  append
-Reason: v1 scope decision
-Refs: L47, L52, L58
-────────────────────────────────────────────
-+ ### 2026-04-24 — David sync
-+ - v1 scope 锁定为 Discord + Claude Code
-────────────────────────────────────────────
-[a]pprove  [r]eject  [e]dit  [s]kip  [q]uit
-> a
-...
-all blocks decided -> state=reviewed
-
-$ tmi apply
-applied 3 file(s) commit=4617800
-Reminder: cd "<target_repo>" && git push
+~/.cursor/mcp.json                                Tangerine WS server
+       │                                          127.0.0.1:7780/sampler
+       ▼                                                    ▲
+  MCP server  ────── register_sampler ────────────────────── │
+       │                                                    │
+       ◄────── sample (prompt + system) ───────── Tauri co-thinker
+       │
+  server.createMessage()  (reverse-call to Cursor's host LLM)
+       │
+       └────── sample_response (LLM output) ──────────────► back
 ```
 
----
+### 2. AGI brain is a markdown doc — readable, editable, git-able
+**No black box. You see exactly what the AGI thinks.**
 
-## How it differs
+Open `~/.tangerine-memory/team/co-thinker.md` any time. It's a markdown doc — `cat` it, `vim` it, `git diff` it, push it to your repo. The AGI's "thinking" is a document you can read.
 
-| | TMA | Granola / Otter / Zoom AI |
+- Heartbeat: every 5 min when team's idle, every 30 min when active
+- Don't like what the AGI wrote? Edit the markdown directly. It picks up your edits next heartbeat.
+- Diff your AGI's brain across weeks: `git log -p co-thinker.md`
+
+### 3. Cross-vendor AI tool visibility
+**Anyone on your team uses any AI tool — we capture it.**
+
+Your designer uses Cursor. Your CTO uses Claude Code. Your contractor uses ChatGPT. Your intern uses Replit. Most tools today see only their own slice. Tangerine reads each vendor's local conversation files and unifies them into one team memory.
+
+8 vendor parsers shipped:
+| Vendor | Status | Local files read |
 |---|---|---|
-| Primary consumer | AI agent in your next session | Human reading later |
-| Output | Diff against your knowledge files | Notes page |
-| Pre-meeting | Structured per-member intent capture | Nothing |
+| Claude Code | Confirmed working | `~/.claude/projects/<repo>/*.jsonl` (41 sessions / 8483 messages tested) |
+| Cursor | Wired, awaiting real-files validation | `~/.cursor/conversations/*.json` |
+| Codex | Wired, awaiting validation | `~/.codex/sessions/*.json` |
+| Windsurf | Wired, awaiting validation | `~/.windsurf/conversations/*.json` |
+| Devin | API-based, needs real token | Cognition API |
+| Replit | API-based, needs real token | Replit API |
+| Apple Intelligence | macOS-only, awaiting validation | `~/Library/Application Support/com.apple.intelligenceplatform/` |
+| MS Copilot | Wired, awaiting validation | M365 Copilot API |
 
-Not a competitor to Granola — different customer. Run both if you want human notes AND AI context.
+Honest disclosure: only Claude Code is real-files-validated as of v1.9.1. The other 7 parsers compile, have unit tests, and have spec-correct schemas — they just haven't been pointed at real user files yet because we (the dev team) don't have those tools installed. As users install Tangerine + their respective tools, we close each row.
 
-## How we make money
+### 4. AI tools as first-class sidebar
+**Most apps' sidebars hold workflows. Ours holds AI tools — because that's where the work actually happens.**
 
-Tangerine is open source forever. You can run it on your laptop, fork the repo, name your AI whatever you want, and never pay us anything.
+Cursor / Claude Code / Codex / Windsurf / ChatGPT / Devin / Replit / Apple Intelligence / MS Copilot / Ollama — all in one sidebar.
+- Star your primary tool (it's where new tasks default to)
+- See each tool's active session indicator at a glance
+- One-click "Copy MCP config to clipboard" for tools that support MCP
+- Auto-config card surfaces for installed MCP-compatible tools
 
-If you want zero-config, use Tangerine Cloud:
-- **Bring your own Cursor Pro / Claude Pro** — Tangerine borrows your existing subscriptions, no API keys, no Tangerine cost.
-- **Or use Tangerine credits** — backed by DeepSeek V4. Pay per token, not per seat. ~$2-5/team/month for a typical co-thinker.
+---
 
-[Marketplace + Enterprise white-label coming v2.0]
+## Quick start (30 seconds from install)
+
+1. Download installer for your OS:
+   - **Windows**: [Tangerine-Teams-App-1.9.1-x64.msi](https://github.com/Tangerine-Teams-Intelligence/tangerine-teams-app/releases/latest)
+   - macOS / Linux: coming v1.9.x (Tauri 2 builds clean, just needs CI runner)
+2. Install + launch
+3. WelcomeOverlay walks you through 4 cards in ~30 seconds
+4. Click "Get started" → auto-detects installed AI tools and surfaces one-click MCP config snippets
+5. Initialize co-thinker brain → first heartbeat in ~5-10 seconds
+
+---
+
+## How we make money (anti-SaaS, no per-seat trap)
+
+Tangerine is **OSS forever**. Fork it, run it on your laptop, name your AI whatever you want, never pay us anything.
+
+If you want zero-config, three optional paid tiers:
+
+| Tier | Price | What you get |
+|---|---|---|
+| **Self-host** | $0 | Full app, every feature, no limits. Your DeepSeek API key OR borrow your editor's LLM via MCP sampling. |
+| **Tangerine Cloud** | ~$5/team/month flat | DeepSeek-backed inference managed by us. Not per-seat. Not per-token. |
+| **Marketplace** | 10-15% take rate | Community templates / agents / sources. Sellers keep 85-90%. |
+| **Enterprise** | $25-100k/year | SOC 2, SSO, on-prem, white-label. |
 
 See [BUSINESS_MODEL_SPEC.md](./BUSINESS_MODEL_SPEC.md) for the full breakdown.
 
-## Three differentiators
-
-1. **Vendor-less output.** No hosted dashboard. Output is a git commit to *your* repo. You own the bytes.
-2. **Consumer inversion.** Summary is for the LLM you'll talk to tomorrow, not the teammate who missed the call.
-3. **Output as diff.** Every change is a reviewable block with transcript line references. No "trust the AI" — approve/reject per block.
-
-## Quick start
-
-Assumes SETUP.md is done (Discord bot created, API keys set, deps installed).
-
-```bash
-tmi init                               # one-time, writes ~/.tmi/config.yaml
-tmi new "weekly standup"               # creates meeting dir
-tmi prep                               # each member, separately
-tmi start                              # joins Discord voice
-# ... meeting happens ...
-tmi wrap && tmi review && tmi apply    # synthesize, approve, commit
-```
-
-See [SETUP.md](SETUP.md) for the full walkthrough (Discord bot creation, API keys, first meeting). ~15 minutes from zero.
+---
 
 ## Architecture
 
-Three components, file-based IPC, no server.
+Tauri 2 desktop app (Rust backend + React frontend), file-based memory in your home dir, optional MCP server for AI tool integration.
 
 ```
-tmi (Python CLI) ──► meetings/<id>/ ◄── bot (Node, Discord + Whisper)
-       │
-       ├──spawns──► observer (claude CLI subprocess)
-       │
-       └──applies──► target_repo/CLAUDE.md, knowledge/, session-state.md
+~/.tangerine-memory/                  Tauri app                MCP server (Node)
+├── team/                             ├── React UI             ├── 7 MCP tools (sources/sinks)
+│   ├── co-thinker.md  ◄──heartbeat───┤  Zustand store         │
+│   ├── decisions/                    │  i18next (en/zh)        │
+│   └── timeline/                     ├── Tauri commands        │
+└── personal/                         │  185 typed              ├── Sampling bridge
+    └── <user>/                       ├── ws server             │  /sampler ws
+        ├── threads/                  │  127.0.0.1:7780  ◄──────┤  reverse-call to host LLM
+        └── tools/                    └── faster-whisper        │
+                                          (local transcription)
 ```
 
-- **CLI**: Python 3.11 + Typer. Meeting lifecycle, review, apply.
-- **Bot**: Node 20 + discord.js v14. Voice capture, Whisper streaming, transcript writes.
-- **Observer**: `claude` CLI headless. Prep / observe / wrap via JSON envelopes.
-- **Adapter**: pure Python. Reads target repo, parses diff, applies blocks, commits.
+- **Sources**: Discord (live), GitHub, Linear, Slack, Calendar, RSS / Podcast / YouTube / Article (hand-rolled parsers)
+- **Sinks**: MCP server (7 tools), browser extension (smart inject on ChatGPT/Claude.ai/Gemini), local file write
+- **8 personal agents**: parsers for Cursor / Claude Code / Codex / Windsurf / Devin / Replit / Apple Intelligence / MS Copilot
 
-Git is the database. Every artifact is a markdown or YAML file in a repo you control.
-
-## Docs
-
-- [SETUP.md](SETUP.md) — install + first meeting in <15 min
-- [PLAN.md](PLAN.md) — product spec + 4-week v1 roadmap
-- [INTERFACES.md](INTERFACES.md) — locked cross-component contract
-- [CONTRIBUTING.md](CONTRIBUTING.md) — dev setup, commit format, PR process
-- [SECURITY.md](SECURITY.md) — responsible disclosure
+---
 
 ## License
 
-**Currently effective:** [Apache-2.0](PRIOR-LICENSE-APACHE-2.0.txt). Copyright 2026 Tangerine Intelligence Inc.
+**Currently effective**: [Apache-2.0](PRIOR-LICENSE-APACHE-2.0.txt). Copyright 2026 Tangerine Intelligence Inc.
 
-**Transition draft (pending CEO + legal counsel ratification):** [AGPL v3 + Dual Commercial](LICENSE). See `COMMERCIAL-LICENSE.md` for commercial terms.
+**Transition draft (pending CEO + legal counsel ratification)**: [AGPL v3 + Dual Commercial](LICENSE). See [COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md) for commercial terms.
+
+The license flip will be announced when ratification completes. Until then, the codebase is governed by Apache-2.0.
+
+---
+
+## Status (v1.9.1)
+
+| What | State |
+|---|---|
+| Tests | 546 Rust + 407 frontend + 8 Playwright + 92 MCP vitest = 1053+ tests pass |
+| MCP sampling protocol | Real, end-to-end |
+| Welcome tour | 4-card 30-sec onboarding |
+| 中文 i18n | 287 strings × 2 locales (en/zh 1:1) |
+| Cross-vendor parsers | 1/8 real-files-validated (Claude Code), 7/8 wired-and-tested |
+| Public release | v1.8.1 (v1.9.1 in flight) |
+
+See [V1_9_ACCEPTANCE.md](./V1_9_ACCEPTANCE.md) for per-phase quality gates.
+
+---
+
+## Docs
+
+- [SUGGESTION_ENGINE_SPEC.md](./SUGGESTION_ENGINE_SPEC.md) — 6 anti-Clippy disciplines + 4 visual tiers + 7 templates
+- [V2_0_SPEC.md](./V2_0_SPEC.md) — visualization-first (graphs, lineage, social)
+- [V2_5_SPEC.md](./V2_5_SPEC.md) — decision review + paywall
+- [V3_0_SPEC.md](./V3_0_SPEC.md) — personal agents + external world
+- [V3_5_SPEC.md](./V3_5_SPEC.md) — marketplace + enterprise
+- [BUSINESS_MODEL_SPEC.md](./BUSINESS_MODEL_SPEC.md) — anti-SaaS economics
+- [COMPETITIVE_ADVANTAGE.md](./COMPETITIVE_ADVANTAGE.md) — execution-leader positioning vs concept-creators
+- [DATA_MODEL_SPEC.md](./DATA_MODEL_SPEC.md) — atom schemas
+- [API_SURFACE_SPEC.md](./API_SURFACE_SPEC.md) — Tauri command catalog
+- [VISUAL_DESIGN_SPEC.md](./VISUAL_DESIGN_SPEC.md) — design tokens
+- [OBSERVABILITY_SPEC.md](./OBSERVABILITY_SPEC.md) — error/perf/i18n/SOC2
+
+---
 
 ## Owner
 
-Daizhe Zou — daizhe@berkeley.edu. Side project. Best-effort response on issues.
+Daizhe Zou — daizhe@berkeley.edu. Tangerine Intelligence Inc. (Delaware C-Corp). Best-effort response on issues.
