@@ -14,13 +14,16 @@
 //! the simplest contract for /co-thinker UI to reason about.
 
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 use serde::Serialize;
+use tauri::{AppHandle, Runtime};
 
 use crate::agi::co_thinker::{CoThinkerEngine, HeartbeatCadence, HeartbeatOutcome};
 use crate::agi::observations;
+use crate::agi::templates::common::TauriEventSink;
 
 use super::AppError;
 
@@ -55,12 +58,19 @@ pub async fn co_thinker_write_brain(content: String) -> Result<(), AppError> {
 /// Run one heartbeat synchronously, returning the outcome. The frontend's
 /// "Trigger heartbeat now" button awaits this — the engine throttle ensures
 /// concurrent invocations short-circuit cleanly.
+///
+/// v1.9.0-beta.2: install a `TauriEventSink` so the rule-based templates'
+/// `template_match` events reach the frontend listener in `AppShell.tsx`
+/// during a manual trigger. The daemon-driven path wires the same sink
+/// from `daemon::start` once an `AppHandle` is in scope at boot.
 #[tauri::command]
-pub async fn co_thinker_trigger_heartbeat(
+pub async fn co_thinker_trigger_heartbeat<R: Runtime>(
+    app: AppHandle<R>,
     primary_tool_id: Option<String>,
 ) -> Result<HeartbeatOutcome, AppError> {
     let root = memory_root()?;
     let mut engine = CoThinkerEngine::new(root);
+    engine.set_event_sink(Arc::new(TauriEventSink::new(app)));
     engine
         .heartbeat(HeartbeatCadence::Manual, primary_tool_id)
         .await

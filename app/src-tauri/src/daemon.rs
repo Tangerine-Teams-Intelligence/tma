@@ -108,6 +108,13 @@ pub struct DaemonControl {
     /// True ⇒ 5 min cadence; false ⇒ 30 min. Defaults to false (background)
     /// so a headless daemon doesn't burn LLM calls before the UI signals.
     pub foreground: parking_lot::Mutex<bool>,
+    /// v1.9.0-beta.2 P2-A: event sink for rule-based template matches.
+    /// `None` until `main.rs` calls `install_event_sink` at boot with a
+    /// `TauriEventSink<Wry>`; once installed, every co_thinker_tick wires
+    /// it into the long-lived engine so heartbeat-driven template matches
+    /// reach the frontend's `template_match` listener.
+    pub template_event_sink:
+        parking_lot::Mutex<Option<Arc<dyn crate::agi::templates::common::EventSink>>>,
 }
 
 impl DaemonControl {
@@ -122,6 +129,22 @@ impl DaemonControl {
         if s.errors.len() > MAX_ERRORS_RETAINED {
             let overflow = s.errors.len() - MAX_ERRORS_RETAINED;
             s.errors.drain(0..overflow);
+        }
+    }
+
+    /// v1.9.0-beta.2 P2-A — install a template-match event sink. Called
+    /// once at boot from `main.rs` with a `TauriEventSink<Wry>`. Replaces
+    /// any prior sink (so a hot-restart in dev re-points cleanly).
+    pub fn install_event_sink(
+        &self,
+        sink: Arc<dyn crate::agi::templates::common::EventSink>,
+    ) {
+        *self.template_event_sink.lock() = Some(sink.clone());
+        // Also push the sink onto a live engine if one already exists, so
+        // the next heartbeat picks it up without waiting for an engine
+        // teardown.
+        if let Some(engine) = self.co_thinker.lock().as_mut() {
+            engine.set_event_sink(sink);
         }
     }
 }
@@ -413,6 +436,14 @@ async fn co_thinker_tick(cfg: &DaemonConfig, control: &Arc<DaemonControl>) -> Re
         slot.take()
             .unwrap_or_else(|| CoThinkerEngine::new(cfg.memory_root.clone()))
     };
+    // v1.9.0-beta.2 P2-A — wire the template-match sink onto every engine
+    // we use. Idempotent — safe to set on an already-configured engine.
+    // When no sink has been installed (`main.rs` hasn't called
+    // `install_event_sink` yet), the engine keeps its NoopSink default
+    // and template matches accumulate but emit nowhere.
+    if let Some(sink) = control.template_event_sink.lock().clone() {
+        engine.set_event_sink(sink);
+    }
 
     let outcome = engine
         .heartbeat(cadence, None)

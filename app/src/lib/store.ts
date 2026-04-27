@@ -153,12 +153,27 @@ interface UiSlice {
   /** User-tunable confidence floor (0.5–0.95). Sits *on top of* the
    *  hard-coded `MIN_CONFIDENCE = 0.7`. Default 0.7. */
   agiConfidenceThreshold: number;
+  /** v1.9.0-beta.2 P2-C — newcomer onboarding latch.
+   *
+   *  Flipped to `true` the first time the Rust `newcomer_onboarding`
+   *  template fires AND the resulting toast is pushed (or dismissed) on the
+   *  frontend. Persisted so the toast never re-fires on a future launch of
+   *  the same install — even if the user wipes their memory dir, the latch
+   *  prevents the welcome from looping.
+   *
+   *  Wired to `template_match` listener in `components/layout/AppShell.tsx`:
+   *  when a `newcomer_onboarding` match arrives, the listener checks this
+   *  flag and silently drops the match if it's already true. Otherwise it
+   *  forwards to `pushSuggestion(...)` and flips the flag. */
+  newcomerOnboardingShown: boolean;
   setAgiParticipation: (v: boolean) => void;
   setAgiVolume: (v: AgiVolume) => void;
   toggleAgiChannelMute: (channel: string) => void;
   rememberDismissed: (surfaceId: string) => void;
   resetDismissedSurfaces: () => void;
   setAgiConfidenceThreshold: (n: number) => void;
+  /** v1.9.0-beta.2 — flip the newcomer-onboarding latch. */
+  setNewcomerOnboardingShown: (v: boolean) => void;
   toasts: ToastEntry[];
   // ---- v1.9.0-beta.1 — banner + modal queues ----
   /** Active banner queue. The host renders the highest-priority entry; the
@@ -328,6 +343,10 @@ export const useStore = create<Store>()(
         mutedAgiChannels: [],
         dismissedSurfaces: [],
         agiConfidenceThreshold: 0.7,
+        // v1.9.0-beta.2 P2-C — newcomer onboarding latch.
+        // Persisted; flips to true after the first emit so the toast
+        // never re-fires on subsequent heartbeats / launches.
+        newcomerOnboardingShown: false,
         toasts: [],
         // v1.9.0-beta.1 — banner + modal queues. Not persisted — these
         // are session-scoped UI state. Counters reset on every cold launch.
@@ -430,6 +449,9 @@ export const useStore = create<Store>()(
               agiConfidenceThreshold: Math.max(0.5, Math.min(0.95, n)),
             },
           })),
+        // v1.9.0-beta.2 P2-C — newcomer onboarding latch.
+        setNewcomerOnboardingShown: (v) =>
+          set((s) => ({ ui: { ...s.ui, newcomerOnboardingShown: v } })),
         pushToast: ((
           kindOrInput: "info" | "success" | "error" | PushToastInput,
           text?: string,
@@ -594,6 +616,8 @@ export const useStore = create<Store>()(
             // window and respected).
             dismissedSurfaces: s.ui.dismissedSurfaces,
             agiConfidenceThreshold: s.ui.agiConfidenceThreshold,
+            // v1.9.0-beta.2 P2-C — newcomer onboarding latch.
+            newcomerOnboardingShown: s.ui.newcomerOnboardingShown,
           },
           skills: { meetingConfig: s.skills.meetingConfig },
         }) as unknown as Store,
@@ -615,6 +639,7 @@ export const useStore = create<Store>()(
                 mutedAgiChannels?: string[];
                 dismissedSurfaces?: DismissEntry[];
                 agiConfidenceThreshold?: number;
+                newcomerOnboardingShown?: boolean;
               };
               skills?: { meetingConfig?: MeetingConfig };
             }
@@ -649,6 +674,11 @@ export const useStore = create<Store>()(
             ),
             agiConfidenceThreshold:
               p?.ui?.agiConfidenceThreshold ?? current.ui.agiConfidenceThreshold,
+            // v1.9.0-beta.2 P2-C — newcomer onboarding latch. Once flipped
+            // it stays flipped across launches so the welcome toast never
+            // re-fires for the same install.
+            newcomerOnboardingShown:
+              p?.ui?.newcomerOnboardingShown ?? current.ui.newcomerOnboardingShown,
           },
           skills: {
             ...current.skills,

@@ -42,6 +42,14 @@ use crate::commands::AppError;
 
 use super::canvas_writer;
 use super::observations;
+// v1.9.0-beta.2 P2-A — rule-based suggestion templates run at the bottom of
+// every heartbeat. The engine holds an `EventSink` (default = NoopSink) so
+// daemon-driven heartbeats stay silent until a Tauri AppHandle is plumbed
+// in (manual-trigger path + final v1.9 wiring). The dispatch lives in
+// `templates::registry::evaluate_and_emit` so adding a new template never
+// touches this file — see the marker block in `heartbeat`.
+use super::templates::common::{EventSink, NoopSink, TemplateContext};
+use super::templates::registry as templates_registry;
 
 // ---------------------------------------------------------------------------
 // LlmDispatcher trait — abstracts P3-A's `session_borrower::dispatch`.
@@ -164,6 +172,13 @@ pub struct HeartbeatOutcome {
     /// Soft error message when something failed but the daemon survived.
     /// `None` = clean tick.
     pub error: Option<String>,
+    /// v1.9.0-beta.2 — number of rule-based template matches emitted this
+    /// tick via `EventSink::emit_template_match`. Populated even when the
+    /// LLM dispatch is skipped (skip path) so deadline / conflict / pattern
+    /// detection still fires on otherwise-quiet heartbeats. Default 0 keeps
+    /// older Serialize callers happy.
+    #[serde(default)]
+    pub template_matches_emitted: u32,
 }
 
 /// The engine. Owns the memory root + tracks last-heartbeat-ts for
@@ -174,6 +189,11 @@ pub struct CoThinkerEngine {
     /// `Arc<dyn LlmDispatcher>` so the engine can be cheaply cloned across
     /// the daemon + Tauri command surfaces without leaking lifetimes.
     pub dispatcher: Arc<dyn LlmDispatcher>,
+    /// v1.9.0-beta.2 — destination for rule-based template matches. Default
+    /// is `NoopSink`; the daemon (or a Tauri command surface holding an
+    /// `AppHandle`) calls `set_event_sink` to install a real Tauri-backed
+    /// sink that forwards to the frontend's `template_match` listener.
+    pub event_sink: Arc<dyn EventSink>,
     /// Throttle: heartbeat takes this lock; a second concurrent call gets
     /// `try_lock` → None → short-circuits with "throttled".
     throttle: Arc<tokio::sync::Mutex<()>>,
@@ -186,6 +206,7 @@ impl CoThinkerEngine {
             memory_root,
             last_heartbeat_ts: None,
             dispatcher: Arc::new(ProductionDispatcher),
+            event_sink: Arc::new(NoopSink),
             throttle: Arc::new(tokio::sync::Mutex::new(())),
         }
     }
@@ -196,8 +217,17 @@ impl CoThinkerEngine {
             memory_root,
             last_heartbeat_ts: None,
             dispatcher,
+            event_sink: Arc::new(NoopSink),
             throttle: Arc::new(tokio::sync::Mutex::new(())),
         }
+    }
+
+    /// v1.9.0-beta.2 — install a custom event sink. Used by the manual-
+    /// trigger Tauri command (which has an `AppHandle`) and tests that need
+    /// to assert on emitted matches. Returns `&mut Self` for chaining.
+    pub fn set_event_sink(&mut self, sink: Arc<dyn EventSink>) -> &mut Self {
+        self.event_sink = sink;
+        self
     }
 
     /// Path to the brain doc.
@@ -247,6 +277,7 @@ impl CoThinkerEngine {
                     channel_used: "none".into(),
                     latency_ms: started_inst.elapsed().as_millis() as u64,
                     error: Some("throttled — another heartbeat is in flight".into()),
+                    template_matches_emitted: 0,
                 });
             }
         };
@@ -265,16 +296,28 @@ impl CoThinkerEngine {
         let current_brain = self.read_brain_doc()?;
 
         // Fast path: no new atoms AND brain already exists → don't waste an
-        // LLM call. Just bump last_heartbeat_ts and emit an empty
-        // observation. This is the steady-state path 90% of heartbeats hit.
+        // LLM call. We still evaluate rule-based templates (deadlines /
+        // pattern recurrence / conflicts don't depend on a fresh LLM call;
+        // they read from filesystem + telemetry directly), then bump
+        // last_heartbeat_ts and emit an empty observation. This is the
+        // steady-state path 90% of heartbeats hit.
         if atoms_seen == 0 && brain_existed {
+            // === v1.9 P2: rule-based templates evaluation (skip-path) ===
+            // Consolidated dispatch — registry handles all 7 templates
+            // (P2-A: deadline / pattern_recurrence / conflict;
+            //  P2-B: decision_drift / long_thread / catchup_hint;
+            //  P2-C: newcomer_onboarding) and throttles to MAX_PER_HEARTBEAT.
+            let template_matches_emitted =
+                self.evaluate_templates(started).await as u32;
+            // === end v1.9 P2 ===
             observations::append_observation(
                 &self.memory_root,
                 started,
                 &format!(
-                    "{} cadence={} atoms_seen=0 channel=skip brief=\"no new atoms\"",
+                    "{} cadence={} atoms_seen=0 channel=skip templates={} brief=\"no new atoms\"",
                     started.format("%H:%M:%S"),
                     cadence.label(),
+                    template_matches_emitted,
                 ),
             )?;
             self.last_heartbeat_ts = Some(started);
@@ -285,6 +328,7 @@ impl CoThinkerEngine {
                 channel_used: "skip".into(),
                 latency_ms: started_inst.elapsed().as_millis() as u64,
                 error: None,
+                template_matches_emitted,
             });
         }
 
@@ -300,16 +344,24 @@ impl CoThinkerEngine {
 
         // If the LLM call failed, log + bail. We do NOT overwrite the brain
         // with empty content — a transient dispatch error keeps the existing
-        // brain intact.
+        // brain intact. Templates STILL evaluate — they don't depend on the
+        // LLM response, so a transient dispatch outage shouldn't suppress
+        // deadline / pattern / conflict suggestions.
         if let Some(err) = dispatch_error {
+            // === v1.9 P2: rule-based templates evaluation (dispatch-error path) ===
+            // Consolidated dispatch — see registry.rs for the 7-template list.
+            let template_matches_emitted =
+                self.evaluate_templates(started).await as u32;
+            // === end v1.9 P2 ===
             observations::append_observation(
                 &self.memory_root,
                 started,
                 &format!(
-                    "{} cadence={} atoms_seen={} channel=none brief=\"dispatch failed: {}\"",
+                    "{} cadence={} atoms_seen={} channel=none templates={} brief=\"dispatch failed: {}\"",
                     started.format("%H:%M:%S"),
                     cadence.label(),
                     atoms_seen,
+                    template_matches_emitted,
                     err,
                 ),
             )?;
@@ -321,6 +373,7 @@ impl CoThinkerEngine {
                 channel_used: "none".into(),
                 latency_ms: started_inst.elapsed().as_millis() as u64,
                 error: Some(err),
+                template_matches_emitted,
             });
         }
 
@@ -351,6 +404,22 @@ impl CoThinkerEngine {
             let _ = append_canvas_reasoning_anchors(&self.brain_doc_path(), &canvas_anchors);
         }
 
+        // === v1.9 P2: rule-based templates evaluation (main path) ===
+        // Single integration point for all 7 v1.9 rule-based templates
+        // (P2-A: deadline / pattern_recurrence / conflict;
+        //  P2-B: decision_drift / long_thread / catchup_hint;
+        //  P2-C: newcomer_onboarding). The dispatch lives in
+        // `templates::registry::evaluate_and_emit` — registry sorts by
+        // priority desc + truncates to MAX_PER_HEARTBEAT (3) before emitting
+        // through the engine's `EventSink`. Adding a new template is a
+        // one-line change to `registry::all_templates()` — never this file.
+        // Runs after the brain doc has been written and canvas sentinels
+        // acted on, but BEFORE the observation log so the log line carries
+        // the template count.
+        let template_matches_emitted =
+            self.evaluate_templates(started).await as u32;
+        // === end v1.9 P2 ===
+
         // 8. Append observation log entry.
         let brief = first_reasoning_line(&validated)
             .unwrap_or_else(|| "(no brief extracted)".to_string());
@@ -358,12 +427,13 @@ impl CoThinkerEngine {
             &self.memory_root,
             started,
             &format!(
-                "{} cadence={} atoms_seen={} channel={} proposals={} brief=\"{}\"",
+                "{} cadence={} atoms_seen={} channel={} proposals={} templates={} brief=\"{}\"",
                 started.format("%H:%M:%S"),
                 cadence.label(),
                 atoms_seen,
                 channel_used,
                 proposals_created,
+                template_matches_emitted,
                 escape_for_log(&brief),
             ),
         )?;
@@ -378,7 +448,39 @@ impl CoThinkerEngine {
             channel_used,
             latency_ms: started_inst.elapsed().as_millis() as u64,
             error: None,
+            template_matches_emitted,
         })
+    }
+
+    /// v1.9.0-beta.2 — build a [`TemplateContext`] (loading the 7-day
+    /// telemetry window) and ask `templates::registry::evaluate_and_emit`
+    /// to run every registered template + emit the top
+    /// `MAX_PER_HEARTBEAT` matches via the engine's `EventSink`.
+    ///
+    /// Telemetry read failures are absorbed (treated as empty window) — a
+    /// transient telemetry IO blip should never stop deadline / conflict
+    /// templates from firing.
+    ///
+    /// Returns the number of matches emitted (post-throttle), which the
+    /// caller threads into `HeartbeatOutcome::template_matches_emitted`.
+    async fn evaluate_templates(&self, now: DateTime<Utc>) -> usize {
+        // 7 days = 168 hours. Spec §4 row 4 (pattern_recurrence) anchors the
+        // window length; other templates ignore the field.
+        let recent_telemetry = match crate::agi::telemetry::read_events_window(
+            &self.memory_root,
+            7 * 24,
+        )
+        .await
+        {
+            Ok(v) => v,
+            Err(_) => Vec::new(),
+        };
+        let ctx = TemplateContext {
+            memory_root: &self.memory_root,
+            now,
+            recent_telemetry,
+        };
+        templates_registry::evaluate_and_emit(&ctx, self.event_sink.as_ref()).await
     }
 }
 

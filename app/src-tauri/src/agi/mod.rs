@@ -70,3 +70,20 @@ pub mod propose_lock;
 // is just the writer + reader; no pattern detection lives here.
 pub mod telemetry;
 // === end v1.9 P1-A telemetry ===
+
+// === v1.9 P2-A/B/C suggestion templates ===
+// v1.9.0-beta.2 — rule-based suggestion templates fire from the co-thinker
+// heartbeat (`co_thinker.rs::heartbeat`). Each template implements
+// `templates::common::Template` and runs against a single `TemplateContext`
+// per heartbeat; matches are emitted via the `EventSink` trait and surface
+// in the React frontend through the `template_match` Tauri event.
+//
+//   * P2-A: `deadline_approaching`, `pattern_recurrence`, `conflict_detection`.
+//   * P2-B: `decision_drift`, `long_thread`, `catchup_hint`.
+//   * P2-C: `newcomer_onboarding` + integration polish.
+//
+// The `templates::registry_p2a()` helper returns the P2-A registry today;
+// once P2-C lands their `registry` submodule the heartbeat call site swaps
+// to `templates::registry::evaluate_all` with no other touches needed.
+pub mod templates;
+// === end v1.9 P2 suggestion templates ===

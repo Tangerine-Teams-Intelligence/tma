@@ -226,6 +226,18 @@ fn main() {
             // the same place the Tauri commands write to.
             daemon_cfg.user_data = Some(state.paths.user_data.clone());
             let daemon_control = daemon::start(daemon_cfg);
+            // v1.9.0-beta.2 P2-A — wire the rule-based template-match
+            // event sink onto the daemon's long-lived co-thinker engine.
+            // Without this, daemon-driven heartbeats would still evaluate
+            // templates but emit them through `NoopSink` (silent). The
+            // manual-trigger Tauri command (`co_thinker_trigger_heartbeat`)
+            // installs its own sink per-call, so this only affects the
+            // background heartbeat path.
+            {
+                use tangerine_meeting_lib::agi::templates::common::TauriEventSink;
+                let sink = std::sync::Arc::new(TauriEventSink::new(app.handle().clone()));
+                daemon_control.install_event_sink(sink);
+            }
             state.daemon.install(daemon_control);
             Ok(())
         })

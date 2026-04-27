@@ -20,10 +20,39 @@ import { initMemoryWithSamples, resolveMemoryRoot } from "@/lib/tauri";
 // /memory ↔ /canvas 5×", "you haven't seen /today in 3 days"). Fire-and-
 // forget; never blocks UI.
 import { logEvent } from "@/lib/telemetry";
+// v1.9.0-beta.2 P2-A — bus + tier types for the rule-based template match
+// listener. Each Tauri `template_match` event payload deserialises into
+// `TemplateMatchPayload` (mirrors the Rust `TemplateMatch` struct in
+// `app/src-tauri/src/agi/templates/common.rs`) and is forwarded to
+// `pushSuggestion(...)` so the bus can apply the disciplines + tier
+// selection across all 7 P2 templates uniformly.
+import { pushSuggestion } from "@/lib/suggestion-bus";
 
 /** Custom DOM event name dispatched after a successful sample-seed so the
  *  sidebar tree + /today timeline can refresh in-place without a route nav. */
 export const MEMORY_REFRESHED_EVENT = "tangerine:memory-refreshed";
+
+/**
+ * v1.9.0-beta.2 P2-A — payload shape of a `template_match` Tauri event.
+ *
+ * Mirrors the Rust struct `agi::templates::common::TemplateMatch`. We
+ * intentionally redeclare the shape here rather than importing it from
+ * the suggestion-bus or backend types — the listener belongs to the
+ * AppShell layer and a flat local type keeps the bus + AppShell
+ * decoupled (the bus exports `SuggestionRequest`, which is a strict
+ * superset of this payload).
+ */
+interface TemplateMatchPayload {
+  template: string;
+  body: string;
+  confidence: number;
+  atom_refs: string[];
+  surface_id: string | null;
+  priority: number;
+  is_irreversible: boolean;
+  is_completion_signal: boolean;
+  is_cross_route: boolean;
+}
 
 /**
  * Always-visible shell.
@@ -162,6 +191,77 @@ export function AppShell() {
     prevPathRef.current = to;
     void logEvent("navigate_route", { from, to });
   }, [location.pathname]);
+
+  // === v1.9 P2 template event listener (consolidated) ===
+  // v1.9.0-beta.2 — single Tauri `template_match` listener for ALL 7
+  // rule-based templates (P2-A: deadline / pattern_recurrence / conflict;
+  // P2-B: decision_drift / long_thread / catchup_hint;
+  // P2-C: newcomer_onboarding). Emitted by the co-thinker heartbeat
+  // (`agi::co_thinker::heartbeat` → `templates::registry::evaluate_and_emit`
+  // → engine `EventSink` → `app.emit("template_match", &m)`).
+  //
+  // Every payload is forwarded to the suggestion bus, which enforces the
+  // 6 anti-Clippy disciplines and routes to the right tier (chip /
+  // banner / toast / modal) per `selectTier`. Single-instance listener —
+  // adding a new template never requires touching this block (the
+  // payload shape is template-agnostic).
+  //
+  // Newcomer-onboarding gating: the `newcomer_onboarding` template fires
+  // every heartbeat where conditions hold (Rust side is stateless), but
+  // the React side uses the persisted `newcomerOnboardingShown` flag to
+  // ensure the welcome toast surfaces ONCE per fresh-install lifetime.
+  // Once dismissed (or once the flag flips for any other reason) the
+  // listener silently drops further matches for that template.
+  useEffect(() => {
+    let unlistenFn: (() => void) | null = null;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { listen } = await import("@tauri-apps/api/event");
+        if (cancelled) return;
+        unlistenFn = await listen<TemplateMatchPayload>(
+          "template_match",
+          (e) => {
+            const p = e.payload;
+            // P2-C newcomer latch — read fresh from the store on every
+            // event so a flip during the session takes effect immediately.
+            if (p.template === "newcomer_onboarding") {
+              const ui = useStore.getState().ui;
+              if (ui.newcomerOnboardingShown) {
+                // Already shown — drop silently. Future heartbeats will
+                // keep emitting the match; this listener keeps swallowing.
+                return;
+              }
+              // Flip the latch BEFORE we push so a duplicate event
+              // arriving in the same tick (race) doesn't double-fire.
+              ui.setNewcomerOnboardingShown(true);
+            }
+            // Forward to the bus. The bus enforces the master off-switch,
+            // confidence floor, modal budget, and tier selection — we do
+            // NOT pre-filter here so the disciplines stay in one place.
+            void pushSuggestion({
+              template: p.template,
+              body: p.body,
+              confidence: p.confidence,
+              is_irreversible: p.is_irreversible,
+              is_completion_signal: p.is_completion_signal,
+              is_cross_route: p.is_cross_route,
+              surface_id: p.surface_id ?? undefined,
+              priority: p.priority,
+            });
+          },
+        );
+      } catch {
+        // Browser dev / vitest where `@tauri-apps/api/event` isn't
+        // available — silently no-op so the React layer still mounts.
+      }
+    })();
+    return () => {
+      cancelled = true;
+      if (unlistenFn) unlistenFn();
+    };
+  }, []);
+  // === end v1.9 P2 template event listener ===
 
   // v1.9.0-beta.1 P1-A — user-initiated toast dismiss. Wraps `dismissToast`
   // so the click + Esc paths log telemetry, while the auto-dismiss timer
