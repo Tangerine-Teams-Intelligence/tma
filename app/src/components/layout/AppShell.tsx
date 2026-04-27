@@ -1,14 +1,25 @@
-import { useEffect } from "react";
-import { Outlet } from "react-router-dom";
+import { useEffect, useRef } from "react";
+import { Outlet, useLocation } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { CommandPalette } from "@/components/CommandPalette";
 import { ActivityFeed } from "@/components/ActivityFeed";
 import { WhatsNewBanner } from "@/components/WhatsNewBanner";
 import { AmbientInputObserver } from "@/components/ambient/AmbientInputObserver";
+// v1.9.0-beta.1 — banner + modal hosts. The bus pushes into bannerStack /
+// modalQueue and these hosts read the top entry. The hosts MUST live
+// inside the AppShell (not inside the Outlet) so they survive route
+// changes — banners are explicitly cross-route.
+import { BannerHost } from "@/components/suggestions/BannerHost";
+import { ModalHost } from "@/components/suggestions/ModalHost";
 import { useStore } from "@/lib/store";
 import { markUserOpened } from "@/lib/views";
 import { userFacingFoldersEmpty } from "@/lib/memory";
 import { initMemoryWithSamples, resolveMemoryRoot } from "@/lib/tauri";
+// v1.9.0-beta.1 P1-A — log every route transition so the suggestion engine
+// (P1-B + v1.9.0-beta.2) can detect navigation patterns ("you bounced
+// /memory ↔ /canvas 5×", "you haven't seen /today in 3 days"). Fire-and-
+// forget; never blocks UI.
+import { logEvent } from "@/lib/telemetry";
 
 /** Custom DOM event name dispatched after a successful sample-seed so the
  *  sidebar tree + /today timeline can refresh in-place without a route nav. */
@@ -104,6 +115,24 @@ export function AppShell() {
     };
   }, [memoryConfigMode, memoryRoot, samplesSeeded, setMemoryRoot, setSamplesSeeded]);
 
+  // v1.9.0-beta.1 — auto-dismiss timers for toasts that declared a
+  // `durationMs`. Each timer is keyed by the toast id; we clean them up
+  // when the toast leaves the array (user clicked, programmatic dismiss).
+  useEffect(() => {
+    const timers: Array<ReturnType<typeof setTimeout>> = [];
+    for (const t of toasts) {
+      if (t.durationMs && t.durationMs > 0) {
+        const id = t.id;
+        timers.push(
+          setTimeout(() => dismissToast(id), t.durationMs),
+        );
+      }
+    }
+    return () => {
+      for (const tm of timers) clearTimeout(tm);
+    };
+  }, [toasts, dismissToast]);
+
   // Cmd+K / Ctrl+K → toggle palette.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -119,6 +148,36 @@ export function AppShell() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [togglePalette, setPalette, paletteOpen]);
+
+  // v1.9.0-beta.1 P1-A — log every route transition. We track `prev` in a
+  // ref so the very first render emits `from: ""` (cold-start landing
+  // event) and subsequent navigations emit a real `from`. fire-and-forget
+  // via `void` so a Tauri stall never blocks the route change.
+  const location = useLocation();
+  const prevPathRef = useRef<string>("");
+  useEffect(() => {
+    const to = location.pathname;
+    const from = prevPathRef.current;
+    if (from === to) return;
+    prevPathRef.current = to;
+    void logEvent("navigate_route", { from, to });
+  }, [location.pathname]);
+
+  // v1.9.0-beta.1 P1-A — user-initiated toast dismiss. Wraps `dismissToast`
+  // so the click + Esc paths log telemetry, while the auto-dismiss timer
+  // above does NOT (auto-dismiss is a timeout, not a user action). The
+  // suggestion engine uses dismiss_toast frequency to detect "user
+  // ignored 5 suggestion-toasts in a row → quiet for 24h" patterns.
+  const dismissToastWithTelemetry = (id: string) => {
+    const t = toasts.find((x) => x.id === id);
+    if (t) {
+      void logEvent("dismiss_toast", {
+        toast_id: id,
+        kind: t.kind,
+      });
+    }
+    dismissToast(id);
+  };
 
   // Mark the user "opened" the app on every focus. Drives Stage 2
   // personalization (open-time learning) — Stage 1 just keeps cursor's
@@ -159,6 +218,9 @@ export function AppShell() {
               Local memory only — sign in to sync your memory dir across machines.
             </div>
           )}
+          {/* v1.9.0-beta.1 — banner host sits below the system strips so the
+              suggestion-tier banners feel like part of the route content. */}
+          <BannerHost />
           <main className="flex-1 overflow-auto bg-stone-50 dark:bg-stone-950">
             <Outlet />
           </main>
@@ -168,31 +230,77 @@ export function AppShell() {
 
         <CommandPalette open={paletteOpen} onClose={() => setPalette(false)} />
 
-        {/* Toast layer */}
+        {/* Toast layer.
+            v1.9.0-beta.1: now also renders kind="suggestion" toasts with a
+            🍊 prefix dot and an optional CTA. Suggestion toasts auto-dismiss
+            after `durationMs` (default 4s); errors stick. */}
         {toasts.length > 0 && (
           <div className="pointer-events-none fixed bottom-4 right-4 z-50 flex flex-col gap-2">
-            {toasts.map((t) => (
-              <div
-                key={t.id}
-                role="status"
-                onClick={() => dismissToast(t.id)}
-                className="pointer-events-auto max-w-sm cursor-pointer rounded-md border border-stone-200 bg-stone-50 px-4 py-3 text-sm shadow-md animate-fade-in dark:border-stone-800 dark:bg-stone-900"
-              >
-                <span
-                  className={
-                    t.kind === "success"
-                      ? "text-emerald-700 dark:text-emerald-400"
-                      : t.kind === "error"
-                        ? "text-rose-700 dark:text-rose-400"
-                        : "text-stone-700 dark:text-stone-300"
-                  }
+            {toasts.map((t) => {
+              const isSuggestion = t.kind === "suggestion";
+              return (
+                <div
+                  key={t.id}
+                  role="status"
+                  data-toast-id={t.id}
+                  data-toast-kind={t.kind}
+                  data-testid={isSuggestion ? "suggestion-toast" : "toast"}
+                  className="pointer-events-auto max-w-sm rounded-md border border-stone-200 bg-stone-50 px-4 py-3 text-sm shadow-md animate-fade-in dark:border-stone-800 dark:bg-stone-900"
                 >
-                  {t.text}
-                </span>
-              </div>
-            ))}
+                  <div className="flex items-start gap-2">
+                    {isSuggestion && (
+                      <span
+                        aria-hidden
+                        className="mt-0.5 inline-block flex-shrink-0 text-[14px]"
+                        title="Tangerine"
+                      >
+                        🍊
+                      </span>
+                    )}
+                    <span
+                      onClick={() => dismissToastWithTelemetry(t.id)}
+                      className={
+                        "min-w-0 flex-1 cursor-pointer " +
+                        (t.kind === "success"
+                          ? "text-emerald-700 dark:text-emerald-400"
+                          : t.kind === "error"
+                            ? "text-rose-700 dark:text-rose-400"
+                            : "text-stone-700 dark:text-stone-300")
+                      }
+                    >
+                      {t.msg}
+                    </span>
+                  </div>
+                  {isSuggestion && t.ctaLabel && (
+                    <div className="mt-2 flex justify-end">
+                      <button
+                        type="button"
+                        data-testid="suggestion-toast-cta"
+                        onClick={() => {
+                          try {
+                            if (t.onAccept) t.onAccept();
+                            else if (t.ctaHref && typeof window !== "undefined") {
+                              window.location.href = t.ctaHref;
+                            }
+                          } finally {
+                            dismissToast(t.id);
+                          }
+                        }}
+                        className="rounded border border-[var(--ti-orange-300,#FFB477)] bg-[var(--ti-orange-100,#FFE4CD)] px-2 py-0.5 font-mono text-[11px] text-[var(--ti-orange-700,#A04400)] hover:bg-[var(--ti-orange-200,#FFD0A8)] dark:border-stone-600 dark:bg-stone-800 dark:text-[var(--ti-orange-500,#CC5500)] dark:hover:bg-stone-700"
+                      >
+                        {t.ctaLabel}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
+
+        {/* v1.9.0-beta.1 — modal host. Lives outside the flex column so the
+            portal-rendered backdrop covers the full viewport. */}
+        <ModalHost />
       </div>
     </AmbientInputObserver>
   );

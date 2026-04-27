@@ -1606,3 +1606,45 @@ function slugifyForMock(s: string): string {
     || "item";
 }
 // === end Phase 4-C agi peer ===
+
+// === v1.9 P1-A telemetry ===
+// v1.9.0-beta.1 — action telemetry. Frontend hook lives at
+// `lib/telemetry.ts::logEvent`; this file owns the Tauri command bindings.
+// Storage is append-only JSONL at
+// `~/.tangerine-memory/.tangerine/telemetry/{date}.jsonl`. No cloud sync.
+//
+// All three wrappers mock to a no-op outside Tauri so vitest + browser
+// dev don't try to hit the filesystem.
+
+export interface TelemetryEventEnvelope {
+  event: string;
+  ts: string;
+  user: string;
+  payload: Record<string, unknown>;
+}
+
+/** Append one event to today's JSONL file. Fire-and-forget. */
+export async function telemetryLog(event: TelemetryEventEnvelope): Promise<void> {
+  return safeInvoke<void>("telemetry_log", { event }, () => {
+    // No-op outside Tauri. Telemetry is observational; the suggestion
+    // engine treats an empty log as "no patterns yet" rather than
+    // erroring, so swallowing here is the right shape for vitest.
+  });
+}
+
+/** Read the last `hours` hours of telemetry events. Returns [] outside Tauri. */
+export async function telemetryReadWindow(
+  hours: number,
+): Promise<TelemetryEventEnvelope[]> {
+  return safeInvoke<TelemetryEventEnvelope[]>(
+    "telemetry_read_window",
+    { hours },
+    () => [],
+  );
+}
+
+/** Wipe every telemetry file. Returns the number of files removed. */
+export async function telemetryClear(): Promise<number> {
+  return safeInvoke<number>("telemetry_clear", undefined, () => 0);
+}
+// === end v1.9 P1-A telemetry ===

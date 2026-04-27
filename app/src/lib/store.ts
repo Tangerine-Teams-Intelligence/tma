@@ -24,6 +24,8 @@ import {
   type DismissEntry,
   pruneDismissed,
 } from "./ambient";
+import type { BannerProps } from "@/components/suggestions/Banner";
+import type { ModalProps } from "@/components/suggestions/Modal";
 
 // ---------- shared types ----------
 
@@ -157,7 +159,23 @@ interface UiSlice {
   rememberDismissed: (surfaceId: string) => void;
   resetDismissedSurfaces: () => void;
   setAgiConfidenceThreshold: (n: number) => void;
-  toasts: { id: string; kind: "info" | "success" | "error"; text: string }[];
+  toasts: ToastEntry[];
+  // ---- v1.9.0-beta.1 — banner + modal queues ----
+  /** Active banner queue. The host renders the highest-priority entry; the
+   *  rest stay queued until that one is dismissed or its condition resolves.
+   *  Max 1 visible at a time per route is enforced in `<BannerHost/>`. */
+  bannerStack: BannerProps[];
+  /** Modal FIFO queue. Max 1 visible at a time. The bus enforces the
+   *  ≤1-modal-per-session budget via `modalsShownThisSession`. */
+  modalQueue: ModalProps[];
+  /** Session counter — incremented every time a modal is *enqueued* (not
+   *  when it's confirmed/cancelled). Reset on app launch. The bus reads
+   *  this to demote a second modal to a banner per spec §3.4. */
+  modalsShownThisSession: number;
+  pushBanner: (b: BannerProps) => void;
+  dismissBanner: (id: string) => void;
+  pushModal: (m: ModalProps) => void;
+  dismissModal: (id: string) => void;
   setTheme: (t: ThemeMode) => void;
   cycleTheme: () => void;
   setMemoryRoot: (path: string) => void;
@@ -175,9 +193,55 @@ interface UiSlice {
   resetDismissals: () => void;
   setWhatsNewDismissed: (v: boolean) => void;
   setPrimaryAITool: (id: string | null) => void;
-  pushToast: (kind: "info" | "success" | "error", text: string) => void;
+  /** v1.9.0-beta.1 — extended pushToast.
+   *
+   * Two call shapes are supported:
+   *   - `pushToast("info", "hello")`         → legacy v1.8 system toast
+   *   - `pushToast({ kind, msg, ... })`      → v1.9 rich toast (suggestion
+   *                                            tier, with optional CTA +
+   *                                            duration override)
+   * The legacy 2-arg form is kept so existing call sites (∼12 of them)
+   * keep compiling without churn. */
+  pushToast: PushToastFn;
   dismissToast: (id: string) => void;
 }
+
+/** Every toast in `ui.toasts`. `kind === "suggestion"` denotes a v1.9
+ *  AGI-sourced toast; the AppShell renderer decorates it with a 🍊 dot
+ *  and surfaces the optional CTA. The legacy `text` field is kept as an
+ *  alias for `msg` so v1.8 code reading `t.text` keeps compiling. */
+export interface ToastEntry {
+  id: string;
+  kind: "info" | "success" | "error" | "suggestion";
+  msg: string;
+  /** Legacy alias for msg — kept so `t.text` callers don't break. */
+  text: string;
+  // suggestion-only fields (undefined for system toasts):
+  template?: string;
+  ctaLabel?: string;
+  ctaHref?: string;
+  onAccept?: () => void;
+  /** Auto-dismiss after this many ms. Default 4000 for suggestion toasts;
+   *  undefined → never auto-dismiss (system errors stay until clicked). */
+  durationMs?: number;
+}
+
+/** Rich toast input. Either form is accepted. */
+export type PushToastInput =
+  | {
+      kind: "info" | "success" | "error" | "suggestion";
+      msg: string;
+      template?: string;
+      ctaLabel?: string;
+      ctaHref?: string;
+      onAccept?: () => void;
+      durationMs?: number;
+    };
+
+export type PushToastFn = {
+  (kind: "info" | "success" | "error", text: string): void;
+  (input: PushToastInput): void;
+};
 
 interface WizardSlice {
   step: WizardStep;
@@ -265,6 +329,11 @@ export const useStore = create<Store>()(
         dismissedSurfaces: [],
         agiConfidenceThreshold: 0.7,
         toasts: [],
+        // v1.9.0-beta.1 — banner + modal queues. Not persisted — these
+        // are session-scoped UI state. Counters reset on every cold launch.
+        bannerStack: [],
+        modalQueue: [],
+        modalsShownThisSession: 0,
         setTheme: (t) => {
           const resolved = resolveTheme(t);
           set((s) => ({ ui: { ...s.ui, theme: t, resolvedTheme: resolved } }));
@@ -361,15 +430,98 @@ export const useStore = create<Store>()(
               agiConfidenceThreshold: Math.max(0.5, Math.min(0.95, n)),
             },
           })),
-        pushToast: (kind, text) =>
+        pushToast: ((
+          kindOrInput: "info" | "success" | "error" | PushToastInput,
+          text?: string,
+        ) => {
+          // Legacy v1.8 2-arg form: ("info", "hello")
+          if (typeof kindOrInput === "string") {
+            const kind = kindOrInput;
+            const msg = text ?? "";
+            set((s) => ({
+              ui: {
+                ...s.ui,
+                toasts: [
+                  ...s.ui.toasts,
+                  {
+                    id: cryptoRandomId(),
+                    kind,
+                    msg,
+                    text: msg,
+                  } satisfies ToastEntry,
+                ],
+              },
+            }));
+            return;
+          }
+          // v1.9 rich form: ({ kind, msg, template?, ctaLabel?, ... })
+          const input = kindOrInput;
+          const id = cryptoRandomId();
+          // Default duration: 4s for suggestions, undefined (sticky) for
+          // errors, 4s for info/success. Errors should NOT auto-dismiss.
+          const defaultDuration =
+            input.kind === "error" ? undefined : 4000;
           set((s) => ({
             ui: {
               ...s.ui,
-              toasts: [...s.ui.toasts, { id: cryptoRandomId(), kind, text }],
+              toasts: [
+                ...s.ui.toasts,
+                {
+                  id,
+                  kind: input.kind,
+                  msg: input.msg,
+                  text: input.msg,
+                  template: input.template,
+                  ctaLabel: input.ctaLabel,
+                  ctaHref: input.ctaHref,
+                  onAccept: input.onAccept,
+                  durationMs: input.durationMs ?? defaultDuration,
+                } satisfies ToastEntry,
+              ],
             },
-          })),
+          }));
+        }) as PushToastFn,
         dismissToast: (id) =>
           set((s) => ({ ui: { ...s.ui, toasts: s.ui.toasts.filter((t) => t.id !== id) } })),
+        // ---- v1.9.0-beta.1 banner queue ----
+        pushBanner: (b) =>
+          set((s) => {
+            // De-dupe by id — re-pushing the same banner refreshes its
+            // entry (callers can update `body` / `priority` over time).
+            const filtered = s.ui.bannerStack.filter((x) => x.id !== b.id);
+            return {
+              ui: {
+                ...s.ui,
+                bannerStack: [...filtered, b],
+              },
+            };
+          }),
+        dismissBanner: (id) =>
+          set((s) => ({
+            ui: {
+              ...s.ui,
+              bannerStack: s.ui.bannerStack.filter((b) => b.id !== id),
+            },
+          })),
+        // ---- v1.9.0-beta.1 modal queue (FIFO, ≤ 1 visible) ----
+        pushModal: (m) =>
+          set((s) => {
+            const filtered = s.ui.modalQueue.filter((x) => x.id !== m.id);
+            return {
+              ui: {
+                ...s.ui,
+                modalQueue: [...filtered, m],
+                modalsShownThisSession: s.ui.modalsShownThisSession + 1,
+              },
+            };
+          }),
+        dismissModal: (id) =>
+          set((s) => ({
+            ui: {
+              ...s.ui,
+              modalQueue: s.ui.modalQueue.filter((m) => m.id !== id),
+            },
+          })),
       },
 
       wizard: {

@@ -23,6 +23,11 @@ import { MarkdownView } from "@/components/MarkdownView";
 import { SOURCES } from "@/lib/sources";
 import { openExternal } from "@/lib/tauri";
 import { MEMORY_REFRESHED_EVENT } from "@/components/layout/AppShell";
+// v1.9.0-beta.1 P1-A — log every atom open so the suggestion engine can
+// detect "user opens decisions/foo.md every morning" → maybe surface a
+// daily brief banner. There's no editable save handler in this read-only
+// view today; `edit_atom` lands when /memory ships an inline editor.
+import { logEvent } from "@/lib/telemetry";
 
 /**
  * Default landing surface after auth: 3-pane shape.
@@ -134,6 +139,10 @@ export default function MemoryRoute() {
       setContent(null);
       return;
     }
+    // v1.9.0-beta.1 P1-A — fire open_atom on every relPath change. We
+    // stamp before the read returns so the engine sees the open even if
+    // the file is missing or unreadable (the user still tried).
+    void logEvent("open_atom", { atom_path: relPath });
     void readMemoryFile(memoryRoot, relPath).then((c) => {
       if (!cancel) setContent(c);
     });

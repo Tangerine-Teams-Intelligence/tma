@@ -18,6 +18,12 @@ import {
   slugify,
 } from "@/lib/canvas";
 import { StickyNote } from "./StickyNote";
+// v1.9.0-beta.1 P1-A — log every user-thrown sticky so the suggestion
+// engine can see "user threw 7 stickies on this topic in 10min →
+// possibly worth proposing a decision lock". The brief points at
+// StickyNote.tsx but StickyNote is purely render-side; the actual
+// create lives here in CanvasView's `addSticky` callback.
+import { logEvent } from "@/lib/telemetry";
 
 /**
  * v1.8 Phase 4-B — Per-project canvas view.
@@ -149,15 +155,27 @@ export function CanvasView({ project }: { project: string }) {
       cx = (rect.width / 2 - pan.x) / scale - 130;
       cy = (rect.height / 2 - pan.y) / scale - 80;
     }
+    const fresh = newSticky({
+      author: currentUser,
+      x: Math.round(cx),
+      y: Math.round(cy),
+    });
+    // v1.9.0-beta.1 P1-A — log the user-thrown sticky. AGI-thrown stickies
+    // go through the Rust `agi_throw_sticky` command (which already has
+    // its own audit trail in `co_thinker.rs::heartbeat_log`); only
+    // human-initiated throws are logged here, hence `is_agi: false`.
+    void logEvent("canvas_throw_sticky", {
+      project,
+      topic: activeSlug ?? topic.topic,
+      color: fresh.color,
+      is_agi: false,
+    });
     const next: CanvasTopic = {
       ...topic,
-      stickies: [
-        ...topic.stickies,
-        newSticky({ author: currentUser, x: Math.round(cx), y: Math.round(cy) }),
-      ],
+      stickies: [...topic.stickies, fresh],
     };
     updateTopic(next);
-  }, [topic, currentUser, pan, scale, updateTopic]);
+  }, [topic, currentUser, pan, scale, updateTopic, project, activeSlug]);
 
   const updateSticky = useCallback(
     (next: Sticky) => {

@@ -20,6 +20,11 @@ import {
 import { HeartbeatBadge } from "@/components/co-thinker/HeartbeatBadge";
 import { CitationLink } from "@/components/co-thinker/CitationLink";
 import { getAIToolConfig } from "@/lib/ai-tools-config";
+// v1.9.0-beta.1 P1-A — log brain-doc edits + manual heartbeats so the
+// suggestion engine can detect "user keeps editing the brain → AGI keeps
+// drifting" or "user manually triggered 5 heartbeats today → cadence
+// feels too slow" patterns.
+import { logEvent } from "@/lib/telemetry";
 
 /**
  * /co-thinker — Phase 3-C real renderer.
@@ -105,6 +110,12 @@ export default function CoThinkerRoute() {
 
   const onTrigger = useCallback(async () => {
     setTriggerLoading(true);
+    // v1.9.0-beta.1 P1-A — manual heartbeat trigger. The HeartbeatBadge is
+    // a pure render component, so the user-facing "Trigger heartbeat now"
+    // button lives here on the route. Daemon-driven 5-min ticks fire from
+    // the Rust side and don't go through this path; only manual presses
+    // log telemetry.
+    void logEvent("trigger_heartbeat", { manual: true });
     try {
       const outcome = await coThinkerTriggerHeartbeat(primaryAITool ?? undefined);
       pushToast(
@@ -136,6 +147,13 @@ export default function CoThinkerRoute() {
     setSaving(true);
     try {
       await coThinkerWriteBrain(draft);
+      // v1.9.0-beta.1 P1-A — measure how big the user's edit was. The
+      // suggestion engine uses content_diff_size to detect "user
+      // re-writing huge chunks of the brain doc" → AGI is drifting from
+      // their model and we should propose a re-cohering banner.
+      void logEvent("co_thinker_edit", {
+        content_diff_size: Math.abs(draft.length - content.length),
+      });
       setContent(draft);
       setEditing(false);
       pushToast(
@@ -148,7 +166,7 @@ export default function CoThinkerRoute() {
     } finally {
       setSaving(false);
     }
-  }, [draft, pushToast]);
+  }, [draft, content, pushToast]);
 
   const isEmpty = !loading && content.trim().length === 0;
 

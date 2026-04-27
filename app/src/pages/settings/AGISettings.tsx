@@ -21,9 +21,15 @@
  * window to expire.
  */
 
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useStore } from "@/lib/store";
 import type { AgiVolume } from "@/lib/ambient";
+// v1.9.0-beta.1 P1-A — telemetry wipe button. The user can nuke every
+// recorded action at any time from the bottom of the AGI Settings tab.
+// Privacy: telemetry stays local-only by design; this button is the
+// "right to be forgotten" affordance even though we never sync the data.
+import { telemetryClear } from "@/lib/tauri";
 
 const CHANNELS: { id: string; label: string; help: string }[] = [
   { id: "canvas", label: "Canvas", help: "Freeform note + scratchpad surface." },
@@ -56,6 +62,29 @@ export function AGISettings() {
   const setThreshold = useStore((s) => s.ui.setAgiConfidenceThreshold);
   const dismissedSurfaces = useStore((s) => s.ui.dismissedSurfaces);
   const resetDismissed = useStore((s) => s.ui.resetDismissedSurfaces);
+  const pushToast = useStore((s) => s.ui.pushToast);
+  // v1.9.0-beta.1 P1-A — Clear telemetry button state. Local-only state;
+  // the underlying disk wipe is irreversible so we only need the
+  // pending/idle bit, not a full reducer.
+  const [clearingTelemetry, setClearingTelemetry] = useState(false);
+
+  async function onClearTelemetry() {
+    setClearingTelemetry(true);
+    try {
+      const removed = await telemetryClear();
+      pushToast(
+        "success",
+        removed === 0
+          ? "Telemetry already clean — nothing to clear."
+          : `Telemetry cleared (${removed} day${removed === 1 ? "" : "s"} of events removed).`,
+      );
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      pushToast("error", `Clear telemetry failed: ${msg}`);
+    } finally {
+      setClearingTelemetry(false);
+    }
+  }
 
   // When participation is off, every fine-grained control is greyed out
   // and disabled. The toggle itself stays interactive.
@@ -241,6 +270,37 @@ export function AGISettings() {
             data-testid="st-agi-reset-dismissed"
           >
             Reset dismiss memory
+          </Button>
+        </div>
+      </section>
+
+      {/* v1.9.0-beta.1 P1-A — Clear telemetry button. Sits at the bottom
+          per the spec: it's the most destructive action on this page so
+          it lives below the gentler "reset dismiss memory" knob. NOT
+          gated on the master AGI participation switch — the user must
+          always be able to wipe their data, even if the AGI layer is
+          paused. */}
+      <section data-testid="st-agi-telemetry-card">
+        <h3 className="font-display text-lg">Telemetry</h3>
+        <p className="mt-1 text-sm text-[var(--ti-ink-500)]">
+          Tangerine logs every meaningful action (route changes, atom
+          opens, dismisses, …) to{" "}
+          <code className="font-mono text-[11px]">
+            ~/.tangerine-memory/.tangerine/telemetry/
+          </code>{" "}
+          so the suggestion engine can detect patterns. All events stay
+          local — nothing syncs to the cloud. Files older than 90 days
+          are auto-pruned.
+        </p>
+        <div className="mt-3">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onClearTelemetry}
+            disabled={clearingTelemetry}
+            data-testid="st-agi-clear-telemetry"
+          >
+            {clearingTelemetry ? "Clearing…" : "Clear telemetry"}
           </Button>
         </div>
       </section>

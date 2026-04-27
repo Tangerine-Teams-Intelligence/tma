@@ -22,6 +22,11 @@ import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 
 import type { AgiReaction } from "@/lib/ambient";
+// v1.9.0-beta.1 P1-A — log every chip dismiss so the suggestion engine
+// can promote 3-dismisses-in-7d to a 30-day suppression. The dismiss
+// reason (× button vs Esc vs click-outside) all funnel through onDismiss
+// so a single event shape covers all three.
+import { logEvent } from "@/lib/telemetry";
 
 interface InlineReactionProps {
   reaction: AgiReaction;
@@ -81,7 +86,21 @@ export function InlineReaction({
   // Click-outside / Esc → dismiss. Click-outside is a pointerdown listener
   // on the document; we ignore clicks on the card itself + on the anchor
   // (typing into the input shouldn't dismiss the reaction it just produced).
-  const handleDismiss = useCallback(() => onDismiss(), [onDismiss]);
+  //
+  // v1.9.0-beta.1 P1-A — log the dismiss before calling the parent's
+  // dismiss handler so telemetry sees every dismiss regardless of whether
+  // the parent unmounts the component synchronously.
+  const handleDismiss = useCallback(() => {
+    void logEvent("dismiss_chip", {
+      surface_id: reaction.surface_id,
+      // Hash the body so we can later detect "the same content keeps
+      // getting dismissed" without storing the full text. A simple length
+      // suffices for v1.9.0-beta.1; v1.9.0-beta.2 will switch to a
+      // 4-byte FNV when the suppression engine needs it.
+      content_hash: `len:${reaction.text.length}`,
+    });
+    onDismiss();
+  }, [onDismiss, reaction.surface_id, reaction.text]);
 
   useEffect(() => {
     function onDown(e: MouseEvent) {

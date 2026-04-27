@@ -134,6 +134,16 @@ pub mod agi_ambient;
 pub mod canvas_agi;
 // === end Phase 4-C agi peer + propose lock ===
 
+// === v1.9 P1-A telemetry ===
+// v1.9.0-beta.1: action telemetry foundation. The frontend's `logEvent`
+// wrapper calls `telemetry_log` from every meaningful UI surface
+// (navigate_route, dismiss_chip, edit_atom, ...). Storage is append-only
+// JSONL under `~/.tangerine-memory/.tangerine/telemetry/{date}.jsonl`. The
+// engine that consumes this telemetry to fire rule-based suggestion
+// templates lands in v1.9.0-beta.2 — this slice is just the writer.
+pub mod telemetry;
+// === end v1.9 P1-A telemetry ===
+
 mod error;
 mod paths;
 mod runner;
@@ -363,6 +373,11 @@ macro_rules! tmi_invoke_handler {
             $crate::commands::canvas_agi::agi_throw_sticky,
             $crate::commands::canvas_agi::agi_comment_sticky,
             // === end Phase 4-C agi peer + propose lock ===
+            // === v1.9 P1-A telemetry ===
+            $crate::commands::telemetry::telemetry_log,
+            $crate::commands::telemetry::telemetry_read_window,
+            $crate::commands::telemetry::telemetry_clear,
+            // === end v1.9 P1-A telemetry ===
         ]
     };
 }

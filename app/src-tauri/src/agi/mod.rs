@@ -61,3 +61,12 @@ pub mod ambient;
 pub mod canvas_writer;
 pub mod propose_lock;
 // === end Phase 4-C agi peer + propose lock ===
+
+// === v1.9 P1-A telemetry ===
+// v1.9.0-beta.1 — append-only JSONL log of every meaningful user action.
+// Sibling P1-B (banner / modal / tier-engine) is independent; the suggestion
+// engine in v1.9.0-beta.2 will consume the read API in this module to fire
+// rule-based templates (Pattern recurrence, Stale RFC, etc.). This module
+// is just the writer + reader; no pattern detection lives here.
+pub mod telemetry;
+// === end v1.9 P1-A telemetry ===

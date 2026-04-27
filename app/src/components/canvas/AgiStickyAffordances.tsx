@@ -6,6 +6,10 @@ import { ScrollText, Sparkles } from "lucide-react";
 import { topicFromMarkdown, type Sticky } from "@/lib/canvas";
 import { canvasListTopics, canvasLoadTopic, canvasProposeLock } from "@/lib/tauri";
 import { useStore } from "@/lib/store";
+// v1.9.0-beta.1 P1-A — log every propose-lock click so the suggestion
+// engine can see "user proposed 3 decisions in this session → power
+// user, lower the suggestion-toast cadence" patterns.
+import { logEvent } from "@/lib/telemetry";
 
 /**
  * v1.8 Phase 4-C — AGI affordance overlay for canvas stickies.
@@ -172,6 +176,14 @@ function AffordanceOverlay({
 
   const onPropose = async () => {
     setBusy(true);
+    // v1.9.0-beta.1 P1-A — log on click, before the Rust call. We stamp
+    // the event regardless of the outcome so the engine sees "user
+    // attempted to propose-lock 3×" even if every attempt errored.
+    void logEvent("canvas_propose_lock", {
+      project,
+      topic,
+      sticky_id: sticky.id,
+    });
     try {
       const path = await canvasProposeLock(project, topic, sticky.id);
       pushToast("success", `Decision draft created: ${shortPath(path)}`);
