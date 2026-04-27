@@ -9,7 +9,15 @@
 //! into the user's memory dir so the Memory browser shows a populated tree
 //! immediately. Returns the resolved root path so the caller can refresh.
 //!
-//! Both commands are idempotent and never crash on missing dirs / permission
+//! `list_atoms` walks the union of `<root>/team/{kind}/` and
+//! `<root>/personal/<user>/{kind}/` and returns one entry per atom, decorated
+//! with the scope tag (`"team" | "personal"`) so the React tree can render a
+//! subtle indicator for personal notes. v1.x callers that bypass `list_atoms`
+//! (the React-side `walkMemoryTree` reader) keep working — this command is
+//! the v2.0 shape, and the tree reader is updated to call into it once the
+//! frontend lights up the personal-vault toggle.
+//!
+//! All commands are idempotent and never crash on missing dirs / permission
 //! errors — they degrade to a no-op + return the path so the UI stays usable.
 
 use std::path::{Path, PathBuf};
@@ -18,6 +26,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, Runtime};
 
 use super::AppError;
+use crate::memory_paths::{resolve_atom_dir, AtomScope, ATOM_KINDS};
 
 /// Default memory root: `<home>/.tangerine-memory/`. Created on demand.
 fn memory_root() -> Result<PathBuf, AppError> {
@@ -191,4 +200,217 @@ fn copy_dir_recursive(src: &Path, dst: &Path, count: &mut u32) -> std::io::Resul
 #[allow(dead_code)]
 pub struct ResetSamplesArgs {
     pub confirm: bool,
+}
+
+// ---------------------------------------------------------------------------
+// v2.0-alpha.1 — `list_atoms` unions team/ + personal/<user>/.
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Deserialize, Default)]
+pub struct ListAtomsArgs {
+    /// User alias for the personal-vault lookup. Omit to use "me".
+    #[serde(default)]
+    pub current_user: Option<String>,
+    /// When false, skip the personal vault entirely (used by the optional
+    /// `personalDirEnabled = false` toggle on the React side). Defaults to
+    /// true so the union view is the standard.
+    #[serde(default = "default_true")]
+    pub include_personal: bool,
+    /// Which kinds to walk. Empty → every kind in `ATOM_KINDS`.
+    #[serde(default)]
+    pub kinds: Vec<String>,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+#[derive(Debug, Serialize, Clone, PartialEq, Eq)]
+pub struct AtomEntry {
+    /// Path relative to the memory root, with forward slashes.
+    pub rel_path: String,
+    /// Atom kind ("meetings" / "decisions" / ...).
+    pub kind: String,
+    /// "team" | "personal".
+    pub scope: String,
+    /// File name with .md suffix.
+    pub name: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ListAtomsResult {
+    pub root: String,
+    pub atoms: Vec<AtomEntry>,
+    /// True when the personal vault was included in the walk.
+    pub personal_included: bool,
+}
+
+/// Walk the team and (optionally) personal vaults under the resolved memory
+/// root, returning one `AtomEntry` per .md file. Missing dirs are silently
+/// skipped — a brand-new install with no atoms yet returns an empty list,
+/// which is the same contract `walkMemoryTree` exposes on the frontend.
+#[tauri::command(rename_all = "snake_case")]
+pub async fn list_atoms(
+    args: Option<ListAtomsArgs>,
+) -> Result<ListAtomsResult, AppError> {
+    let args = args.unwrap_or_default();
+    let root = memory_root()?;
+    let user = args
+        .current_user
+        .as_deref()
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or("me");
+
+    let kinds: Vec<&str> = if args.kinds.is_empty() {
+        ATOM_KINDS.to_vec()
+    } else {
+        // Filter user-supplied kinds against the canonical set so a typo
+        // doesn't read an arbitrary subdir.
+        args.kinds
+            .iter()
+            .filter_map(|k| ATOM_KINDS.iter().find(|&&canon| canon == k.as_str()).copied())
+            .collect()
+    };
+
+    let mut atoms: Vec<AtomEntry> = Vec::new();
+    for kind in &kinds {
+        // Team
+        let team_dir = resolve_atom_dir(&root, AtomScope::Team, user, kind);
+        collect_atoms_into(&root, &team_dir, kind, AtomScope::Team, &mut atoms);
+        // Personal
+        if args.include_personal {
+            let personal_dir = resolve_atom_dir(&root, AtomScope::Personal, user, kind);
+            collect_atoms_into(&root, &personal_dir, kind, AtomScope::Personal, &mut atoms);
+        }
+    }
+
+    // Stable order: kind asc, then scope asc (team before personal alphabetically),
+    // then name asc.
+    atoms.sort_by(|a, b| {
+        a.kind
+            .cmp(&b.kind)
+            .then_with(|| a.scope.cmp(&b.scope))
+            .then_with(|| a.name.cmp(&b.name))
+    });
+
+    Ok(ListAtomsResult {
+        root: root.to_string_lossy().to_string(),
+        atoms,
+        personal_included: args.include_personal,
+    })
+}
+
+/// Recursively collect .md files under `dir`, building rel paths from
+/// `memory_root`. Missing dirs are no-ops so partial layouts don't error.
+fn collect_atoms_into(
+    memory_root: &Path,
+    dir: &Path,
+    kind: &str,
+    scope: AtomScope,
+    out: &mut Vec<AtomEntry>,
+) {
+    if !dir.is_dir() {
+        return;
+    }
+    let entries = match std::fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let name = match path.file_name().and_then(|n| n.to_str()) {
+            Some(n) => n.to_string(),
+            None => continue,
+        };
+        if name.starts_with('.') {
+            continue;
+        }
+        if path.is_dir() {
+            // Nested subdirs (e.g. threads/email/, threads/voice/) — recurse.
+            collect_atoms_into(memory_root, &path, kind, scope, out);
+            continue;
+        }
+        if !name.to_lowercase().ends_with(".md") {
+            continue;
+        }
+        let rel = match path.strip_prefix(memory_root) {
+            Ok(r) => r.to_string_lossy().replace('\\', "/"),
+            Err(_) => continue,
+        };
+        out.push(AtomEntry {
+            rel_path: rel,
+            kind: kind.to_string(),
+            scope: scope.as_str().to_string(),
+            name,
+        });
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn fresh_root() -> PathBuf {
+        let p = std::env::temp_dir().join(format!(
+            "tii_memcmd_{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        std::fs::create_dir_all(&p).unwrap();
+        p
+    }
+
+    #[test]
+    fn collect_atoms_walks_kind_dir() {
+        let root = fresh_root();
+        let dir = root.join("team/meetings");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("a.md"), "x").unwrap();
+        std::fs::write(dir.join("b.md"), "x").unwrap();
+        std::fs::write(dir.join(".hidden.md"), "x").unwrap();
+
+        let mut atoms: Vec<AtomEntry> = Vec::new();
+        collect_atoms_into(&root, &dir, "meetings", AtomScope::Team, &mut atoms);
+        assert_eq!(atoms.len(), 2, "got {:?}", atoms);
+        for a in &atoms {
+            assert_eq!(a.scope, "team");
+            assert_eq!(a.kind, "meetings");
+            assert!(a.rel_path.starts_with("team/meetings/"));
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn collect_atoms_handles_missing_dir() {
+        let root = fresh_root();
+        let mut atoms: Vec<AtomEntry> = Vec::new();
+        collect_atoms_into(
+            &root,
+            &root.join("does/not/exist"),
+            "meetings",
+            AtomScope::Team,
+            &mut atoms,
+        );
+        assert!(atoms.is_empty());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn collect_atoms_recurses_into_subdirs() {
+        // threads/email/foo.md and threads/voice/bar.md should both surface.
+        let root = fresh_root();
+        let email = root.join("team/threads/email");
+        let voice = root.join("team/threads/voice");
+        std::fs::create_dir_all(&email).unwrap();
+        std::fs::create_dir_all(&voice).unwrap();
+        std::fs::write(email.join("foo.md"), "x").unwrap();
+        std::fs::write(voice.join("bar.md"), "x").unwrap();
+        let mut atoms: Vec<AtomEntry> = Vec::new();
+        collect_atoms_into(&root, &root.join("team/threads"), "threads", AtomScope::Team, &mut atoms);
+        assert_eq!(atoms.len(), 2);
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }

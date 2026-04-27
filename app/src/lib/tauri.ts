@@ -1184,29 +1184,42 @@ export interface VoiceListItem {
 
 /**
  * Decode the base64 audio blob, run it through the bundled Whisper, and
- * write a markdown atom under `~/.tangerine-memory/threads/voice/`.
+ * write a markdown atom under
+ * `~/.tangerine-memory/personal/<current_user>/threads/voice/`.
  * Returns the atom (with `file_path`) so the recorder can navigate to it.
+ *
+ * v2.0-alpha.1: voice notes are inherently personal — the writer pins to
+ * `AtomScope::Personal` on the Rust side. The optional `current_user`
+ * argument plumbs `ui.currentUser` from zustand through; Rust falls back
+ * to "me" when omitted so existing callers keep working.
  */
 export async function voiceNotesRecordAndTranscribe(
   audio_b64: string,
-  mime_type: string
+  mime_type: string,
+  current_user?: string,
 ): Promise<VoiceAtom> {
   return safeInvoke(
     "voice_notes_record_and_transcribe",
-    { audio_b64, mime_type },
+    { audio_b64, mime_type, current_user },
     () => ({
       recorded_at: new Date().toISOString(),
       duration_sec: 0,
       transcript: "(mock transcript — Tauri bridge not available)",
       source: "voice-notes",
       mime_type,
-      file_path: "~/.tangerine-memory/threads/voice/mock.md",
+      file_path: `~/.tangerine-memory/personal/${current_user ?? "me"}/threads/voice/mock.md`,
     })
   );
 }
 
-export async function voiceNotesListRecent(): Promise<VoiceListItem[]> {
-  return safeInvoke("voice_notes_list_recent", undefined, () => []);
+export async function voiceNotesListRecent(
+  current_user?: string,
+): Promise<VoiceListItem[]> {
+  return safeInvoke(
+    "voice_notes_list_recent",
+    current_user ? { current_user } : undefined,
+    () => [],
+  );
 }
 
 // ============================================================

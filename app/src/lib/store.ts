@@ -91,6 +91,15 @@ export interface MemoryConfig {
   /** Filled when the champion creates a new repo so we can show the invite. */
   inviteUri?: string;
   inviteExpiresAt?: number;
+  /**
+   * v2.0-alpha.1 — toggle for the personal-vault layer. When true (default),
+   * the sidebar tree unions `team/` + `personal/<user>/`. When false, the
+   * tree only walks `team/` — useful for users who want a pure team-mode
+   * view without the local-only entries cluttering the surface. Note: this
+   * only hides personal entries from the read path; the writers (e.g.
+   * voice notes) still write to `personal/<user>/` regardless.
+   */
+  personalDirEnabled?: boolean;
 }
 
 // ---------- slices ----------
@@ -332,7 +341,10 @@ export const useStore = create<Store>()(
         localOnly: false,
         samplesSeeded: false,
         sampleBannerDismissed: false,
-        memoryConfig: {},
+        // v2.0-alpha.1 — personalDirEnabled defaults to true on first launch.
+        // The setMemoryConfig patch flow lets the user flip it from the
+        // settings UI without disturbing repo / mode / invite fields.
+        memoryConfig: { personalDirEnabled: true },
         currentUser: "me",
         dismissedAtoms: [],
         snoozedAtoms: {},

@@ -9,6 +9,13 @@
 pub mod commands;
 pub mod daemon;
 pub mod memory_search;
+// v2.0-alpha.1 — layered memory dir (`/team/` + `/personal/<user>/`).
+//   * `memory_paths` resolves a kind path under either scope.
+//   * `migration` runs once on boot to fold any v1.x flat layout into
+//     `/team/`, seed an empty `/personal/<user>/` skeleton, and write the
+//     canonical `.gitignore`.
+pub mod memory_paths;
+pub mod migration;
 // v1.8 Phase 3 — AGI co-thinker module.
 //   * Phase 3-A (this file's owner): `agi::session_borrower` — LLM dispatch
 //     contract over MCP sampling / browser ext / Ollama.

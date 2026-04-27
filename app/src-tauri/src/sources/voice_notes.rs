@@ -12,7 +12,16 @@
 //!      `python -m tmi.transcribe --audio <tmp> --model-dir <dir>` (the
 //!      same path the Discord meeting flow uses for chunk transcription).
 //!   4. Parse the transcription JSON, write an atom to
-//!      `~/.tangerine-memory/threads/voice/{YYYY-MM-DD-HHMM}.md`.
+//!      `~/.tangerine-memory/personal/<user>/threads/voice/{YYYY-MM-DD-HHMM}.md`.
+//!
+//! v2.0-alpha.1: voice notes are inherently personal — a user's own audio
+//! capture, not something the team needs to see. So we route through
+//! `memory_paths::resolve_atom_dir(.., AtomScope::Personal, ..)`. The
+//! existing reader (`voice_notes_list_recent`) follows the same path so
+//! its results match what's actually on disk. Backward compat: if the
+//! v1.x flat path `<root>/threads/voice/` still has files (because the
+//! migration step couldn't move them, or because a remote install hadn't
+//! been upgraded), we fall through to it after walking the personal vault.
 //!
 //! Whisper reuse: we deliberately do NOT add a new transcription dependency.
 //! The meeting flow already spawns `python -m tmi.transcribe`; we reuse it
@@ -39,6 +48,7 @@ use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use crate::commands::{AppError, AppState};
+use crate::memory_paths::{resolve_atom_dir, AtomScope};
 
 // ---------------------------------------------------------------------------
 // Atom shape
@@ -94,9 +104,29 @@ fn yaml_scalar(s: &str) -> String {
 // ---------------------------------------------------------------------------
 // Filename + path helpers
 
-/// `<memory_root>/threads/voice/`. Created on demand.
-pub fn voice_threads_dir(memory_root: &Path) -> PathBuf {
+/// v2.0: voice notes live under `personal/<user>/threads/voice/`. The
+/// inherent privacy of an audio capture means we never want a team-mode
+/// commit to ship one to git, so this writer pins to `AtomScope::Personal`.
+pub fn voice_threads_dir_for(memory_root: &Path, current_user: &str) -> PathBuf {
+    resolve_atom_dir(memory_root, AtomScope::Personal, current_user, "threads")
+        .join("voice")
+}
+
+/// v1.x flat path — still walked by `voice_notes_list_recent` as a fallback
+/// when the layered install hasn't migrated yet. The migration shim folds
+/// this path into `team/threads/voice/` (which we then also walk in the
+/// reader for completeness — old voice notes are read-only after migration
+/// from the user's perspective).
+pub fn voice_threads_dir_legacy(memory_root: &Path) -> PathBuf {
     memory_root.join("threads").join("voice")
+}
+
+/// v1.x compat shim retained because daemon-side code paths and a handful of
+/// tests still reference the old name. New code should pick the explicit
+/// variant. Returns the legacy flat path so behavior is unchanged when no
+/// `current_user` is in scope.
+pub fn voice_threads_dir(memory_root: &Path) -> PathBuf {
+    voice_threads_dir_legacy(memory_root)
 }
 
 /// `{YYYY-MM-DD-HHMM}` — the user's local time. We deliberately skip
@@ -242,6 +272,13 @@ pub struct VoiceRecordArgs {
     pub audio_b64: String,
     /// MIME type the browser reported. `audio/webm`, `audio/wav`, etc.
     pub mime_type: String,
+    /// v2.0-alpha.1 — current user alias from `ui.currentUser` zustand
+    /// slice. Used to route the resulting atom into
+    /// `personal/<user>/threads/voice/`. Optional (defaults to "me") so
+    /// existing callers that haven't been updated still work; the React
+    /// side is updated to send this in the same v2.0 cut.
+    #[serde(default)]
+    pub current_user: Option<String>,
 }
 
 /// Decode the base64 blob, run Whisper, write the atom. Returns the atom
@@ -291,7 +328,15 @@ pub async fn voice_notes_record_and_transcribe(
     let now_local: DateTime<Local> = DateTime::from(now_utc);
     let body = build_voice_atom(&now_utc, duration, &transcript, &args.mime_type);
     let memory_root = default_memory_root()?;
-    let dir = voice_threads_dir(&memory_root);
+    // v2.0: pin to the personal vault. Falls back to "me" when the React
+    // side hasn't plumbed `current_user` through yet — matches the boot-
+    // time default in `migration::migrate_to_layered`.
+    let user = args
+        .current_user
+        .as_deref()
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or("me");
+    let dir = voice_threads_dir_for(&memory_root, user);
     std::fs::create_dir_all(&dir)
         .map_err(|e| AppError::internal("voice_dir", e.to_string()))?;
     let path = next_voice_path(&dir, &timestamp_slug(&now_local));
@@ -315,22 +360,62 @@ pub struct VoiceListItem {
     pub path: String,
 }
 
+#[derive(Debug, Deserialize, Default)]
+pub struct VoiceListArgs {
+    /// v2.0-alpha.1 — current user alias for personal-vault lookup. Same
+    /// optional default ("me") as `voice_notes_record_and_transcribe`.
+    #[serde(default)]
+    pub current_user: Option<String>,
+}
+
 /// Return the most recent 20 voice notes (by filename desc, since the
 /// timestamp is baked into the slug and lexicographic sort matches
 /// chronological order on YYYY-MM-DD-HHMM).
+///
+/// v2.0-alpha.1: walks the union of `personal/<user>/threads/voice/` (where
+/// new recordings land) and the legacy flat `threads/voice/` (kept for
+/// backward compat — pre-migration installs may still have files there).
+/// Dedup is by absolute path so the same atom never shows up twice.
 #[tauri::command(rename_all = "snake_case")]
 pub async fn voice_notes_list_recent(
     _state: State<'_, AppState>,
+    args: Option<VoiceListArgs>,
 ) -> Result<Vec<VoiceListItem>, AppError> {
     let memory_root = default_memory_root()?;
-    let dir = voice_threads_dir(&memory_root);
-    if !dir.is_dir() {
-        return Ok(vec![]);
-    }
+    let user = args
+        .as_ref()
+        .and_then(|a| a.current_user.as_deref())
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or("me");
+
     let mut rows: Vec<VoiceListItem> = Vec::new();
-    for entry in std::fs::read_dir(&dir)
-        .map_err(|e| AppError::internal("voice_list_read", e.to_string()))?
-    {
+    // Source 1: personal vault (current user).
+    collect_voice_dir(&voice_threads_dir_for(&memory_root, user), &mut rows);
+    // Source 2: legacy flat path.
+    collect_voice_dir(&voice_threads_dir_legacy(&memory_root), &mut rows);
+
+    // De-dup by absolute path.
+    rows.sort_by(|a, b| a.path.cmp(&b.path));
+    rows.dedup_by(|a, b| a.path == b.path);
+
+    // Final order: most recent first by slug.
+    rows.sort_by(|a, b| b.slug.cmp(&a.slug));
+    rows.truncate(20);
+    Ok(rows)
+}
+
+/// Walk a single voice dir and append every readable .md file to `rows`.
+/// Missing dir → no-op (no error). Used by `voice_notes_list_recent` to
+/// union personal + legacy sources.
+fn collect_voice_dir(dir: &Path, rows: &mut Vec<VoiceListItem>) {
+    if !dir.is_dir() {
+        return;
+    }
+    let entries = match std::fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+    for entry in entries {
         let entry = match entry {
             Ok(e) => e,
             Err(_) => continue,
@@ -356,9 +441,6 @@ pub async fn voice_notes_list_recent(
             path: path.to_string_lossy().to_string(),
         });
     }
-    rows.sort_by(|a, b| b.slug.cmp(&a.slug));
-    rows.truncate(20);
-    Ok(rows)
 }
 
 /// Quick-and-dirty frontmatter peek: pull `recorded_at` and `duration_sec`.

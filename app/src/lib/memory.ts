@@ -45,6 +45,15 @@ export interface MemoryNode {
   kind: "dir" | "file";
   /** Children, only set when `kind === "dir"`. Sorted dirs-first then alpha. */
   children?: MemoryNode[];
+  /**
+   * v2.0-alpha.1 — atom scope. `"team"` when the file lives under
+   * `team/<kind>/`; `"personal"` when it lives under
+   * `personal/<user>/<kind>/`. Undefined for nodes that pre-date the
+   * layered layout (legacy flat tree) and for the synthesized root
+   * placeholders. The sidebar renders a subtle indicator for personal
+   * entries (Phase 2 — for now this is just the data plumb-through).
+   */
+  scope?: "team" | "personal";
 }
 
 export interface MemorySearchHit {
@@ -109,11 +118,28 @@ function childRel(parent: string, name: string): string {
 }
 
 /**
+ * Infer the atom scope from a relative path.
+ *
+ *   `team/...`            → "team"
+ *   `personal/<user>/...` → "personal"
+ *   anything else         → undefined (legacy flat layout)
+ */
+function inferScope(relPath: string): "team" | "personal" | undefined {
+  const head = relPath.split("/")[0] ?? "";
+  if (head === "team") return "team";
+  if (head === "personal") return "personal";
+  return undefined;
+}
+
+/**
  * Recursive directory walk.
  *
  * Returns folder + file nodes (no symlinks, no hidden dotfiles). Sorted
  * dirs-first then alpha within each level. On any fs error, returns an empty
  * array silently — the UI's empty state covers it.
+ *
+ * v2.0-alpha.1: every node is decorated with the inferred scope so the
+ * sidebar can render a subtle indicator for personal entries.
  */
 async function walkDir(rootAbs: string, relPath: string): Promise<MemoryNode[]> {
   const abs = join(rootAbs, relPath);
@@ -128,14 +154,15 @@ async function walkDir(rootAbs: string, relPath: string): Promise<MemoryNode[]> 
   for (const e of entries) {
     if (!e.name || e.name.startsWith(".")) continue;
     const rel = childRel(relPath, e.name);
+    const scope = inferScope(rel);
     if (e.isDirectory) {
       const children = await walkDir(rootAbs, rel);
-      nodes.push({ path: rel, name: e.name, kind: "dir", children });
+      nodes.push({ path: rel, name: e.name, kind: "dir", children, scope });
     } else if (e.isFile) {
       // Only surface markdown files. Other extensions are ignored to keep
       // the tree focused on what the user can actually render.
       if (!/\.(md|markdown|mdx)$/i.test(e.name)) continue;
-      nodes.push({ path: rel, name: e.name, kind: "file" });
+      nodes.push({ path: rel, name: e.name, kind: "file", scope });
     }
   }
 

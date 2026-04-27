@@ -31,6 +31,7 @@ use tokio::sync::Notify;
 
 use tangerine_meeting_lib::commands;
 use tangerine_meeting_lib::daemon;
+use tangerine_meeting_lib::migration;
 use tangerine_meeting_lib::tmi_invoke_handler;
 use tangerine_meeting_lib::uri_handler;
 use tangerine_meeting_lib::ws_server;
@@ -220,6 +221,34 @@ fn main() {
                 .map(|h| h.join(".tangerine-memory"))
                 .unwrap_or_else(|| std::path::PathBuf::from(".tangerine-memory"));
             std::fs::create_dir_all(&daemon_root).ok();
+            // v2.0-alpha.1 — run the layered-memory migration BEFORE the
+            // daemon comes up. The shim is idempotent so re-runs cost a
+            // single `is_dir` check; on a v1.x install it folds the flat
+            // `meetings/`, `decisions/`, ... dirs into `team/` and seeds a
+            // `personal/<current_user>/` skeleton. Failures are logged but
+            // do NOT abort boot — worst case we keep serving the v1.x
+            // layout and the user gets a banner asking them to retry.
+            // Note: we don't have a Tauri-resolved `currentUser` yet at
+            // boot (it lives in the React zustand store), so we seed under
+            // "me" — the canonical default. A future hook can re-seed
+            // under the real alias once the React side hydrates.
+            match migration::migrate_to_layered(&daemon_root, "me") {
+                Ok(outcome) => {
+                    tracing::info!(
+                        already_layered = outcome.already_layered,
+                        migrated = ?outcome.migrated_kinds,
+                        files = outcome.files_counted,
+                        gitignore_written = outcome.gitignore_written,
+                        "memory layout migration complete"
+                    );
+                }
+                Err(e) => {
+                    tracing::error!(
+                        error = %e,
+                        "memory layout migration failed; continuing with legacy layout"
+                    );
+                }
+            }
             let mut daemon_cfg = daemon::DaemonConfig::solo(daemon_root);
             // v1.8 Phase 2-C — pass the resolved user_data so source ticks
             // (Notion / Loom / Zoom) read their per-user config + .env from

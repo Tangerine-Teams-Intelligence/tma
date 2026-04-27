@@ -266,6 +266,8 @@ macro_rules! tmi_invoke_handler {
             // memory layer (sample seeding + root resolution)
             $crate::commands::memory::resolve_memory_root,
             $crate::commands::memory::init_memory_with_samples,
+            // v2.0-alpha.1 — layered memory listing (team + personal).
+            $crate::commands::memory::list_atoms,
             // v1.6.0 — git ops
             $crate::commands::git::git_check,
             $crate::commands::git::git_clone,
