@@ -92,6 +92,16 @@ pub struct DaemonStatus {
     pub co_thinker_brain_updates: u64,
     /// v1.8 Phase 3-B: total proposals written across all heartbeats.
     pub co_thinker_proposals_total: u64,
+    /// v3.0 Layer 6: RFC 3339 timestamp of the last successful external
+    /// world tick (RSS / podcast). `None` until the first tick — the
+    /// daemon throttles fetches to once per `external_min_interval`
+    /// (default 12h), regardless of how often the heartbeat fires.
+    pub last_external_tick: Option<String>,
+    /// v3.0 Layer 6: total external atoms (RSS entries + podcast episodes
+    /// + YouTube transcripts + articles) written across all heartbeats.
+    /// Re-fetches that hit dedup don't bump this — it strictly counts new
+    /// material that landed on disk.
+    pub external_atoms_total: u64,
 }
 
 #[derive(Default)]
@@ -407,6 +417,111 @@ async fn do_heartbeat(cfg: &DaemonConfig, control: &Arc<DaemonControl>) {
     if let Err(e) = recompute_suppression(cfg).await {
         control.record_error("suppression_recompute", e);
     }
+
+    // === v3.0 personal agents tick ===
+    //
+    // v3.0 §1 — Personal AI agent capture. Each enabled source (Cursor /
+    // Claude Code / Codex / Windsurf) runs its read-only sweep against the
+    // user's local agent log dirs and writes/refreshes atoms under
+    // `personal/<user>/threads/<source>/`.
+    //
+    // Strict opt-in: an agent's tick is invoked only when
+    // `personal_agents.json -> {agent} == true`. A fresh install with no
+    // toggles flipped costs one JSON-file existence check per heartbeat.
+    //
+    // Errors are recorded per-agent so one source's failure never aborts
+    // the others. Captures run inside `spawn_blocking` because the
+    // adapters do synchronous filesystem I/O.
+    if let Some(ud) = cfg
+        .user_data
+        .clone()
+        .or_else(resolve_user_data_for_daemon)
+    {
+        let memory_root = cfg.memory_root.clone();
+        // We don't have a Tauri-resolved currentUser at this layer (it
+        // lives in the React zustand store). Mirror the migration shim's
+        // default: write under `personal/me/threads/<source>/`. A future
+        // hook can re-resolve once the React side hydrates an alias.
+        let user = "me".to_string();
+        let join = tokio::task::spawn_blocking(move || {
+            crate::commands::personal_agents::tick_from_daemon(&ud, &memory_root, &user)
+        })
+        .await;
+        match join {
+            Ok(results) => {
+                for r in results {
+                    for e in r.errors {
+                        control.record_error(
+                            &format!("personal_agents_{}", r.source),
+                            e,
+                        );
+                    }
+                }
+            }
+            Err(e) => {
+                control.record_error("personal_agents_tick_join", e.to_string());
+            }
+        }
+    }
+    // === end v3.0 personal agents tick ===
+
+    // === v3.0 external world tick ===
+    //
+    // v3.0 Layer 6 — RSS / podcast / YouTube / generic article. The daemon
+    // walks the per-user JSON subscription lists (`<user_data>/sources/
+    // external_{rss,podcast}.json`) on a daily-ish cadence and ingests new
+    // entries. Every heartbeat is fine — the on-disk dedup means re-fetches
+    // produce zero new atoms when nothing has changed. Skipped entirely
+    // when no `user_data` is resolvable (matches the v1.8 Phase 2-C tick
+    // gate).
+    //
+    // The actual fetch + parse + atom write lives in
+    // `crate::commands::external::tick_from_daemon`. Errors land in the
+    // daemon's ring buffer, never abort the loop.
+    if external_tick_due(&control.snapshot()) {
+        let user_data = cfg
+            .user_data
+            .clone()
+            .or_else(resolve_user_data_for_daemon);
+        if let Some(ud) = user_data {
+            if let Ok(client) = reqwest::Client::builder()
+                .user_agent("TangerineMeeting/3.0 external-tick")
+                .build()
+            {
+                let res = crate::commands::external::tick_from_daemon(
+                    &ud,
+                    &cfg.memory_root,
+                    &client,
+                )
+                .await;
+                {
+                    let mut s = control.status.lock();
+                    s.last_external_tick = Some(Utc::now().to_rfc3339());
+                    s.external_atoms_total = s
+                        .external_atoms_total
+                        .saturating_add(res.atoms_written as u64);
+                }
+                for e in res.errors {
+                    control.record_error("external_tick", e);
+                }
+            }
+        }
+    }
+    // === end v3.0 external world tick ===
+}
+
+/// True when at least 12 h has elapsed since the last successful external
+/// tick (or never run). Spec calls for daily; we run twice-daily so a missed
+/// window doesn't push the next pull into the next calendar day.
+fn external_tick_due(s: &DaemonStatus) -> bool {
+    let Some(prev) = s.last_external_tick.as_ref() else {
+        return true;
+    };
+    let Ok(prev_dt) = chrono::DateTime::parse_from_rfc3339(prev) else {
+        return true;
+    };
+    let elapsed = Utc::now().signed_duration_since(prev_dt.with_timezone(&Utc));
+    elapsed.num_hours() >= 12
 }
 
 /// One suppression-map recompute. Walks the telemetry log, derives the

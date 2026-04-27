@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
 import { Calendar } from "lucide-react";
 import {
   readBrief,
@@ -15,6 +14,13 @@ import { TangerineNotes } from "@/components/TangerineNotes";
 import { DailyBriefCard } from "@/components/DailyBriefCard";
 import { TimelineEvent } from "@/components/TimelineEvent";
 import { MEMORY_REFRESHED_EVENT } from "@/components/layout/AppShell";
+// === v2.0-alpha.2 workflow graph ===
+// Per V2_0_SPEC §1.1 — the graph is the head pillar of the home dashboard.
+// `/today` swaps its chronological event list for `<WorkflowGraph />` as
+// the main content, keeping the daily brief + activity as small secondary
+// cards. The chronological list reachable via /this-week is unchanged.
+import { WorkflowGraph } from "@/components/graphs/WorkflowGraph";
+// === end v2.0-alpha.2 workflow graph ===
 
 /**
  * /today — default landing surface for the Chief of Staff UX.
@@ -105,7 +111,7 @@ export default function TodayRoute() {
         </span>
       </header>
 
-      <div className="mx-auto max-w-3xl px-8 py-8">
+      <div className="mx-auto max-w-7xl px-8 py-8">
         <TangerineNotes notes={notes} route="today" />
 
         <header className="mb-6 flex items-center gap-3">
@@ -118,41 +124,53 @@ export default function TodayRoute() {
           </div>
         </header>
 
-        <DailyBriefCard
-          date={today}
-          markdown={brief?.markdown ?? null}
-          exists={brief?.exists ?? false}
-          acked={briefAcked}
-          onMarkRead={onMarkBriefRead}
-        />
-
-        <section>
-          <p className="ti-section-label">Timeline</p>
-          {slice && slice.events.length === 0 ? (
-            <div className="mt-4 rounded-md border border-dashed border-stone-300 p-6 text-center dark:border-stone-700">
-              <p className="text-[12px] text-stone-500 dark:text-stone-400">
-                Nothing captured yet today.
-              </p>
-              <p className="mt-2 text-[11px] text-stone-400 dark:text-stone-500">
-                <Link
-                  to="/sources/discord"
-                  className="text-[var(--ti-orange-700)] underline-offset-2 hover:underline dark:text-[var(--ti-orange-500)]"
-                >
-                  Connect a source
-                </Link>{" "}
-                to start the feed.
-              </p>
+        {/* === v2.0-alpha.2 workflow graph ===
+            Two-column layout: graph (main, ~70%) + brief/activity rail
+            (secondary, ~30%). On narrow viewports the rail stacks below
+            the graph so keyboard nav stays sensible.                  */}
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[2fr_1fr]">
+          <section aria-label="Workflow">
+            <p className="ti-section-label">Workflow</p>
+            <div className="mt-3">
+              <WorkflowGraph />
             </div>
-          ) : (
-            <ul className="mt-3 divide-y divide-stone-200 dark:divide-stone-800">
-              {slice?.events.map((ev) => (
-                <li key={ev.id}>
-                  <TimelineEvent event={ev} onView={onAtomViewed} />
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
+          </section>
+
+          <aside className="space-y-4" aria-label="Today summary">
+            <div>
+              <p className="ti-section-label">Daily brief</p>
+              <div className="mt-3">
+                <DailyBriefCard
+                  date={today}
+                  markdown={brief?.markdown ?? null}
+                  exists={brief?.exists ?? false}
+                  acked={briefAcked}
+                  onMarkRead={onMarkBriefRead}
+                />
+              </div>
+            </div>
+
+            <div>
+              <p className="ti-section-label">Activity</p>
+              {slice && slice.events.length === 0 ? (
+                <div className="mt-3 rounded-md border border-dashed border-stone-300 p-4 text-center dark:border-stone-700">
+                  <p className="text-[11px] text-stone-500 dark:text-stone-400">
+                    Nothing captured yet today.
+                  </p>
+                </div>
+              ) : (
+                <ul className="mt-3 max-h-[420px] divide-y divide-stone-200 overflow-y-auto pr-1 dark:divide-stone-800">
+                  {slice?.events.slice(0, 8).map((ev) => (
+                    <li key={ev.id}>
+                      <TimelineEvent event={ev} onView={onAtomViewed} compact />
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </aside>
+        </div>
+        {/* === end v2.0-alpha.2 workflow graph === */}
 
         <p className="mt-12 text-center font-mono text-[10px] text-stone-400 dark:text-stone-500">
           Sources fan out into ~/.tangerine-memory · daemon refreshes every 5 min

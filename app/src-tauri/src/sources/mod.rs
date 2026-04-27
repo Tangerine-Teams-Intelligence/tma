@@ -44,6 +44,16 @@ pub mod writeback_log;
 pub mod email;
 pub mod voice_notes;
 
+// === v3.0 external world ===
+// v3.0 Layer 6 — external world capture. RSS / podcast / YouTube /
+// generic article readers. Each writes atoms under
+// `<memory_root>/personal/<user>/threads/external/<source-type>/`. The
+// daemon's daily cron tick polls subscribed feeds; the Tauri command
+// surface in `crate::commands::external` exposes opt-in subscribe /
+// fetch-now / paste-to-capture entry points.
+pub mod external;
+// === end v3.0 external world ===
+
 use serde::{Deserialize, Serialize};
 
 /// Result of a writeback attempt. Returned both to the auto-watcher (which

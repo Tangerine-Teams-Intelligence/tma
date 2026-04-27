@@ -1,0 +1,38 @@
+{
+  "template_id": "deposition-prep",
+  "version": 1,
+  "title": "Deposition prep",
+  "description": "Starter canvas for preparing a deposition outline. Lanes group topics; co-thinker surfaces deponent's prior statements.",
+  "lanes": [
+    {
+      "id": "background",
+      "title": "Background",
+      "description": "Deponent's role, relationship to parties, prior testimony.",
+      "color": "stone"
+    },
+    {
+      "id": "topics",
+      "title": "Topic outline",
+      "description": "Topic-by-topic deposition outline (NOT question-by-question).",
+      "color": "blue"
+    },
+    {
+      "id": "exhibits",
+      "title": "Exhibits to mark",
+      "description": "Documents to authenticate / lay foundation for / impeach with.",
+      "color": "purple"
+    },
+    {
+      "id": "objections",
+      "title": "Anticipated objections",
+      "description": "Form, foundation, hearsay, attorney-client privilege.",
+      "color": "amber"
+    },
+    {
+      "id": "consistency",
+      "title": "Consistency check",
+      "description": "Deponent's prior statements that may conflict with current testimony.",
+      "color": "rose"
+    }
+  ]
+}

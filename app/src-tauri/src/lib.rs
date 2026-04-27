@@ -32,3 +32,64 @@ pub mod agi;
 pub mod sources;
 pub mod uri_handler;
 pub mod ws_server;
+
+// === v2.5 cloud_sync ===
+// v2.5 §5 — managed cloud sync stub (per-team git mirror). Real network
+// transport is deferred to v2.5 production; this module is the API + config
+// shape so the React Settings surface can wire up now. Tauri-callable
+// wrappers (`cloud_sync_*`) are registered in `commands::mod`.
+pub mod cloud_sync;
+// === end v2.5 cloud_sync ===
+
+// === v2.5 auth + billing ===
+// v2.5 §2 + §3 — real Supabase auth (replaces v1.x localStorage stub) + Stripe
+// Connect billing ($5/team/month flat, 30-day no-CC trial). Both modules ship
+// in **stub mode by default** — never call real Supabase / Stripe until the
+// CEO unblocks `STRIPE_API_KEY` + `SUPABASE_URL` env vars. Stub mode simulates
+// the full state machine end-to-end so the React surfaces (`/billing` route,
+// TrialBanner, paywall gate) integrate today and the real swap is a one-line
+// env change.
+pub mod auth;
+pub mod billing;
+// === end v2.5 auth + billing ===
+
+// === v3.0 personal agents ===
+// v3.0 §1 — Personal AI agent capture (Cursor, Claude Code, Codex, Windsurf).
+// Reads the user's local agent conversation logs and writes per-conversation
+// atoms under `personal/<user>/threads/<source>/`. Strict opt-in: each
+// adapter is gated behind a per-source toggle in
+// `<user_data>/personal_agents.json`. The Tauri command surface lives at
+// `crate::commands::personal_agents`; the daemon hook ticks each enabled
+// source at the end of every heartbeat.
+pub mod personal_agents;
+// === end v3.0 personal agents ===
+
+// === v3.5 marketplace ===
+// v3.5 §1: marketplace backend (stub mode by default). Tauri command surface
+// in `commands::marketplace` is the React-side entry point; this module owns
+// the catalog model, install/uninstall, commission engine, and trigger-gate
+// state. Real catalog API + Stripe Connect payout lights up once the v3.5
+// launch gate passes (5k OSS installs + 1 self-shipped vertical template).
+pub mod marketplace;
+// === end v3.5 marketplace ===
+
+// === v3.5 branding ===
+// v3.5 §4: enterprise white-label branding override. Default = Tangerine
+// baseline; enterprise tenants overlay logo / palette / domain / app name.
+// Stub license validator accepts `tangerine-trial-*` / `tangerine-license-*`.
+pub mod branding;
+// === end v3.5 branding ===
+
+// === v3.5 sso ===
+// v3.5 §5.1: SSO SAML scaffold (stub). Two providers prioritized: Okta +
+// Azure AD. `validate_saml_response` returns a deterministic mock
+// assertion until the production cut wires `keycloak-rs` or WorkOS.
+pub mod sso;
+// === end v3.5 sso ===
+
+// === v3.5 audit ===
+// v3.5 §5.2: enterprise audit log. Append-only JSONL per UTC day under
+// `~/.tangerine-memory/.tangerine/audit/`. Stub mode stamps
+// `region = "us-east"`; real region routing in v3.5 enterprise tier.
+pub mod audit_log;
+// === end v3.5 audit ===

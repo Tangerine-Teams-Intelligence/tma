@@ -1,29 +1,32 @@
 /**
- * v1.8 Phase 4 — Settings → AGI tab.
+ * v2.0-beta.3 — Settings → AGI tab (simplified).
  *
- * Top of the page: **AGI participation** master switch (v1.8). Hard kill
- * for the frontend ambient layer — when off, no inline reactions, no
- * heartbeat, no system tray. Volume / channel / threshold controls below
- * remain visible but disabled (greyed out) so the user sees what would
- * resume if they flip it back on.
+ * Two user-visible knobs (down from 8 in v1.8):
+ *   1. **AGI participation** master switch — master kill, unchanged
+ *      from v1.8. When off the strip + ambient layer + heartbeat all
+ *      pause.
+ *   2. **Sensitivity slider** 0–100 — single integer that maps to the
+ *      legacy volume + confidence-threshold pair internally
+ *      (`sensitivityToVolumeThreshold` in `lib/store.ts`). 50 is the
+ *      sensible default (= quiet + 0.7 floor, identical to v1.8's
+ *      out-of-the-box behaviour).
  *
- * The user's three fine-grained knobs over how loud the ambient AGI is
- * allowed to be (only meaningful when participation === true):
- *   1. Volume band — silent / quiet / chatty.
- *   2. Confidence floor — 0.50–0.95 slider, clamped on top of the
- *      hard-coded MIN_CONFIDENCE in `lib/ambient.ts`.
- *   3. Per-channel mutes — Canvas / Memory edits / Cmd+K / /today /
- *      Settings. Listed as toggles so each surface can be silenced
- *      independently.
+ * Everything else from v1.8 (per-channel mutes, raw threshold slider,
+ * dismiss memory, telemetry wipe, suppression list) lives behind an
+ * "Advanced" disclosure so power-users keep their escape hatches without
+ * the default UI showing 8 knobs.
  *
- * Plus a "Reset dismiss memory" button that clears the 24h dismiss list.
- * Useful when the user wants to start fresh without waiting for the
- * window to expire.
+ * Migration: the store's persist `merge` step calls `deriveSensitivity`
+ * to compute an initial slider position from the existing
+ * `agiVolume` + `agiConfidenceThreshold` for users upgrading from v1.x.
+ * That keeps the prior knob position carrying forward instead of
+ * resetting to 50 on first launch.
  */
 
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useStore } from "@/lib/store";
+import { sensitivityToVolumeThreshold } from "@/lib/store";
 import type { AgiVolume } from "@/lib/ambient";
 // v1.9.0-beta.1 P1-A — telemetry wipe button. The user can nuke every
 // recorded action at any time from the bottom of the AGI Settings tab.
@@ -65,6 +68,14 @@ export function AGISettings() {
   const toggleChannel = useStore((s) => s.ui.toggleAgiChannelMute);
   const threshold = useStore((s) => s.ui.agiConfidenceThreshold);
   const setThreshold = useStore((s) => s.ui.setAgiConfidenceThreshold);
+  // === v2.0-beta.3 settings simplify ===
+  const agiSensitivity = useStore((s) => s.ui.agiSensitivity);
+  const setAgiSensitivity = useStore((s) => s.ui.setAgiSensitivity);
+  // Local "show advanced" toggle. Not persisted — every visit to the
+  // settings page starts collapsed so the simplified surface is always
+  // the entry point.
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  // === end v2.0-beta.3 settings simplify ===
   const dismissedSurfaces = useStore((s) => s.ui.dismissedSurfaces);
   const resetDismissed = useStore((s) => s.ui.resetDismissedSurfaces);
   const pushToast = useStore((s) => s.ui.pushToast);
@@ -171,6 +182,79 @@ export function AGISettings() {
         </div>
       </section>
 
+      {/* === v2.0-beta.3 settings simplify ===
+          Single sensitivity slider replaces the v1.8 trio of volume
+          radio + threshold slider + per-channel mutes. The slider's
+          position maps deterministically to (volume, threshold) via
+          `sensitivityToVolumeThreshold`. The user keeps the underlying
+          knobs reachable through the "Advanced" disclosure below — for
+          the 95% of users who want one knob, this is the only knob. */}
+      <section className={dimClass} data-testid="st-agi-sensitivity-card">
+        <h3 className="font-display text-lg">Sensitivity</h3>
+        <p className="mt-1 text-sm text-[var(--ti-ink-500)]">
+          One knob for how often Tangerine speaks up. Lower = quieter,
+          higher = chattier. The very top end is "alerts only" — a
+          sensitivity of 100 means only the very-high-confidence
+          reactions surface.
+        </p>
+        <div className="mt-3 flex items-center gap-3">
+          <input
+            type="range"
+            min={0}
+            max={100}
+            step={1}
+            value={agiSensitivity}
+            disabled={childrenDisabled}
+            onChange={(e) => setAgiSensitivity(Number(e.target.value))}
+            data-testid="st-agi-sensitivity"
+            aria-label="Sensitivity"
+            className="flex-1 accent-[var(--ti-orange-500)] disabled:cursor-not-allowed"
+          />
+          <span
+            className="w-10 text-right font-mono text-sm text-[var(--ti-ink-700)]"
+            data-testid="st-agi-sensitivity-value"
+          >
+            {agiSensitivity}
+          </span>
+        </div>
+        <p
+          className="mt-2 text-xs text-[var(--ti-ink-500)]"
+          data-testid="st-agi-sensitivity-band"
+        >
+          {sensitivityBandLabel(agiSensitivity)}
+        </p>
+      </section>
+
+      {/* "Advanced" disclosure. Lets the user reach the v1.8 fine-grained
+          knobs (volume radio, raw threshold slider, channel mutes) without
+          showing them by default. Telemetry / suppression / dismiss-memory
+          stay outside this disclosure since they're not "more knobs", they
+          are escape hatches whose discoverability matters. */}
+      <section data-testid="st-agi-advanced-card">
+        <button
+          type="button"
+          onClick={() => setAdvancedOpen((v) => !v)}
+          data-testid="st-agi-advanced-toggle"
+          aria-expanded={advancedOpen}
+          className="flex items-center gap-2 text-sm text-[var(--ti-ink-700)] hover:text-[var(--ti-ink-900)]"
+        >
+          <span aria-hidden className="font-mono text-xs">
+            {advancedOpen ? "▼" : "▶"}
+          </span>
+          Advanced (v1.8 knobs)
+        </button>
+        {!advancedOpen && (
+          <p className="mt-1 text-xs text-[var(--ti-ink-500)]">
+            Volume band, raw confidence threshold, per-channel mutes. The
+            sensitivity slider above derives all three; only open this if
+            you need finer control.
+          </p>
+        )}
+      </section>
+
+      {advancedOpen && (
+        <>
+      {/* === end v2.0-beta.3 settings simplify === */}
       <section className={dimClass}>
         <h3 className="font-display text-lg">AGI volume</h3>
         <p className="mt-1 text-sm text-[var(--ti-ink-500)]">
@@ -315,6 +399,9 @@ export function AGISettings() {
           </Button>
         </div>
       </section>
+        </>
+      )}
+      {/* === end v2.0-beta.3 advanced disclosure close === */}
 
       {/* v1.9.0-beta.3 P3-A — Suppressed suggestions list.
           When the user dismisses the same template-scope pair 3 times
@@ -401,6 +488,28 @@ export function AGISettings() {
     </div>
   );
 }
+
+// === v2.0-beta.3 settings simplify ===
+/**
+ * Human-readable label for the sensitivity slider's current bucket.
+ * Mirrors `sensitivityToVolumeThreshold` in `lib/store.ts`. Kept inline
+ * (rather than imported from store) so the user-facing copy can drift
+ * from the engineering names — "Quiet (default)" is friendlier than
+ * "quiet" and lines up with the surrounding marketing voice.
+ */
+function sensitivityBandLabel(n: number): string {
+  const { volume, threshold } = sensitivityToVolumeThreshold(n);
+  if (volume === "silent") return "Silent — no inline reactions.";
+  if (volume === "chatty") {
+    return "Chatty — surfaces lower-confidence hunches too.";
+  }
+  // volume === "quiet"
+  if (threshold >= 0.85) {
+    return "Alerts only — only the very-high-confidence reactions surface.";
+  }
+  return "Quiet (default) — high-confidence reactions only.";
+}
+// === end v2.0-beta.3 settings simplify ===
 
 /**
  * Render an ISO 8601 `suppressed_until` as a short human-readable

@@ -1,0 +1,80 @@
+# Tangerine for Legal Teams — suggestion engine rule pack (v0.1.0)
+#
+# Rules fire from the v1.9 suggestion engine + co-thinker daemon. Each
+# `[[rule]]` block must declare `name`, `when` (predicate over atom
+# fields), and `emit` (`banner` / `modal` / `toast`). See
+# `SUGGESTION_ENGINE_SPEC.md` for the full grammar.
+
+# -- Deadline reminders ------------------------------------------------------
+
+[[rule]]
+name = "filing_deadline_48h"
+description = "Surface a banner when any atom tagged #deadline lands within 48h."
+when = """
+atom.tags contains 'deadline'
+  AND atom.due_at exists
+  AND atom.due_at - now < 48h
+  AND atom.due_at > now
+"""
+emit = "banner"
+priority = "high"
+ttl_hours = 24
+body = "Deadline in {{atom.hours_until_due}}h: {{atom.title}}. Confirm filing with court or extend."
+
+[[rule]]
+name = "filing_deadline_overdue"
+description = "Modal when a #deadline atom passes without status flip."
+when = """
+atom.tags contains 'deadline'
+  AND atom.due_at exists
+  AND atom.due_at < now
+  AND atom.status != 'filed'
+"""
+emit = "modal"
+priority = "critical"
+body = "OVERDUE: {{atom.title}} was due {{atom.hours_overdue}}h ago. Confirm filing or escalate."
+
+# -- Conflict-of-interest auto-flag ------------------------------------------
+
+[[rule]]
+name = "conflict_of_interest_flag"
+description = "Toast when a new client intake atom references an existing opposing-counsel atom."
+when = """
+atom.kind == 'people'
+  AND atom.role == 'opposing_counsel'
+  AND atom.party in (cross_ref(atom.kind == 'people' AND atom.role == 'client').party)
+"""
+emit = "modal"
+priority = "high"
+body = "Possible conflict of interest: {{atom.party}} appears in both client + opposing-counsel lists. Run conflict check before retainer."
+
+# -- Decision-drift detector for legal opinions ------------------------------
+
+[[rule]]
+name = "decision_drift_legal_opinion"
+description = "Detect when the user's notes contradict an earlier decision atom on the same matter."
+when = """
+atom.kind == 'note'
+  AND atom.matter exists
+  AND cross_ref(atom.kind == 'decision' AND atom.matter == this.matter).body
+    contradicts atom.body
+"""
+emit = "toast"
+priority = "medium"
+body = "This note may contradict your earlier decision on {{atom.matter}}. Worth a re-read?"
+
+# -- Citation freshness ------------------------------------------------------
+
+[[rule]]
+name = "stale_citation_warning"
+description = "Warn when a cited case has been overruled / superseded since the user last referenced it."
+when = """
+atom.kind == 'note'
+  AND atom.citations exists
+  AND citation.shepard_status in ('overruled', 'superseded')
+"""
+emit = "toast"
+priority = "medium"
+body = "Citation {{citation.case}} now {{citation.shepard_status}}. Re-Shepardize before filing."
+
+# v3.5 §3.2 — bundle contents row 4: legal-specific rules.

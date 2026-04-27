@@ -9,6 +9,12 @@ import { gitCheck, gitClone, gitInitAndPush, generateInvite, syncStart } from "@
 import { ghDeviceFlowStart, ghDeviceFlowPollUntilReady, ghCreateRepo } from "@/lib/github";
 import { openExternal } from "@/lib/tauri";
 import { resolveMemoryRoot } from "@/lib/tauri";
+// === v2.0-beta.3 onboarding cut ===
+// Skip mode-pick when the user already has memory content on disk
+// (returning user) — they shouldn't be forced through Solo / Team /
+// Existing again. New users default to Solo and land on home directly.
+import { userFacingFoldersEmpty } from "@/lib/memory";
+// === end v2.0-beta.3 onboarding cut ===
 import { InviteLinkModal } from "@/components/InviteLinkModal";
 
 type Mode = "create" | "existing" | "solo";
@@ -35,8 +41,15 @@ export default function OnboardingTeamRoute() {
   const setMemoryConfig = useStore((s) => s.ui.setMemoryConfig);
   const setMemoryRoot = useStore((s) => s.ui.setMemoryRoot);
   const pushToast = useStore((s) => s.ui.pushToast);
+  // === v2.0-beta.3 onboarding cut ===
+  // memoryConfigMode is undefined for first-launch users only. We use it
+  // as the "should we even render the picker?" gate — paired with the
+  // disk-state check below, returning users skip the picker entirely.
+  const memoryConfigMode = useStore((s) => s.ui.memoryConfig.mode);
+  const memoryRoot = useStore((s) => s.ui.memoryRoot);
+  // === end v2.0-beta.3 onboarding cut ===
 
-  const [mode, setMode] = useState<Mode>("create");
+  const [mode, setMode] = useState<Mode>("solo");
   const [phase, setPhase] = useState<Phase>("pick");
   const [error, setError] = useState<string | null>(null);
   const [gitStatus, setGitStatus] = useState<{ available: boolean; install_url: string } | null>(null);
@@ -54,6 +67,54 @@ export default function OnboardingTeamRoute() {
       cancel = true;
     };
   }, []);
+
+  // === v2.0-beta.3 onboarding cut ===
+  // Skip the picker entirely when one of two conditions holds:
+  //   1. The user already picked a mode in a prior session
+  //      (memoryConfigMode !== undefined) — returning user, the picker
+  //      is moot.
+  //   2. The user-facing memory folders already have content. v2.0
+  //      collapses the 3-way picker into "Solo by default + opt-in to
+  //      Team via Settings", and the disk being non-empty is the
+  //      strongest signal that the user has been here before regardless
+  //      of whether the persisted store has the mode set (e.g. wiped
+  //      localStorage on a returning install).
+  // In either case we set memoryConfig.mode = "solo" silently and
+  // navigate home; the user can flip to Team mode any time from
+  // Settings. The team setup is still reachable via the explicit
+  // /onboarding-team route → "I have a team" affordance below for net-
+  // new users who want it.
+  useEffect(() => {
+    let cancel = false;
+    void (async () => {
+      // Case 1 — returning user with a recorded mode.
+      if (memoryConfigMode !== undefined) {
+        if (cancel) return;
+        navigate("/today", { replace: true });
+        return;
+      }
+      // Case 2 — disk has content. Solo-default + skip.
+      try {
+        const info = await resolveMemoryRoot();
+        if (cancel) return;
+        const root =
+          info.path && !info.path.startsWith("~") ? info.path : memoryRoot;
+        const empty = await userFacingFoldersEmpty(root);
+        if (cancel) return;
+        if (!empty) {
+          setMemoryConfig({ mode: "solo" });
+          navigate("/today", { replace: true });
+        }
+      } catch {
+        // Tauri bridge missing (browser dev / vitest) → fall through to
+        // the picker so dev-mode behaviour stays predictable.
+      }
+    })();
+    return () => {
+      cancel = true;
+    };
+  }, [memoryConfigMode, memoryRoot, navigate, setMemoryConfig]);
+  // === end v2.0-beta.3 onboarding cut ===
 
   function chooseSolo() {
     setMemoryConfig({ mode: "solo" });

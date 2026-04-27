@@ -1,0 +1,45 @@
+{
+  "template_id": "case-prep",
+  "version": 1,
+  "title": "Case prep",
+  "description": "Starter canvas for preparing a case file. Lanes track procedural posture, factual elements, applicable law, and witness/exhibit lists.",
+  "lanes": [
+    {
+      "id": "facts",
+      "title": "Facts",
+      "description": "Stipulated facts + disputed facts; link to client interview atoms.",
+      "color": "blue"
+    },
+    {
+      "id": "law",
+      "title": "Applicable law",
+      "description": "Statutes, regulations, controlling cases. Cite Bluebook.",
+      "color": "purple"
+    },
+    {
+      "id": "elements",
+      "title": "Elements / claims",
+      "description": "Per cause of action: prima facie elements + evidentiary support.",
+      "color": "amber"
+    },
+    {
+      "id": "procedure",
+      "title": "Procedural posture",
+      "description": "Filing deadlines, pending motions, discovery cutoff, trial date.",
+      "color": "rose"
+    },
+    {
+      "id": "witnesses",
+      "title": "Witnesses + exhibits",
+      "description": "Witness list, exhibit pre-marks, foundation requirements.",
+      "color": "emerald"
+    }
+  ],
+  "starter_stickies": [
+    {
+      "lane": "procedure",
+      "text": "Filing deadline: TBD — replace with actual date",
+      "tags": ["deadline"]
+    }
+  ]
+}

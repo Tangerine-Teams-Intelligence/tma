@@ -162,6 +162,24 @@ interface UiSlice {
   /** User-tunable confidence floor (0.5–0.95). Sits *on top of* the
    *  hard-coded `MIN_CONFIDENCE = 0.7`. Default 0.7. */
   agiConfidenceThreshold: number;
+  // === v2.0-beta.3 settings simplify ===
+  /** v2.0-beta.3 — single sensitivity slider 0–100 that replaces the
+   *  fine-grained volume + threshold + channel-mute trio in the user-
+   *  visible settings UI. The fine-grained fields are kept as the source
+   *  of truth (the ambient policy still reads them) and `agiSensitivity`
+   *  is the user-friendly knob that derives both. The mapping (set in
+   *  `setAgiSensitivity`):
+   *    0–30   → silent equivalent (volume=silent, threshold=0.95)
+   *    30–60  → quiet  equivalent (volume=quiet,  threshold=0.7)
+   *    60–90  → chatty equivalent (volume=chatty, threshold=0.6)
+   *    90–100 → alerts only       (volume=quiet,  threshold=0.9)
+   *  Default 50 (quiet, default threshold). Persisted; first launch on a
+   *  v1.x install computes the initial value from the existing volume +
+   *  threshold via `deriveSensitivity` so the user's prior knob position
+   *  carries forward. */
+  agiSensitivity: number;
+  setAgiSensitivity: (n: number) => void;
+  // === end v2.0-beta.3 settings simplify ===
   /** v1.9.0-beta.2 P2-C — newcomer onboarding latch.
    *
    *  Flipped to `true` the first time the Rust `newcomer_onboarding`
@@ -183,6 +201,61 @@ interface UiSlice {
   setAgiConfidenceThreshold: (n: number) => void;
   /** v1.9.0-beta.2 — flip the newcomer-onboarding latch. */
   setNewcomerOnboardingShown: (v: boolean) => void;
+  /**
+   * v3.0 §1 + §5 — per-source personal-agent capture toggles.
+   *
+   * Mirror of `crate::commands::personal_agents::PersonalAgentSettings`.
+   * The Rust side is the source of truth (persisted at
+   * `<user_data>/personal_agents.json`); this slice carries the latest
+   * known values so the Settings UI doesn't have to round-trip on every
+   * keystroke. Default: ALL FALSE — the user must opt in per source
+   * before any daemon-hook capture runs (spec §5.1).
+   */
+  personalAgentsEnabled: {
+    cursor: boolean;
+    claude_code: boolean;
+    codex: boolean;
+    windsurf: boolean;
+  };
+  /** v3.0 — replace the whole personal-agents enable map (used after
+   *  a successful `personal_agents_get_settings` round-trip). */
+  setPersonalAgentsEnabled: (
+    next: { cursor: boolean; claude_code: boolean; codex: boolean; windsurf: boolean },
+  ) => void;
+  /** v3.0 — flip a single agent toggle in the in-memory mirror. The
+   *  caller is expected to also persist via `personal_agents_set_watcher`. */
+  togglePersonalAgent: (
+    agent: "cursor" | "claude_code" | "codex" | "windsurf",
+    enabled: boolean,
+  ) => void;
+  // === v3.5 marketplace ===
+  /** v3.5 §2 — public marketplace launch state. Mirror of the Rust-side
+   *  `LaunchState.launched` flag. Frontend uses this to render the
+   *  "Coming live when CEO triggers launch gate" banner on /marketplace.
+   *  Default `false`; the marketplace route refreshes this on mount. */
+  marketplaceLaunched: boolean;
+  setMarketplaceLaunched: (v: boolean) => void;
+  // === end v3.5 marketplace ===
+  // === v3.5 branding ===
+  /** v3.5 §4 — current enterprise white-label branding override. Mirror of
+   *  `crate::branding::BrandingConfig`. Default = Tangerine baseline.
+   *  AppShell hydrates this from `brandingGetConfig` at boot; per-tenant
+   *  enterprise tenants overlay logo / palette / domain / app name. */
+  brandingConfig: {
+    logo_url: string;
+    primary_color: string;
+    accent_color: string;
+    custom_domain: string;
+    app_name: string;
+  };
+  setBrandingConfig: (cfg: {
+    logo_url: string;
+    primary_color: string;
+    accent_color: string;
+    custom_domain: string;
+    app_name: string;
+  }) => void;
+  // === end v3.5 branding ===
   toasts: ToastEntry[];
   // ---- v1.9.0-beta.1 — banner + modal queues ----
   /** Active banner queue. The host renders the highest-priority entry; the
@@ -265,6 +338,45 @@ interface UiSlice {
    * keep compiling without churn. */
   pushToast: PushToastFn;
   dismissToast: (id: string) => void;
+
+  // === v2.5 auth + billing ===
+  // v2.5 §2 + §3 — auth mode + billing snapshot. `authMode === "stub"` is the
+  // default (sibling auth.ts continues to work); flips to "real" once a real
+  // Supabase session is bound. `billingStatus` carries the latest known
+  // subscription status from `billing_status` polls; the AppShell trial-gate
+  // effect re-reads it every hour. `trialExpiry` is a UNIX-seconds timestamp
+  // (0 when no trial). The setters below are the only writers — components
+  // never mutate these directly.
+  authMode: "stub" | "real";
+  billingStatus: "trialing" | "active" | "past_due" | "canceled" | "none";
+  trialExpiry: number;
+  setAuthMode: (m: "stub" | "real") => void;
+  setBillingSnapshot: (
+    snapshot: {
+      status: "trialing" | "active" | "past_due" | "canceled" | "none";
+      trialExpiry: number;
+    },
+  ) => void;
+  // === end v2.5 auth + billing ===
+
+  // === v2.5 cloud_sync ===
+  /** v2.5 §5 — managed cloud sync config (stub mode). Persisted via Tauri
+   *  command `cloud_sync_set_config`; this slice is the in-memory mirror so
+   *  the Settings page doesn't round-trip on every keystroke. Real network
+   *  transport is deferred to v2.5 production. */
+  cloudSyncConfig: {
+    enabled: boolean;
+    repo_url: string;
+    branch: string;
+    sync_interval_min: number;
+  };
+  setCloudSyncConfig: (next: {
+    enabled: boolean;
+    repo_url: string;
+    branch: string;
+    sync_interval_min: number;
+  }) => void;
+  // === end v2.5 cloud_sync ===
 }
 
 /** Every toast in `ui.toasts`. `kind === "suggestion"` denotes a v1.9
@@ -358,6 +470,54 @@ export function isMeetingConfigured(m: MeetingConfig): boolean {
   return !!m.discordToken && !!m.guildId && transcriptionOk && !!m.claudeCliPath && teamOk;
 }
 
+// === v2.0-beta.3 settings simplify ===
+/**
+ * Map the 0–100 sensitivity slider to the underlying volume band +
+ * confidence threshold pair that the ambient policy already understands.
+ * Exported so tests + the AGISettings UI's preview line stay in lockstep.
+ *
+ * Bucket layout (per V2_0_SPEC §4 / build prompt):
+ *   0–30   → silent equivalent (volume=silent, threshold=0.95)
+ *   30–60  → quiet  equivalent (volume=quiet,  threshold=0.7) — default
+ *   60–90  → chatty equivalent (volume=chatty, threshold=0.6)
+ *   90–100 → alerts only       (volume=quiet,  threshold=0.9) — only the
+ *            very-high-confidence reactions reach the user, even though
+ *            the volume itself is the moderate band.
+ *
+ * The boundary values land in the *upper* bucket on the seam (30 → quiet,
+ * 60 → chatty, 90 → alerts) so the slider's snap-points feel intuitive.
+ */
+export function sensitivityToVolumeThreshold(n: number): {
+  volume: AgiVolume;
+  threshold: number;
+} {
+  const clamped = Math.max(0, Math.min(100, n));
+  if (clamped < 30) return { volume: "silent", threshold: 0.95 };
+  if (clamped < 60) return { volume: "quiet", threshold: 0.7 };
+  if (clamped < 90) return { volume: "chatty", threshold: 0.6 };
+  return { volume: "quiet", threshold: 0.9 };
+}
+
+/**
+ * Reverse-map a (volume, threshold) pair back into a sensitivity score
+ * for users migrating from v1.x where the two were separate knobs. Picks
+ * the canonical centre of each bucket so a flip-flop on the slider
+ * doesn't shift the underlying state. silent → 15, quiet → 45 (default
+ * band centre), chatty → 75, "alerts only" (quiet + ≥0.85 threshold) →
+ * 95.
+ */
+export function deriveSensitivity(
+  volume: AgiVolume,
+  threshold: number,
+): number {
+  if (volume === "silent") return 15;
+  if (volume === "chatty") return 75;
+  // volume === "quiet" — split on the threshold to detect "alerts only".
+  if (threshold >= 0.85) return 95;
+  return 45;
+}
+// === end v2.0-beta.3 settings simplify ===
+
 function osPrefersDark(): boolean {
   if (typeof window === "undefined" || !window.matchMedia) return false;
   return window.matchMedia("(prefers-color-scheme: dark)").matches;
@@ -404,10 +564,36 @@ export const useStore = create<Store>()(
         mutedAgiChannels: [],
         dismissedSurfaces: [],
         agiConfidenceThreshold: 0.7,
+        // v2.0-beta.3 — single sensitivity slider. Default 50 = quiet +
+        // 0.7 floor. The mapping is applied on every write via
+        // `setAgiSensitivity` so the legacy fields stay in sync.
+        agiSensitivity: 50,
         // v1.9.0-beta.2 P2-C — newcomer onboarding latch.
         // Persisted; flips to true after the first emit so the toast
         // never re-fires on subsequent heartbeats / launches.
         newcomerOnboardingShown: false,
+        // v3.0 §1 + §5 — personal-agent capture flags. ALL FALSE by default
+        // — opt-in per source. Hydrated from `personal_agents_get_settings`
+        // on Settings page mount; the flag map mirrors the Rust persisted
+        // file so reducers don't have to round-trip on every keystroke.
+        personalAgentsEnabled: {
+          cursor: false,
+          claude_code: false,
+          codex: false,
+          windsurf: false,
+        },
+        // === v3.5 marketplace ===
+        marketplaceLaunched: false,
+        // === end v3.5 marketplace ===
+        // === v3.5 branding ===
+        brandingConfig: {
+          logo_url: "",
+          primary_color: "#CC5500",
+          accent_color: "#1A1A2E",
+          custom_domain: "",
+          app_name: "Tangerine",
+        },
+        // === end v3.5 branding ===
         toasts: [],
         // v1.9.0-beta.1 — banner + modal queues. Not persisted — these
         // are session-scoped UI state. Counters reset on every cold launch.
@@ -418,6 +604,31 @@ export const useStore = create<Store>()(
         // Always a fresh Set on cold launch so the user re-confirms once
         // per app launch per spec §3.4.
         firstWritebackConfirmedThisSession: new Set<string>(),
+        // v2.5 §2 + §3 — auth mode + billing snapshot (defaults match
+        // backend stub-mode shape so the UI never reads `undefined`).
+        authMode: "stub",
+        billingStatus: "none",
+        trialExpiry: 0,
+        setAuthMode: (m) => set((s) => ({ ui: { ...s.ui, authMode: m } })),
+        setBillingSnapshot: (snapshot) =>
+          set((s) => ({
+            ui: {
+              ...s.ui,
+              billingStatus: snapshot.status,
+              trialExpiry: snapshot.trialExpiry,
+            },
+          })),
+        // v2.5 §5 — managed cloud sync stub. Defaults match the Rust
+        // `CloudSyncConfig::default()` shape so first paint is consistent
+        // even before the get_config round-trip completes.
+        cloudSyncConfig: {
+          enabled: false,
+          repo_url: "",
+          branch: "main",
+          sync_interval_min: 5,
+        },
+        setCloudSyncConfig: (next) =>
+          set((s) => ({ ui: { ...s.ui, cloudSyncConfig: next } })),
         setTheme: (t) => {
           const resolved = resolveTheme(t);
           set((s) => ({ ui: { ...s.ui, theme: t, resolvedTheme: resolved } }));
@@ -514,9 +725,50 @@ export const useStore = create<Store>()(
               agiConfidenceThreshold: Math.max(0.5, Math.min(0.95, n)),
             },
           })),
+        // === v2.0-beta.3 settings simplify ===
+        // Single sensitivity slider 0–100. Writes propagate to the legacy
+        // volume + threshold fields so the ambient policy keeps working
+        // unchanged — the simplified UI is purely a user-facing collapse.
+        setAgiSensitivity: (n) =>
+          set((s) => {
+            const clamped = Math.max(0, Math.min(100, Math.round(n)));
+            const { volume, threshold } = sensitivityToVolumeThreshold(clamped);
+            return {
+              ui: {
+                ...s.ui,
+                agiSensitivity: clamped,
+                agiVolume: volume,
+                agiConfidenceThreshold: threshold,
+              },
+            };
+          }),
+        // === end v2.0-beta.3 settings simplify ===
         // v1.9.0-beta.2 P2-C — newcomer onboarding latch.
         setNewcomerOnboardingShown: (v) =>
           set((s) => ({ ui: { ...s.ui, newcomerOnboardingShown: v } })),
+        // v3.0 §1 — personal-agent capture flag mirror.
+        setPersonalAgentsEnabled: (next) =>
+          set((s) => ({
+            ui: { ...s.ui, personalAgentsEnabled: { ...next } },
+          })),
+        togglePersonalAgent: (agent, enabled) =>
+          set((s) => ({
+            ui: {
+              ...s.ui,
+              personalAgentsEnabled: {
+                ...s.ui.personalAgentsEnabled,
+                [agent]: enabled,
+              },
+            },
+          })),
+        // === v3.5 marketplace ===
+        setMarketplaceLaunched: (v) =>
+          set((s) => ({ ui: { ...s.ui, marketplaceLaunched: v } })),
+        // === end v3.5 marketplace ===
+        // === v3.5 branding ===
+        setBrandingConfig: (cfg) =>
+          set((s) => ({ ui: { ...s.ui, brandingConfig: { ...cfg } } })),
+        // === end v3.5 branding ===
         pushToast: ((
           kindOrInput: "info" | "success" | "error" | PushToastInput,
           text?: string,
@@ -781,8 +1033,23 @@ export const useStore = create<Store>()(
             // window and respected).
             dismissedSurfaces: s.ui.dismissedSurfaces,
             agiConfidenceThreshold: s.ui.agiConfidenceThreshold,
+            // v2.0-beta.3 — single sensitivity slider. Persisted so
+            // returning users keep their preferred knob position.
+            agiSensitivity: s.ui.agiSensitivity,
             // v1.9.0-beta.2 P2-C — newcomer onboarding latch.
             newcomerOnboardingShown: s.ui.newcomerOnboardingShown,
+            // v3.0 §1 — personal-agent capture flags. Persisted so the
+            // Settings UI renders the user's last opt-in choices on cold
+            // launch without waiting for the first
+            // `personal_agents_get_settings` round-trip.
+            personalAgentsEnabled: s.ui.personalAgentsEnabled,
+            // v2.5 §2 + §3 — auth mode + billing snapshot. Persisted so
+            // the trial-gate effect can compute "is the trial expired"
+            // immediately on cold-launch without waiting for the first
+            // `billing_status` round-trip.
+            authMode: s.ui.authMode,
+            billingStatus: s.ui.billingStatus,
+            trialExpiry: s.ui.trialExpiry,
           },
           skills: { meetingConfig: s.skills.meetingConfig },
         }) as unknown as Store,
@@ -804,7 +1071,22 @@ export const useStore = create<Store>()(
                 mutedAgiChannels?: string[];
                 dismissedSurfaces?: DismissEntry[];
                 agiConfidenceThreshold?: number;
+                agiSensitivity?: number;
                 newcomerOnboardingShown?: boolean;
+                personalAgentsEnabled?: {
+                  cursor: boolean;
+                  claude_code: boolean;
+                  codex: boolean;
+                  windsurf: boolean;
+                };
+                authMode?: "stub" | "real";
+                billingStatus?:
+                  | "trialing"
+                  | "active"
+                  | "past_due"
+                  | "canceled"
+                  | "none";
+                trialExpiry?: number;
               };
               skills?: { meetingConfig?: MeetingConfig };
             }
@@ -839,11 +1121,34 @@ export const useStore = create<Store>()(
             ),
             agiConfidenceThreshold:
               p?.ui?.agiConfidenceThreshold ?? current.ui.agiConfidenceThreshold,
+            // v2.0-beta.3 — sensitivity slider. If the persisted state
+            // pre-dates this field (v1.x install), derive an initial
+            // value from the existing volume + threshold so the user's
+            // prior knob position carries forward without resetting to
+            // 50. New installs default to 50 (quiet + 0.7).
+            agiSensitivity:
+              p?.ui?.agiSensitivity ??
+              deriveSensitivity(
+                p?.ui?.agiVolume ?? current.ui.agiVolume,
+                p?.ui?.agiConfidenceThreshold ??
+                  current.ui.agiConfidenceThreshold,
+              ),
             // v1.9.0-beta.2 P2-C — newcomer onboarding latch. Once flipped
             // it stays flipped across launches so the welcome toast never
             // re-fires for the same install.
             newcomerOnboardingShown:
               p?.ui?.newcomerOnboardingShown ?? current.ui.newcomerOnboardingShown,
+            // v3.0 §1 — personal-agent capture flags. Persisted; the
+            // Settings page also calls `personal_agents_get_settings`
+            // on mount to reconcile with the Rust source of truth.
+            personalAgentsEnabled:
+              p?.ui?.personalAgentsEnabled ?? current.ui.personalAgentsEnabled,
+            // v2.5 §2 + §3 — auth mode + billing snapshot. Persisted so
+            // the trial-gate check on cold launch sees the prior expiry
+            // immediately without waiting on a Tauri round-trip.
+            authMode: p?.ui?.authMode ?? current.ui.authMode,
+            billingStatus: p?.ui?.billingStatus ?? current.ui.billingStatus,
+            trialExpiry: p?.ui?.trialExpiry ?? current.ui.trialExpiry,
           },
           skills: {
             ...current.skills,

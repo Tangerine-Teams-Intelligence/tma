@@ -156,6 +156,71 @@ pub mod telemetry;
 pub mod suppression;
 // === end v1.9 P3-A suppression ===
 
+// === v2.0-beta.2 active agents ===
+// v2.0-beta.2: ACTIVE AGENTS sidebar feed. The React-side polling client
+// (`app/src/components/layout/ActiveAgentsSection.tsx`) calls
+// `get_active_agents` every 10s when the sidebar route is active, every 60s
+// otherwise. v2.0-beta.2 ships stub data — the real per-source capture
+// orchestrator (Cursor / Claude Code / Devin / Replit / Apple Intelligence)
+// lands in v3.0 alongside the personal vault. See V2_0_SPEC.md §3.1 / §3.2.
+pub mod active_agents;
+// === end v2.0-beta.2 active agents ===
+
+// === v2.5 review ===
+// v2.5 §1 — Decision review (PR-style). Co-thinker proposes a decision;
+// teammates vote on `/reviews`; 2/3 quorum auto-promotes (atom status →
+// `locked`). Storage is a `*.review.json` sidecar next to each decision
+// atom under `team/decisions/`. Engine in `crate::agi::review`.
+pub mod review;
+// === end v2.5 review ===
+
+// === v2.5 auth + billing ===
+// v2.5 §2 + §3 — Tauri command surface for real Supabase auth + Stripe
+// Connect billing. Both modules thin-wrap `crate::auth` + `crate::billing`
+// and ship in stub mode by default. Sibling React surfaces (`/billing` route,
+// TrialBanner, paywall gate) call these commands today; the swap to real
+// mode is gated on env vars (`STRIPE_API_KEY`, `SUPABASE_URL`) — no code
+// change required.
+pub mod auth;
+pub mod billing;
+// === end v2.5 auth + billing ===
+
+// === v3.0 personal agents ===
+// v3.0 §1 — Tauri command surface for personal AI agent capture (Cursor /
+// Claude Code / Codex / Windsurf). Wraps the read-side adapters in
+// `crate::personal_agents` and persists the per-source enable flags under
+// `<user_data>/personal_agents.json`. Strict opt-in; default off.
+pub mod personal_agents;
+// === end v3.0 personal agents ===
+
+// === v3.5 marketplace ===
+// v3.5 §1 — marketplace backend Tauri commands. Stub mode by default; the
+// React `/marketplace` route reads `marketplace_get_launch_state` to decide
+// whether to render the "Coming live when CEO triggers launch gate" banner.
+pub mod marketplace;
+// === end v3.5 marketplace ===
+
+// === v3.5 branding ===
+// v3.5 §4 — enterprise white-label Tauri commands. Default config = Tangerine
+// baseline; tenants overlay logo / palette / domain / app name. License
+// validator is a stub that accepts `tangerine-trial-*` / `tangerine-license-*`.
+pub mod branding;
+// === end v3.5 branding ===
+
+// === v3.5 sso ===
+// v3.5 §5.1 — SSO SAML Tauri commands. Stub `validate_saml_response` returns a
+// deterministic mock assertion so React JIT-provisioning UI can demo the flow.
+// Production wires `keycloak-rs` / WorkOS via single-file swap inside the lib.
+pub mod sso;
+// === end v3.5 sso ===
+
+// === v3.5 audit ===
+// v3.5 §5.2 — enterprise audit log Tauri commands. Append-only JSONL per UTC
+// day. Stub mode stamps `region = "us-east"`; real region routing in
+// enterprise tier (per spec §4.2 / §5.3).
+pub mod audit;
+// === end v3.5 audit ===
+
 mod error;
 mod paths;
 mod runner;
@@ -398,6 +463,83 @@ macro_rules! tmi_invoke_handler {
             $crate::commands::suppression::suppression_clear,
             $crate::commands::suppression::suppression_list,
             // === end v1.9 P3-A suppression ===
+            // === v2.0-beta.2 active agents ===
+            $crate::commands::active_agents::get_active_agents,
+            // === end v2.0-beta.2 active agents ===
+            // === v2.5 review ===
+            $crate::commands::review::review_create,
+            $crate::commands::review::review_cast_vote,
+            $crate::commands::review::review_get,
+            $crate::commands::review::review_list_open,
+            $crate::commands::review::review_promote,
+            // === end v2.5 review ===
+            // === v2.5 cloud_sync ===
+            $crate::cloud_sync::cloud_sync_get_config,
+            $crate::cloud_sync::cloud_sync_set_config,
+            $crate::cloud_sync::cloud_sync_init,
+            $crate::cloud_sync::cloud_sync_pull,
+            $crate::cloud_sync::cloud_sync_push,
+            // === end v2.5 cloud_sync ===
+            // === v2.5 auth + billing ===
+            $crate::commands::auth::auth_sign_in_email_password,
+            $crate::commands::auth::auth_sign_up,
+            $crate::commands::auth::auth_sign_in_oauth,
+            $crate::commands::auth::auth_verify_email,
+            $crate::commands::auth::auth_sign_out,
+            $crate::commands::auth::auth_session,
+            $crate::commands::billing::billing_subscribe,
+            $crate::commands::billing::billing_cancel,
+            $crate::commands::billing::billing_status,
+            $crate::commands::billing::billing_trial_start,
+            $crate::commands::billing::billing_webhook,
+            // === end v2.5 auth + billing ===
+            // === v3.0 personal agents ===
+            $crate::commands::personal_agents::personal_agents_scan_all,
+            $crate::commands::personal_agents::personal_agents_capture_cursor,
+            $crate::commands::personal_agents::personal_agents_capture_claude_code,
+            $crate::commands::personal_agents::personal_agents_capture_codex,
+            $crate::commands::personal_agents::personal_agents_capture_windsurf,
+            $crate::commands::personal_agents::personal_agents_get_settings,
+            $crate::commands::personal_agents::personal_agents_set_settings,
+            $crate::commands::personal_agents::personal_agents_set_watcher,
+            // === end v3.0 personal agents ===
+            // === v3.0 external world ===
+            $crate::commands::external::external_rss_subscribe,
+            $crate::commands::external::external_rss_unsubscribe,
+            $crate::commands::external::external_rss_list_feeds,
+            $crate::commands::external::external_rss_fetch_now,
+            $crate::commands::external::external_podcast_subscribe,
+            $crate::commands::external::external_podcast_unsubscribe,
+            $crate::commands::external::external_podcast_list_feeds,
+            $crate::commands::external::external_podcast_fetch_now,
+            $crate::commands::external::external_youtube_capture,
+            $crate::commands::external::external_article_capture,
+            // === end v3.0 external world ===
+            // === v3.5 marketplace ===
+            $crate::commands::marketplace::marketplace_list_templates,
+            $crate::commands::marketplace::marketplace_install_template,
+            $crate::commands::marketplace::marketplace_uninstall_template,
+            $crate::commands::marketplace::marketplace_publish_template,
+            $crate::commands::marketplace::marketplace_get_launch_state,
+            // === end v3.5 marketplace ===
+            // === v3.5 branding ===
+            $crate::commands::branding::branding_get_config,
+            $crate::commands::branding::branding_apply,
+            $crate::commands::branding::branding_reset_to_default,
+            $crate::commands::branding::branding_validate_license,
+            // === end v3.5 branding ===
+            // === v3.5 sso ===
+            $crate::commands::sso::sso_set_config,
+            $crate::commands::sso::sso_get_config,
+            $crate::commands::sso::sso_list_configs,
+            $crate::commands::sso::sso_validate_saml_response,
+            // === end v3.5 sso ===
+            // === v3.5 audit ===
+            $crate::commands::audit::audit_append,
+            $crate::commands::audit::audit_read_window,
+            $crate::commands::audit::audit_read_day,
+            $crate::commands::audit::audit_search,
+            // === end v3.5 audit ===
         ]
     };
 }

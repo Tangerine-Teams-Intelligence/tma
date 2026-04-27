@@ -1,0 +1,32 @@
+{
+  "template_id": "contract-review",
+  "version": 1,
+  "title": "Contract review",
+  "description": "Starter canvas for reviewing a draft contract. Lanes group clauses by risk band; co-thinker auto-flags unusual terms.",
+  "lanes": [
+    {
+      "id": "high_risk",
+      "title": "High risk",
+      "description": "Indemnification, limitation of liability, IP assignment, MAC clauses.",
+      "color": "rose"
+    },
+    {
+      "id": "moderate_risk",
+      "title": "Moderate risk",
+      "description": "Termination, non-compete, confidentiality, governing law.",
+      "color": "amber"
+    },
+    {
+      "id": "boilerplate",
+      "title": "Boilerplate",
+      "description": "Severability, entire agreement, notices, counterparts.",
+      "color": "stone"
+    },
+    {
+      "id": "redlines",
+      "title": "Redlines proposed",
+      "description": "Suggested edits ready to send back to opposing counsel.",
+      "color": "blue"
+    }
+  ]
+}

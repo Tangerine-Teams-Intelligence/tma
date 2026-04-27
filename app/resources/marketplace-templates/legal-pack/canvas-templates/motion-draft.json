@@ -1,0 +1,32 @@
+{
+  "template_id": "motion-draft",
+  "version": 1,
+  "title": "Motion draft",
+  "description": "Starter canvas for drafting a motion. Lanes mirror the standard motion structure (caption, intro, statement of facts, argument, conclusion).",
+  "lanes": [
+    {
+      "id": "caption",
+      "title": "Caption + intro",
+      "description": "Court, parties, case number, motion title, relief requested.",
+      "color": "stone"
+    },
+    {
+      "id": "facts",
+      "title": "Statement of facts",
+      "description": "Material facts with citation to record (declaration, exhibit, deposition).",
+      "color": "blue"
+    },
+    {
+      "id": "argument",
+      "title": "Argument",
+      "description": "Heading per legal point; cite controlling cases first, persuasive after.",
+      "color": "purple"
+    },
+    {
+      "id": "conclusion",
+      "title": "Conclusion",
+      "description": "Restate relief requested; sign block.",
+      "color": "emerald"
+    }
+  ]
+}

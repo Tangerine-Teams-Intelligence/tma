@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Loader2, AlertCircle } from "lucide-react";
+import { Loader2, AlertCircle, Github } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -8,6 +8,18 @@ import { Card, CardContent } from "@/components/ui/card";
 import { signIn, signUp } from "@/lib/auth";
 import { isStubMode } from "@/lib/supabase";
 import { useStore } from "@/lib/store";
+// === v2.5 real auth ===
+// v2.5 §3 — real Supabase auth surface. Existing v1.x stub-mode auth is
+// preserved (default) so dev work proceeds without keys; "Sign in with real
+// account" reveals the real-auth UI (email/password + OAuth) backed by the
+// `auth_*` Tauri commands. The Tauri command surface itself stays in stub
+// mode until `SUPABASE_URL` + `SUPABASE_ANON_KEY` env vars are set.
+import {
+  authSignInEmailPassword,
+  authSignUp,
+  authSignInOauth,
+} from "@/lib/tauri";
+// === end v2.5 real auth ===
 
 type Mode = "signin" | "signup";
 
@@ -19,6 +31,49 @@ export default function AuthRoute() {
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
   const setLocalOnly = useStore((s) => s.ui.setLocalOnly);
+  // === v2.5 real auth ===
+  // Hidden behind a button so existing v1.x users land on the same
+  // 6-char-stub UI by default. Once they click "Sign in with real account"
+  // we reveal the real-auth panel.
+  const [showRealAuth, setShowRealAuth] = useState(false);
+  const setAuthMode = useStore((s) => s.ui.setAuthMode);
+
+  async function submitReal(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setBusy(true);
+    try {
+      const fn = mode === "signin" ? authSignInEmailPassword : authSignUp;
+      const session = await fn(email.trim(), password);
+      setAuthMode(session.mode);
+      // Mirror to lib/auth.ts stub session so existing route-guard hooks
+      // continue to read a non-empty session without re-plumbing.
+      await signIn(email.trim(), password);
+      setLocalOnly(false);
+      navigate("/today", { replace: true });
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function oauth(provider: "github" | "google") {
+    setError(null);
+    setBusy(true);
+    try {
+      const session = await authSignInOauth(provider);
+      setAuthMode(session.mode);
+      await signIn(session.email, "oauth-stub-pwd");
+      setLocalOnly(false);
+      navigate("/today", { replace: true });
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+  // === end v2.5 real auth ===
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -81,7 +136,10 @@ export default function AuthRoute() {
           </Card>
         )}
 
-        <form onSubmit={submit} className="mt-8 space-y-4">
+        <form
+          onSubmit={showRealAuth ? submitReal : submit}
+          className="mt-8 space-y-4"
+        >
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
             <Input
@@ -139,6 +197,62 @@ export default function AuthRoute() {
           <p className="text-center text-[11px] text-[var(--ti-ink-500)]">
             Memory dir lives on this machine. Nothing leaves until you wire a Sink.
           </p>
+
+          {/* === v2.5 real auth === */}
+          <div className="border-t border-[var(--ti-ink-200,#E5E5E0)] pt-4">
+            {!showRealAuth ? (
+              <Button
+                type="button"
+                variant="outline"
+                disabled={busy}
+                className="w-full"
+                onClick={() => {
+                  setShowRealAuth(true);
+                  setError(null);
+                }}
+              >
+                Sign in with real account
+              </Button>
+            ) : (
+              <>
+                <p className="mb-2 text-center text-[11px] text-[var(--ti-ink-500)]">
+                  Real auth (Supabase). Stub-mode acceptable until CEO unblocks
+                  keys.
+                </p>
+                <div className="flex flex-col gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() => void oauth("github")}
+                    className="w-full"
+                  >
+                    <Github size={14} /> Continue with GitHub
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() => void oauth("google")}
+                    className="w-full"
+                  >
+                    Continue with Google
+                  </Button>
+                </div>
+                <button
+                  type="button"
+                  className="mt-2 w-full text-center text-[11px] text-[var(--ti-orange-500)] underline-offset-2 hover:underline"
+                  onClick={() => {
+                    setShowRealAuth(false);
+                    setError(null);
+                  }}
+                >
+                  Back to stub auth
+                </button>
+              </>
+            )}
+          </div>
+          {/* === end v2.5 real auth === */}
         </form>
 
         <div className="mt-6 text-center text-xs text-[var(--ti-ink-500)]">

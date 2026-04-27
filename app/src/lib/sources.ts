@@ -20,6 +20,7 @@ import {
   Disc,
   Mail,
   Mic,
+  Globe,
 } from "lucide-react";
 
 export type SourceId =
@@ -32,7 +33,8 @@ export type SourceId =
   | "loom"
   | "zoom"
   | "email"
-  | "voice-notes";
+  | "voice-notes"
+  | "external";
 
 export type SourceStatus = "active" | "coming" | "disconnected";
 
@@ -171,6 +173,17 @@ export const SOURCES: SourceDef[] = [
     icon: Mic,
     status: "active",
     routePath: "/sources/voice-notes/setup",
+  },
+  {
+    id: "external",
+    title: "External world",
+    produces: "memory/personal/<you>/threads/external/*.md",
+    blurb: "RSS, podcasts, YouTube, and articles — read once, capture forever.",
+    longBlurb:
+      "v3.0 Layer 6: subscribe to RSS feeds and podcasts, paste any YouTube URL, save any article. Every capture lands as a markdown atom under personal/<you>/threads/external/. Personal vault — never synced to the team.",
+    icon: Globe,
+    status: "active",
+    routePath: "/sources/external",
   },
 ];
 

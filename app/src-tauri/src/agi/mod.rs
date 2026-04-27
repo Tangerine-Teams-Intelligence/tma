@@ -98,3 +98,12 @@ pub mod templates;
 // `suppression_check` Tauri command before dispatching.
 pub mod suppression;
 // === end v1.9 P3-A suppression ===
+
+// === v2.5 review ===
+// v2.5 §1 — PR-style decision review. Co-thinker proposes a decision atom;
+// teammates vote; 2/3 quorum auto-promotes (atom status → `locked`). The
+// Tauri surface lives in `crate::commands::review`; storage is a
+// `*.review.json` sidecar next to each decision atom under
+// `team/decisions/`. See `agi::review` module docs for the state machine.
+pub mod review;
+// === end v2.5 review ===

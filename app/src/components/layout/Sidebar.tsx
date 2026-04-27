@@ -15,6 +15,8 @@ import {
   MessageCircle,
   Layers,
   Brain,
+  GitPullRequest,
+  Store,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { signOut } from "@/lib/auth";
@@ -29,6 +31,9 @@ import {
 import { MemoryTree } from "@/components/MemoryTree";
 import { SyncStatusIndicator } from "@/components/SyncStatusIndicator";
 import { AIToolsSection } from "@/components/ai-tools/AIToolsSection";
+// === v2.0-beta.2 ACTIVE AGENTS section ===
+import { ActiveAgentsSection } from "@/components/layout/ActiveAgentsSection";
+// === end v2.0-beta.2 ACTIVE AGENTS section ===
 import { MEMORY_REFRESHED_EVENT } from "@/components/layout/AppShell";
 import { kbdShortcut } from "@/lib/platform";
 
@@ -162,6 +167,12 @@ export function Sidebar() {
           {/* v1.8 Phase 1 — Phase 3 / Phase 4 placeholder surfaces. */}
           <ViewLink to="/canvas" icon={Layers} label="Canvas" />
           <ViewLink to="/co-thinker" icon={Brain} label="Co-thinker" />
+          {/* === v2.5 review sidebar === */}
+          <ViewLink to="/reviews" icon={GitPullRequest} label="Reviews" />
+          {/* === end v2.5 review sidebar === */}
+          {/* === v3.5 marketplace sidebar === */}
+          <ViewLink to="/marketplace" icon={Store} label="Marketplace" />
+          {/* === end v3.5 marketplace sidebar === */}
         </Section>
 
         {/* MEMORY section */}
@@ -209,6 +220,19 @@ export function Sidebar() {
         >
           <AIToolsSection />
         </Section>
+
+        {/* === v2.0-beta.2 ACTIVE AGENTS section ===
+            Cross-team visibility into each member's currently-running
+            personal AI agent sessions. The section component owns its own
+            polling loop (10s focused / 60s blurred). v2.0-beta.2 ships
+            against a Rust stub; real per-source capture lands in v3.0. */}
+        <Section
+          label="Active agents"
+          subtitle="Cross-team agent visibility"
+        >
+          <ActiveAgentsSection />
+        </Section>
+        {/* === end v2.0-beta.2 ACTIVE AGENTS section === */}
 
         {/* ADVANCED section (formerly Sinks) — mechanism, demoted from the
             user's mental model. Each row links to its sink-detail page. */}

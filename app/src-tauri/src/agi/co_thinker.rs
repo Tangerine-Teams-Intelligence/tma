@@ -878,6 +878,16 @@ fn first_reasoning_line(brain: &str) -> Option<String> {
 
 /// Scan the LLM response for `PROPOSAL:` sentinel lines and write each to
 /// `agi/proposals/{type}-{slug}-{date}.md`. Returns the count written.
+///
+/// === v2.5 review wire ===
+/// v2.5 §1 — when `kind == "decision"`, a `PROPOSAL:` no longer auto-commits
+/// to `team/decisions/`. Instead we land a *draft* atom at
+/// `team/decisions/{slug}.md` (status: draft) and immediately initialize a
+/// review thread via `crate::agi::review::create_review_in`. Teammates vote
+/// on `/reviews`; 2/3 quorum auto-promotes (status flips to `locked`).
+/// Non-decision kinds (e.g. `notification`) keep the legacy path under
+/// `agi/proposals/` since they don't need quorum.
+/// === end v2.5 review wire ===
 fn write_proposals(
     memory_root: &Path,
     response: &str,
@@ -891,6 +901,46 @@ fn write_proposals(
             None => continue,
         };
         let (kind, slug, summary) = parse_proposal_line(body);
+
+        // === v2.5 review wire ===
+        if kind == "decision" {
+            let filename = format!("{}.md", slug);
+            let path = memory_root.join("team").join("decisions").join(&filename);
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent)
+                    .map_err(|e| AppError::internal("mkdir_decisions", e.to_string()))?;
+            }
+            // Skip if a real (non-draft) atom already lives at this slug —
+            // we never overwrite a locked decision.
+            let already_locked = path.exists() && existing_decision_locked(&path)?;
+            if !already_locked {
+                let content = format!(
+                    "---\n\
+title: {slug}\n\
+proposed_by: co-thinker\n\
+proposed_at: {ts}\n\
+status: draft\n\
+---\n\
+\n\
+## Proposal\n\
+\n\
+{summary}\n",
+                    slug = slug,
+                    ts = now.to_rfc3339(),
+                    summary = summary,
+                );
+                atomic_write(&path, &content)?;
+            }
+            // Idempotent — does nothing if the sidecar already exists.
+            // Best-effort: a review-init failure must not crash the heartbeat.
+            // Default team size = 3 (typical ICP per BUSINESS_MODEL §3.3).
+            let _ = crate::agi::review::create_review_in(memory_root, &path, 3);
+            count += 1;
+            continue;
+        }
+        // === end v2.5 review wire ===
+
+        // Legacy path for non-decision kinds (notification, etc.).
         let date = now.format("%Y-%m-%d");
         let filename = format!("{}-{}-{}.md", kind, slug, date);
         let path = memory_root.join("agi").join("proposals").join(&filename);
@@ -919,6 +969,34 @@ status: pending\n\
     }
     Ok(count)
 }
+
+/// === v2.5 review wire ===
+/// Returns true when the existing decision atom at `path` has been promoted
+/// past `draft` (status: locked / final / rejected). We use this to avoid
+/// overwriting a quorum-promoted atom with a freshly re-fired co-thinker
+/// proposal.
+fn existing_decision_locked(path: &Path) -> Result<bool, AppError> {
+    let raw = std::fs::read_to_string(path)
+        .map_err(|e| AppError::internal("read_decision_atom", e.to_string()))?;
+    let mut in_fm = false;
+    for (i, line) in raw.lines().enumerate() {
+        if i == 0 && line.trim() == "---" {
+            in_fm = true;
+            continue;
+        }
+        if in_fm {
+            if line.trim() == "---" {
+                break;
+            }
+            if let Some(rest) = line.trim_start().strip_prefix("status:") {
+                let s = rest.trim();
+                return Ok(!s.eq_ignore_ascii_case("draft"));
+            }
+        }
+    }
+    Ok(false)
+}
+/// === end v2.5 review wire ===
 
 /// Parse one `PROPOSAL:` line. Format:
 ///   `PROPOSAL: type=decision slug=pricing-lock <free-text summary>`
@@ -1482,16 +1560,34 @@ Last heartbeat: 2026-04-26
 
     #[test]
     fn test_proposal_written_to_disk() {
+        // === v2.5 review wire ===
+        // v2.5 §1: decision proposals now land in `team/decisions/{slug}.md`
+        // (not `agi/proposals/decision-{slug}-{date}.md`) and a review
+        // sidecar is initialized alongside.
         let root = tmp_root();
         let resp = "PROPOSAL: type=decision slug=pricing-lock confirm pricing\n";
         let n = write_proposals(&root, resp, Utc::now()).unwrap();
         assert_eq!(n, 1);
-        let dir = root.join("agi/proposals");
+        let dir = root.join("team/decisions");
         let files: Vec<_> = std::fs::read_dir(&dir)
             .unwrap()
             .map(|e| e.unwrap().file_name().to_string_lossy().to_string())
             .collect();
-        assert!(files.iter().any(|f| f.starts_with("decision-pricing-lock-")));
+        assert!(files.iter().any(|f| f == "pricing-lock.md"));
+        assert!(
+            files.iter().any(|f| f == "pricing-lock.md.review.json"),
+            "review sidecar must be initialized alongside the draft atom"
+        );
+        // Non-decision kinds keep the legacy path.
+        let resp2 = "PROPOSAL: type=notification slug=heads-up something\n";
+        write_proposals(&root, resp2, Utc::now()).unwrap();
+        let legacy_dir = root.join("agi/proposals");
+        let legacy_files: Vec<_> = std::fs::read_dir(&legacy_dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().to_string())
+            .collect();
+        assert!(legacy_files.iter().any(|f| f.starts_with("notification-heads-up-")));
+        // === end v2.5 review wire ===
         let _ = std::fs::remove_dir_all(&root);
     }
 

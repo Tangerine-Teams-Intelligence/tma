@@ -12,10 +12,23 @@ import { AmbientInputObserver } from "@/components/ambient/AmbientInputObserver"
 // changes — banners are explicitly cross-route.
 import { BannerHost } from "@/components/suggestions/BannerHost";
 import { ModalHost } from "@/components/suggestions/ModalHost";
+// === v2.0-beta.3 co-thinker home strip ===
+// Persistent 1-line strip mounted above the route content on every
+// route. Makes the AGI's presence visible all the time so the user
+// doesn't have to navigate to /co-thinker to know whether the brain is
+// alive. Hides itself when agiParticipation is off (master kill switch).
+import { HomeStrip } from "@/components/co-thinker/HomeStrip";
+// === end v2.0-beta.3 co-thinker home strip ===
 import { useStore } from "@/lib/store";
 import { markUserOpened } from "@/lib/views";
 import { userFacingFoldersEmpty } from "@/lib/memory";
-import { initMemoryWithSamples, resolveMemoryRoot } from "@/lib/tauri";
+import {
+  initMemoryWithSamples,
+  resolveMemoryRoot,
+  // === v2.5 trial gate ===
+  billingStatus as fetchBillingStatus,
+  // === end v2.5 trial gate ===
+} from "@/lib/tauri";
 // v1.9.0-beta.1 P1-A — log every route transition so the suggestion engine
 // (P1-B + v1.9.0-beta.2) can detect navigation patterns ("you bounced
 // /memory ↔ /canvas 5×", "you haven't seen /today in 3 days"). Fire-and-
@@ -86,6 +99,16 @@ export function AppShell() {
   const samplesSeeded = useStore((s) => s.ui.samplesSeeded);
   const setSamplesSeeded = useStore((s) => s.ui.setSamplesSeeded);
   const memoryConfigMode = useStore((s) => s.ui.memoryConfig.mode);
+  // === v2.5 trial gate ===
+  // Track the team-id used for billing scoping. When the user is solo,
+  // we anchor on `solo-${currentUser}`; in team mode we use the repoUrl
+  // (or repoLocalPath fallback) so multiple machines see the same record.
+  const repoUrl = useStore((s) => s.ui.memoryConfig.repoUrl);
+  const repoLocalPath = useStore((s) => s.ui.memoryConfig.repoLocalPath);
+  const setBillingSnapshot = useStore((s) => s.ui.setBillingSnapshot);
+  const billingStatusVal = useStore((s) => s.ui.billingStatus);
+  const trialExpiry = useStore((s) => s.ui.trialExpiry);
+  // === end v2.5 trial gate ===
 
   // First-launch + self-healing sample seed.
   //
@@ -149,6 +172,36 @@ export function AppShell() {
       cancel = true;
     };
   }, [memoryConfigMode, memoryRoot, samplesSeeded, setMemoryRoot, setSamplesSeeded]);
+
+  // === v2.5 trial gate ===
+  // Poll `billing_status` on mount + every 1h. Mirrors V2_5_SPEC §2.3:
+  // trial-expired with no card → cloud features gated, OSS path keeps
+  // working. We DO NOT auto-redirect to /billing here — the route is
+  // self-service, and a forced redirect mid-session feels hostile. The
+  // `localOnly` strip below renders a paywall hint when status is
+  // past_due so the user has a clear path forward without disruption.
+  useEffect(() => {
+    let cancel = false;
+    const teamId = repoUrl ?? repoLocalPath ?? `solo-${currentUser}`;
+    const tick = async () => {
+      try {
+        const s = await fetchBillingStatus(teamId);
+        if (cancel) return;
+        setBillingSnapshot({ status: s.status, trialExpiry: s.trial_end });
+      } catch {
+        // Stub mode + no Tauri host → safeInvoke mock returns trialing;
+        // any other failure is silent (cloud-features call sites do their
+        // own error display).
+      }
+    };
+    void tick();
+    const handle = setInterval(() => void tick(), 60 * 60 * 1000); // 1h
+    return () => {
+      cancel = true;
+      clearInterval(handle);
+    };
+  }, [repoUrl, repoLocalPath, currentUser, setBillingSnapshot]);
+  // === end v2.5 trial gate ===
 
   // v1.9.0-beta.1 — auto-dismiss timers for toasts that declared a
   // `durationMs`. Each timer is keyed by the toast id; we clean them up
@@ -395,11 +448,41 @@ export function AppShell() {
               Always visible in dev mode for contributor awareness. */}
           <LicenseTransitionBanner />
           <WhatsNewBanner />
+          {/* === v2.0-beta.3 co-thinker home strip ===
+              Sits between the system banners and the suggestion banner so
+              the AGI presence indicator is the very first content-band
+              the user sees on every route. The strip self-hides when the
+              master AGI participation switch is off; mounting it
+              unconditionally keeps the layout stable across that flip
+              (its own `null` return collapses height to 0). */}
+          <HomeStrip />
+          {/* === end v2.0-beta.3 co-thinker home strip === */}
           {localOnly && (
             <div className="ti-no-select flex h-7 items-center justify-center border-b border-[var(--ti-orange-500)]/30 bg-[var(--ti-orange-50)] px-4 text-[11px] font-medium text-[var(--ti-orange-700)] dark:border-[var(--ti-orange-500)]/30 dark:bg-stone-900 dark:text-[var(--ti-orange-500)]">
               Local memory only — sign in to sync your memory dir across machines.
             </div>
           )}
+          {/* === v2.5 trial gate === */}
+          {/* Paywall hint — surfaces when trial expired and no paid sub. */}
+          {billingStatusVal === "past_due" && (
+            <div className="ti-no-select flex h-7 items-center justify-center gap-2 border-b border-[#B83232]/30 bg-[#B83232]/5 px-4 text-[11px] font-medium text-[#B83232]">
+              Trial expired · Upgrade to keep cloud sync running ·{" "}
+              <a href="/billing" className="underline-offset-2 hover:underline">
+                Open billing
+              </a>
+            </div>
+          )}
+          {billingStatusVal === "trialing" &&
+            trialExpiry > 0 &&
+            trialExpiry - Math.floor(Date.now() / 1000) < 7 * 24 * 60 * 60 && (
+              <div className="ti-no-select flex h-7 items-center justify-center gap-2 border-b border-[var(--ti-orange-500)]/30 bg-[var(--ti-orange-50)] px-4 text-[11px] font-medium text-[var(--ti-orange-700)]">
+                Trial ending soon · No card needed yet ·{" "}
+                <a href="/billing" className="underline-offset-2 hover:underline">
+                  Upgrade for $5/team/mo
+                </a>
+              </div>
+            )}
+          {/* === end v2.5 trial gate === */}
           {/* v1.9.0-beta.1 — banner host sits below the system strips so the
               suggestion-tier banners feel like part of the route content. */}
           <BannerHost />

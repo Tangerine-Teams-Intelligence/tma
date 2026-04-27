@@ -1,0 +1,40 @@
+{
+  "id": "tangerine-legal-pack",
+  "name": "Tangerine for Legal Teams",
+  "version": "0.1.0",
+  "author": "tangerine",
+  "description": "Self-shipped reference vertical for solo / small-firm lawyers. Contract clause taxonomy, case-law citation patterns, deposition prep canvas, deadline-reminder rules. First 100 installs free in exchange for written feedback; $199 one-time thereafter; renewals + updates free, perpetual.",
+  "vertical": "legal",
+  "language": "en",
+  "content_url": "bundled://legal-pack",
+  "dependencies": [],
+  "take_rate": 1500,
+  "price_cents": 19900,
+  "install_count": 0,
+  "category": "vertical",
+  "tags": [
+    "legal",
+    "contracts",
+    "case-prep",
+    "deposition",
+    "deadline-tracking"
+  ],
+  "screenshots": [],
+  "files": {
+    "co-thinker-prompts": "co-thinker-prompts/",
+    "sources-config": "sources-config.yaml",
+    "canvas-templates": "canvas-templates/",
+    "suggestion-templates": "suggestion-templates/"
+  },
+  "compatibility": {
+    "tangerine_version": ">=3.5.0"
+  },
+  "license": "LicenseRef-Tangerine-Marketplace",
+  "metadata": {
+    "spec_version": "v3.5",
+    "spec_section": "§3 First Vertical Template",
+    "self_shipped": true,
+    "platform_curated": true,
+    "manual_review_required": false
+  }
+}

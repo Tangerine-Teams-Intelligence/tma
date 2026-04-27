@@ -1735,3 +1735,1067 @@ export async function suppressionRecompute(): Promise<number> {
   return safeInvoke<number>("suppression_recompute", undefined, () => 0);
 }
 // === end v1.9 P3-A suppression ===
+
+// === v2.0-beta.2 active agents ===
+// v2.0-beta.2 — ACTIVE AGENTS sidebar feed. Mirrors the Rust
+// `crate::commands::active_agents::AgentActivity` struct exactly. v3.0 swaps
+// the underlying handler from a stub to a real per-source capture readout;
+// the wire shape stays the same so the React side doesn't need to change.
+
+/** Status verdict for one personal AI agent session. */
+export type AgentStatus = "running" | "idle" | "error";
+
+/** One row in the ACTIVE AGENTS sidebar feed. */
+export interface AgentActivity {
+  /** Team-member alias the agent belongs to. */
+  user: string;
+  /** Agent kind ("Cursor" | "Claude Code" | "Devin" | "Replit" | "Apple Intelligence"). */
+  agent: string;
+  /** "running" | "idle" | "error" */
+  status: AgentStatus;
+  /** Pre-formatted "last active" string ("45min", "2h", ...). */
+  last_active: string;
+  /** Optional one-line task description. `null` when the agent is idle. */
+  task: string | null;
+}
+
+/**
+ * Read the cross-team list of currently-active personal AI agents.
+ *
+ * v2.0-beta.2 returns a 3-row stub. Outside Tauri (vitest, browser dev) we
+ * mirror that stub so the sidebar still renders during development.
+ */
+export async function getActiveAgents(): Promise<AgentActivity[]> {
+  return safeInvoke<AgentActivity[]>("get_active_agents", undefined, () => [
+    {
+      user: "daizhe",
+      agent: "Cursor",
+      status: "running",
+      last_active: "45min",
+      task: "/api/auth refactor",
+    },
+    {
+      user: "daizhe",
+      agent: "Devin",
+      status: "running",
+      last_active: "30min",
+      task: "billing flow",
+    },
+    {
+      user: "hongyu",
+      agent: "Claude Code",
+      status: "idle",
+      last_active: "2h",
+      task: null,
+    },
+  ]);
+}
+// === end v2.0-beta.2 active agents ===
+
+// === v2.5 auth + billing ===
+// v2.5 §2 + §3 — typed wrappers for Supabase auth + Stripe Connect billing.
+// Backend lives at `crate::commands::auth` + `crate::commands::billing`. Both
+// modules ship in stub mode by default; mocks below mirror the Rust stubs so
+// vitest + browser dev see the same wire shape.
+
+/** Auth mode reported by the backend. */
+export type AuthMode = "stub" | "real";
+
+/** Subscription status string. Mirrors Stripe's `Subscription.status`. */
+export type BillingStatus = "trialing" | "active" | "past_due" | "canceled" | "none";
+
+/** Billing mode string. */
+export type BillingMode = "stub" | "test" | "live";
+
+export interface AuthSession {
+  user_id: string;
+  email: string;
+  email_confirmed: boolean;
+  access_token: string;
+  refresh_token: string;
+  expires_at: number;
+  mode: AuthMode;
+}
+
+export interface BillingStatusInfo {
+  team_id: string;
+  status: BillingStatus;
+  trial_start: number;
+  trial_end: number;
+  stripe_customer_id: string | null;
+  stripe_subscription_id: string | null;
+  email: string | null;
+  mode: BillingMode;
+}
+
+export interface WebhookOutcome {
+  event_type: string;
+  team_id: string | null;
+  new_status: BillingStatus | null;
+  message: string;
+}
+
+const THIRTY_DAYS_SECS = 30 * 24 * 60 * 60;
+
+function fakeAuthSession(email: string): AuthSession {
+  return {
+    user_id: `stub-user-${email}`,
+    email,
+    email_confirmed: true,
+    access_token: "stub_access_token",
+    refresh_token: "stub_refresh_token",
+    expires_at: 0,
+    mode: "stub",
+  };
+}
+
+export async function authSignInEmailPassword(
+  email: string,
+  password: string,
+): Promise<AuthSession> {
+  return safeInvoke<AuthSession>(
+    "auth_sign_in_email_password",
+    { email, password },
+    () => fakeAuthSession(email),
+  );
+}
+
+export async function authSignUp(
+  email: string,
+  password: string,
+): Promise<AuthSession> {
+  return safeInvoke<AuthSession>(
+    "auth_sign_up",
+    { email, password },
+    () => fakeAuthSession(email),
+  );
+}
+
+export async function authSignInOauth(
+  provider: "github" | "google",
+): Promise<AuthSession> {
+  return safeInvoke<AuthSession>(
+    "auth_sign_in_oauth",
+    { provider },
+    () => fakeAuthSession(`${provider}-stub@tangerine.local`),
+  );
+}
+
+export async function authVerifyEmail(token: string): Promise<AuthSession> {
+  return safeInvoke<AuthSession>(
+    "auth_verify_email",
+    { token },
+    () => fakeAuthSession("verify-stub@tangerine.local"),
+  );
+}
+
+export async function authSignOut(): Promise<void> {
+  return safeInvoke<void>("auth_sign_out", undefined, () => undefined);
+}
+
+export async function authSession(): Promise<AuthSession | null> {
+  return safeInvoke<AuthSession | null>("auth_session", undefined, () => null);
+}
+
+function fakeBillingStatus(teamId: string, status: BillingStatus = "trialing"): BillingStatusInfo {
+  const now = Math.floor(Date.now() / 1000);
+  return {
+    team_id: teamId,
+    status,
+    trial_start: status === "none" ? 0 : now,
+    trial_end: status === "none" ? 0 : now + THIRTY_DAYS_SECS,
+    stripe_customer_id: status === "active" || status === "canceled" ? `cus_stub_${teamId}` : null,
+    stripe_subscription_id: status === "active" || status === "canceled" ? `sub_stub_${teamId}` : null,
+    email: null,
+    mode: "stub",
+  };
+}
+
+export async function billingTrialStart(args: {
+  teamId: string;
+  email: string;
+  emailVerified?: boolean;
+  ipHash?: string;
+}): Promise<BillingStatusInfo> {
+  return safeInvoke<BillingStatusInfo>(
+    "billing_trial_start",
+    {
+      teamId: args.teamId,
+      email: args.email,
+      emailVerified: args.emailVerified ?? true,
+      ipHash: args.ipHash ?? "",
+    },
+    () => fakeBillingStatus(args.teamId, "trialing"),
+  );
+}
+
+export async function billingSubscribe(
+  teamId: string,
+  paymentMethodId: string,
+): Promise<BillingStatusInfo> {
+  return safeInvoke<BillingStatusInfo>(
+    "billing_subscribe",
+    { teamId, paymentMethodId },
+    () => fakeBillingStatus(teamId, "active"),
+  );
+}
+
+export async function billingCancel(teamId: string): Promise<BillingStatusInfo> {
+  return safeInvoke<BillingStatusInfo>(
+    "billing_cancel",
+    { teamId },
+    () => fakeBillingStatus(teamId, "canceled"),
+  );
+}
+
+export async function billingStatus(teamId: string): Promise<BillingStatusInfo> {
+  return safeInvoke<BillingStatusInfo>(
+    "billing_status",
+    { teamId },
+    () => fakeBillingStatus(teamId, "trialing"),
+  );
+}
+
+export async function billingWebhook(
+  payload: string,
+  signature: string,
+): Promise<WebhookOutcome> {
+  return safeInvoke<WebhookOutcome>(
+    "billing_webhook",
+    { payload, signature },
+    () => ({
+      event_type: "stub.webhook",
+      team_id: null,
+      new_status: null,
+      message: "stub mode (browser dev) — no state mutation",
+    }),
+  );
+}
+// === end v2.5 auth + billing ===
+
+// ============================================================
+// v3.0 §1 — Personal AI agent capture (Cursor / Claude Code / Codex / Windsurf)
+// ============================================================
+//
+// Wraps the Rust `crate::commands::personal_agents` surface. The
+// adapters are STRICT OPT-IN: each agent's flag in
+// `personal_agents.json` defaults to `false` and the daemon hook only
+// runs an agent's capture sweep when its flag is on. The Settings UI
+// reads `personal_agents_get_settings` on mount and writes back via
+// `personal_agents_set_watcher` per row.
+
+/** Mirror of `crate::personal_agents::PersonalAgentSummary`. One per
+ *  source; populated by `personal_agents_scan_all`. */
+export interface PersonalAgentSummary {
+  /** "cursor" | "claude-code" | "codex" | "windsurf" */
+  source: string;
+  /** True when the source's home dir exists on this machine. */
+  detected: boolean;
+  /** Absolute path of the source's home dir (rendered as "looking for
+   *  X at <path>" when `detected === false`). */
+  home_path: string;
+  /** Number of conversation source files found. 0 when not detected. */
+  conversation_count: number;
+}
+
+/** Mirror of `crate::personal_agents::PersonalAgentCaptureResult`. */
+export interface PersonalAgentCaptureResult {
+  source: string;
+  written: number;
+  skipped: number;
+  errors: string[];
+}
+
+/** Mirror of `crate::commands::personal_agents::PersonalAgentSettings`. */
+export interface PersonalAgentSettings {
+  cursor: boolean;
+  claude_code: boolean;
+  codex: boolean;
+  windsurf: boolean;
+  last_sync_at: string | null;
+}
+
+/** Read-only sweep — never writes anything. Returns one row per agent
+ *  with detection status + conversation count. Mock returns "all not
+ *  found" so browser dev / vitest renders the empty state. */
+export async function personalAgentsScanAll(): Promise<PersonalAgentSummary[]> {
+  return safeInvoke<PersonalAgentSummary[]>(
+    "personal_agents_scan_all",
+    undefined,
+    () => [
+      { source: "cursor", detected: false, home_path: "(mock)", conversation_count: 0 },
+      { source: "claude-code", detected: false, home_path: "(mock)", conversation_count: 0 },
+      { source: "codex", detected: false, home_path: "(mock)", conversation_count: 0 },
+      { source: "windsurf", detected: false, home_path: "(mock)", conversation_count: 0 },
+    ],
+  );
+}
+
+/** Manual capture trigger for one source. Backs the per-row "Sync now"
+ *  buttons in Settings. Errors flow through the `errors[]` field on
+ *  the result rather than throwing — partial captures are still useful. */
+export async function personalAgentsCaptureCursor(
+  current_user?: string,
+): Promise<PersonalAgentCaptureResult> {
+  return safeInvoke<PersonalAgentCaptureResult>(
+    "personal_agents_capture_cursor",
+    { args: { current_user: current_user ?? null } },
+    () => ({ source: "cursor", written: 0, skipped: 0, errors: ["no Tauri bridge"] }),
+  );
+}
+
+export async function personalAgentsCaptureClaudeCode(
+  current_user?: string,
+): Promise<PersonalAgentCaptureResult> {
+  return safeInvoke<PersonalAgentCaptureResult>(
+    "personal_agents_capture_claude_code",
+    { args: { current_user: current_user ?? null } },
+    () => ({ source: "claude-code", written: 0, skipped: 0, errors: ["no Tauri bridge"] }),
+  );
+}
+
+export async function personalAgentsCaptureCodex(
+  current_user?: string,
+): Promise<PersonalAgentCaptureResult> {
+  return safeInvoke<PersonalAgentCaptureResult>(
+    "personal_agents_capture_codex",
+    { args: { current_user: current_user ?? null } },
+    () => ({ source: "codex", written: 0, skipped: 0, errors: ["no Tauri bridge"] }),
+  );
+}
+
+export async function personalAgentsCaptureWindsurf(
+  current_user?: string,
+): Promise<PersonalAgentCaptureResult> {
+  return safeInvoke<PersonalAgentCaptureResult>(
+    "personal_agents_capture_windsurf",
+    { args: { current_user: current_user ?? null } },
+    () => ({ source: "windsurf", written: 0, skipped: 0, errors: ["no Tauri bridge"] }),
+  );
+}
+
+export async function personalAgentsGetSettings(): Promise<PersonalAgentSettings> {
+  return safeInvoke<PersonalAgentSettings>(
+    "personal_agents_get_settings",
+    undefined,
+    () => ({
+      cursor: false,
+      claude_code: false,
+      codex: false,
+      windsurf: false,
+      last_sync_at: null,
+    }),
+  );
+}
+
+export async function personalAgentsSetSettings(
+  settings: PersonalAgentSettings,
+): Promise<void> {
+  return safeInvoke<void>(
+    "personal_agents_set_settings",
+    { args: { settings } },
+    () => {
+      // eslint-disable-next-line no-console
+      console.info("[mock] personal_agents_set_settings", settings);
+    },
+  );
+}
+
+/** Flip a single agent toggle. Returns the updated settings struct so
+ *  the caller can sync the zustand mirror to disk-truth in one round. */
+export async function personalAgentsSetWatcher(
+  agent_id: "cursor" | "claude_code" | "codex" | "windsurf",
+  enabled: boolean,
+): Promise<PersonalAgentSettings> {
+  return safeInvoke<PersonalAgentSettings>(
+    "personal_agents_set_watcher",
+    { args: { agent_id, enabled } },
+    () => ({
+      cursor: agent_id === "cursor" ? enabled : false,
+      claude_code: agent_id === "claude_code" ? enabled : false,
+      codex: agent_id === "codex" ? enabled : false,
+      windsurf: agent_id === "windsurf" ? enabled : false,
+      last_sync_at: null,
+    }),
+  );
+}
+// === end v3.0 personal agents ===
+
+// === v2.5 review ===
+// v2.5 §1 — PR-style decision review. Shapes mirror the Rust
+// `crate::agi::review` module exactly.
+
+export type VoteValue = "approve" | "reject" | "abstain";
+export type ReviewStatus = "open" | "approved" | "rejected" | "stale";
+
+export interface Vote {
+  user: string;
+  ts: string;
+  value: VoteValue;
+  comment: string | null;
+}
+
+export interface ReviewState {
+  atom_path: string;
+  votes: Vote[];
+  quorum_threshold: number;
+  auto_promote_when_met: boolean;
+  status: ReviewStatus;
+  created_at: string;
+  updated_at: string;
+  promoted_at: string | null;
+  team_member_count_at_create: number;
+}
+
+export async function reviewCreate(
+  atomPath: string,
+  teamMemberCount?: number,
+): Promise<ReviewState> {
+  return safeInvoke<ReviewState>(
+    "review_create",
+    { atomPath, teamMemberCount },
+    () => ({
+      atom_path: atomPath,
+      votes: [],
+      quorum_threshold: 2 / 3,
+      auto_promote_when_met: true,
+      status: "open",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      promoted_at: null,
+      team_member_count_at_create: teamMemberCount ?? 3,
+    }),
+  );
+}
+
+export async function reviewCastVote(
+  atomPath: string,
+  user: string,
+  value: VoteValue,
+  comment?: string,
+): Promise<ReviewState> {
+  return safeInvoke<ReviewState>(
+    "review_cast_vote",
+    { atomPath, user, value, comment: comment ?? null },
+    () => ({
+      atom_path: atomPath,
+      votes: [
+        {
+          user,
+          ts: new Date().toISOString(),
+          value,
+          comment: comment ?? null,
+        },
+      ],
+      quorum_threshold: 2 / 3,
+      auto_promote_when_met: true,
+      status: "open",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      promoted_at: null,
+      team_member_count_at_create: 3,
+    }),
+  );
+}
+
+export async function reviewGet(atomPath: string): Promise<ReviewState | null> {
+  return safeInvoke<ReviewState | null>(
+    "review_get",
+    { atomPath },
+    () => null,
+  );
+}
+
+export async function reviewListOpen(): Promise<ReviewState[]> {
+  return safeInvoke<ReviewState[]>("review_list_open", undefined, () => []);
+}
+
+export async function reviewPromote(atomPath: string): Promise<ReviewState> {
+  return safeInvoke<ReviewState>(
+    "review_promote",
+    { atomPath },
+    () => ({
+      atom_path: atomPath,
+      votes: [],
+      quorum_threshold: 2 / 3,
+      auto_promote_when_met: true,
+      status: "approved",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      promoted_at: new Date().toISOString(),
+      team_member_count_at_create: 3,
+    }),
+  );
+}
+// === end v2.5 review ===
+
+// === v2.5 cloud_sync ===
+// v2.5 §5 — cloud sync stub. Real network transport lands in v2.5 production;
+// these wrappers persist the per-team config and call the Rust stub which
+// only logs (no network).
+
+export interface CloudSyncConfig {
+  enabled: boolean;
+  repo_url: string;
+  branch: string;
+  sync_interval_min: number;
+}
+
+export interface CloudSyncOutcome {
+  ok: boolean;
+  message: string;
+}
+
+const cloudSyncDefaults = (): CloudSyncConfig => ({
+  enabled: false,
+  repo_url: "",
+  branch: "main",
+  sync_interval_min: 5,
+});
+
+export async function cloudSyncGetConfig(): Promise<CloudSyncConfig> {
+  return safeInvoke<CloudSyncConfig>(
+    "cloud_sync_get_config",
+    undefined,
+    cloudSyncDefaults,
+  );
+}
+
+export async function cloudSyncSetConfig(config: CloudSyncConfig): Promise<void> {
+  return safeInvoke<void>("cloud_sync_set_config", { config }, () => {
+    console.info("[mock] cloud_sync_set_config", config);
+  });
+}
+
+export async function cloudSyncInit(): Promise<CloudSyncOutcome> {
+  return safeInvoke<CloudSyncOutcome>("cloud_sync_init", undefined, () => ({
+    ok: true,
+    message: "stub: would init cloud repo (mock — not in Tauri)",
+  }));
+}
+
+export async function cloudSyncPull(): Promise<CloudSyncOutcome> {
+  return safeInvoke<CloudSyncOutcome>("cloud_sync_pull", undefined, () => ({
+    ok: true,
+    message: "stub: pull skipped (mock)",
+  }));
+}
+
+export async function cloudSyncPush(): Promise<CloudSyncOutcome> {
+  return safeInvoke<CloudSyncOutcome>("cloud_sync_push", undefined, () => ({
+    ok: true,
+    message: "stub: push skipped (mock)",
+  }));
+}
+// === end v2.5 cloud_sync ===
+
+// === v3.0 external world ===
+// v3.0 §2 — Layer 6 external world capture. Backend lives at
+// `crate::commands::external::external_*`. Each kind (RSS / podcast /
+// YouTube / article) has its own subscribe + fetch + capture surface;
+// the wire shape is shared via `ExternalFetchResult`.
+
+export interface ExternalRssFeed {
+  url: string;
+  title?: string | null;
+  slug?: string | null;
+}
+
+export interface ExternalPodcastFeed {
+  url: string;
+  title?: string | null;
+  slug?: string | null;
+  transcribe?: boolean;
+}
+
+export interface ExternalFetchResult {
+  atoms_written: number;
+  items_seen: number;
+  kind: string;
+  errors: string[];
+}
+
+export interface ExternalRssArgs {
+  url: string;
+  title?: string | null;
+  current_user?: string | null;
+}
+
+export interface ExternalPodcastArgs {
+  url: string;
+  title?: string | null;
+  transcribe?: boolean;
+}
+
+export interface ExternalRssUnsubArgs {
+  url: string;
+}
+
+export interface ExternalFetchNowArgs {
+  current_user?: string | null;
+  raw_xml?: string | null;
+  url?: string | null;
+}
+
+export interface ExternalYoutubeArgs {
+  request: { url: string; language?: string | null };
+  current_user?: string | null;
+  raw_timedtext?: string | null;
+  title?: string | null;
+  channel?: string | null;
+  duration_sec?: number | null;
+}
+
+export interface ExternalArticleArgs {
+  request: { url: string; slug?: string | null };
+  current_user?: string | null;
+  raw_html?: string | null;
+}
+
+const emptyResult = (kind: string): ExternalFetchResult => ({
+  atoms_written: 0,
+  items_seen: 0,
+  kind,
+  errors: [],
+});
+
+export async function externalRssSubscribe(
+  args: ExternalRssArgs,
+): Promise<ExternalRssFeed[]> {
+  return safeInvoke<ExternalRssFeed[]>(
+    "external_rss_subscribe",
+    { args },
+    () => [],
+  );
+}
+
+export async function externalRssUnsubscribe(
+  args: ExternalRssUnsubArgs,
+): Promise<ExternalRssFeed[]> {
+  return safeInvoke<ExternalRssFeed[]>(
+    "external_rss_unsubscribe",
+    { args },
+    () => [],
+  );
+}
+
+export async function externalRssListFeeds(): Promise<ExternalRssFeed[]> {
+  return safeInvoke<ExternalRssFeed[]>(
+    "external_rss_list_feeds",
+    undefined,
+    () => [],
+  );
+}
+
+export async function externalRssFetchNow(
+  args: ExternalFetchNowArgs = {},
+): Promise<ExternalFetchResult> {
+  return safeInvoke<ExternalFetchResult>(
+    "external_rss_fetch_now",
+    { args },
+    () => emptyResult("rss"),
+  );
+}
+
+export async function externalPodcastSubscribe(
+  args: ExternalPodcastArgs,
+): Promise<ExternalPodcastFeed[]> {
+  return safeInvoke<ExternalPodcastFeed[]>(
+    "external_podcast_subscribe",
+    { args },
+    () => [],
+  );
+}
+
+export async function externalPodcastUnsubscribe(
+  args: ExternalRssUnsubArgs,
+): Promise<ExternalPodcastFeed[]> {
+  return safeInvoke<ExternalPodcastFeed[]>(
+    "external_podcast_unsubscribe",
+    { args },
+    () => [],
+  );
+}
+
+export async function externalPodcastListFeeds(): Promise<ExternalPodcastFeed[]> {
+  return safeInvoke<ExternalPodcastFeed[]>(
+    "external_podcast_list_feeds",
+    undefined,
+    () => [],
+  );
+}
+
+export async function externalPodcastFetchNow(
+  args: ExternalFetchNowArgs = {},
+): Promise<ExternalFetchResult> {
+  return safeInvoke<ExternalFetchResult>(
+    "external_podcast_fetch_now",
+    { args },
+    () => emptyResult("podcast"),
+  );
+}
+
+export async function externalYoutubeCapture(
+  args: ExternalYoutubeArgs,
+): Promise<ExternalFetchResult> {
+  return safeInvoke<ExternalFetchResult>(
+    "external_youtube_capture",
+    { args },
+    () => emptyResult("youtube"),
+  );
+}
+
+export async function externalArticleCapture(
+  args: ExternalArticleArgs,
+): Promise<ExternalFetchResult> {
+  return safeInvoke<ExternalFetchResult>(
+    "external_article_capture",
+    { args },
+    () => emptyResult("article"),
+  );
+}
+// === end v3.0 external world ===
+
+// === v3.5 marketplace ===
+// v3.5 §1 — typed wrappers for the marketplace Tauri commands. Backend
+// lives at `crate::commands::marketplace`. Stub mode by default — the
+// browser/test mocks return the same hardcoded sample list as the Rust
+// stub so the React surfaces render identically with or without a Tauri
+// shell.
+
+export interface Template {
+  id: string;
+  name: string;
+  version: string;
+  author: string;
+  description: string;
+  vertical: string;
+  content_url: string;
+  dependencies: string[];
+  /** Take rate in basis points (1500 = 15.00%). */
+  take_rate: number;
+  /** Sticker price in cents. `0` denotes free. */
+  price_cents: number;
+  install_count: number;
+}
+
+export interface TemplateInstallation {
+  template_id: string;
+  team_id: string;
+  installed_at: string;
+  version: string;
+}
+
+export interface ListFilter {
+  vertical?: string;
+  query?: string;
+  language?: string;
+}
+
+export interface GateStatus {
+  installs_30d: number;
+  installs_required: number;
+  self_shipped_template_validated: boolean;
+}
+
+export interface LaunchState {
+  launched: boolean;
+  gate_status: GateStatus;
+}
+
+const MARKETPLACE_STUB_TEMPLATES: Template[] = [
+  {
+    id: "tangerine-legal-pack",
+    name: "Tangerine for Legal Teams",
+    version: "0.1.0",
+    author: "tangerine",
+    description:
+      "Self-shipped reference vertical: contract-clause taxonomy, case-law citation patterns, deposition prep canvas, deadline-reminder rules. Designed for solo / small-firm lawyers. First 100 installs free; $199 thereafter.",
+    vertical: "legal",
+    content_url: "bundled://legal-pack",
+    dependencies: [],
+    take_rate: 1500,
+    price_cents: 19900,
+    install_count: 0,
+  },
+  {
+    id: "acme-sales-pack",
+    name: "Acme Sales Pack",
+    version: "0.0.1",
+    author: "acme",
+    description:
+      "Sample sales-team template (stub). Pipeline-stage canvas + Slack intake config + opportunity-scoring suggestion rules.",
+    vertical: "sales",
+    content_url: "stub://acme-sales",
+    dependencies: [],
+    take_rate: 1000,
+    price_cents: 4900,
+    install_count: 0,
+  },
+  {
+    id: "starter-design-pack",
+    name: "Starter Design Pack",
+    version: "0.0.1",
+    author: "tangerine",
+    description:
+      "Free starter template for design teams (stub). Mood-board canvas + Figma-link source connector + design-review suggestion rules.",
+    vertical: "design",
+    content_url: "stub://starter-design",
+    dependencies: [],
+    take_rate: 0,
+    price_cents: 0,
+    install_count: 0,
+  },
+];
+
+/** List the marketplace catalog. Stub returns 3 sample rows. */
+export async function marketplaceListTemplates(
+  filter?: ListFilter,
+): Promise<Template[]> {
+  return safeInvoke<Template[]>(
+    "marketplace_list_templates",
+    { filter: filter ?? {} },
+    () => {
+      const f = filter ?? {};
+      const q = (f.query ?? "").toLowerCase();
+      const v = f.vertical;
+      return MARKETPLACE_STUB_TEMPLATES.filter((t) => {
+        if (v && t.vertical !== v) return false;
+        if (q.length > 0) {
+          const hay = (t.name + " " + t.description).toLowerCase();
+          if (!hay.includes(q)) return false;
+        }
+        return true;
+      });
+    },
+  );
+}
+
+/** 1-click install. Stub records the install locally + bumps install_count. */
+export async function marketplaceInstallTemplate(
+  templateId: string,
+  teamId: string,
+): Promise<TemplateInstallation> {
+  return safeInvoke<TemplateInstallation>(
+    "marketplace_install_template",
+    { templateId, teamId },
+    () => ({
+      template_id: templateId,
+      team_id: teamId,
+      installed_at: new Date().toISOString(),
+      version: "0.1.0",
+    }),
+  );
+}
+
+/** Roll back an install. */
+export async function marketplaceUninstallTemplate(
+  templateId: string,
+): Promise<void> {
+  return safeInvoke<void>(
+    "marketplace_uninstall_template",
+    { templateId },
+    () => {
+      // eslint-disable-next-line no-console
+      console.info("[mock] marketplace_uninstall_template", templateId);
+    },
+  );
+}
+
+/** Stub publish. Real registry call site dark until launch gate met. */
+export async function marketplacePublishTemplate(
+  metadata: Template,
+  content: number[],
+): Promise<Template> {
+  return safeInvoke<Template>(
+    "marketplace_publish_template",
+    { metadata, content },
+    () => metadata,
+  );
+}
+
+/**
+ * Read the trigger-gate launch state. Frontend uses this to decide whether
+ * to render the "Coming live when CEO triggers launch gate" banner on
+ * `/marketplace`. Stub returns a not-launched state with fresh counters.
+ */
+export async function marketplaceGetLaunchState(): Promise<LaunchState> {
+  return safeInvoke<LaunchState>(
+    "marketplace_get_launch_state",
+    undefined,
+    () => ({
+      launched: false,
+      gate_status: {
+        installs_30d: 0,
+        installs_required: 5_000,
+        self_shipped_template_validated: false,
+      },
+    }),
+  );
+}
+// === end v3.5 marketplace ===
+
+// === v3.5 branding ===
+// v3.5 §4 — enterprise white-label config wrappers.
+
+export interface BrandingConfig {
+  logo_url: string;
+  primary_color: string;
+  accent_color: string;
+  custom_domain: string;
+  app_name: string;
+}
+
+export interface LicenseValidation {
+  valid: boolean;
+  tenant: string | null;
+  tier: string | null;
+}
+
+export const TANGERINE_DEFAULT_BRANDING: BrandingConfig = {
+  logo_url: "",
+  primary_color: "#CC5500",
+  accent_color: "#1A1A2E",
+  custom_domain: "",
+  app_name: "Tangerine",
+};
+
+export async function brandingGetConfig(): Promise<BrandingConfig> {
+  return safeInvoke<BrandingConfig>("branding_get_config", undefined, () => ({
+    ...TANGERINE_DEFAULT_BRANDING,
+  }));
+}
+
+export async function brandingApply(cfg: BrandingConfig): Promise<BrandingConfig> {
+  return safeInvoke<BrandingConfig>("branding_apply", { cfg }, () => ({ ...cfg }));
+}
+
+export async function brandingResetToDefault(): Promise<BrandingConfig> {
+  return safeInvoke<BrandingConfig>(
+    "branding_reset_to_default",
+    undefined,
+    () => ({ ...TANGERINE_DEFAULT_BRANDING }),
+  );
+}
+
+export async function brandingValidateLicense(key: string): Promise<LicenseValidation> {
+  return safeInvoke<LicenseValidation>(
+    "branding_validate_license",
+    { key },
+    () => {
+      if (!key) return { valid: false, tenant: null, tier: null };
+      if (key.startsWith("tangerine-trial-")) {
+        return {
+          valid: true,
+          tenant: key.slice("tangerine-trial-".length),
+          tier: "trial",
+        };
+      }
+      if (key.startsWith("tangerine-license-")) {
+        const rest = key.slice("tangerine-license-".length);
+        const idx = rest.indexOf("-");
+        return {
+          valid: true,
+          tier: idx >= 0 ? rest.slice(0, idx) : "starter",
+          tenant: idx >= 0 ? rest.slice(idx + 1) : "unknown",
+        };
+      }
+      return { valid: false, tenant: null, tier: null };
+    },
+  );
+}
+// === end v3.5 branding ===
+
+// === v3.5 sso ===
+
+export type SSOProvider = "okta" | "azure_ad";
+
+export interface SSOConfig {
+  provider: SSOProvider;
+  metadata_url: string;
+  sp_entity_id: string;
+  tenant: string;
+}
+
+export interface SAMLAssertion {
+  email: string;
+  display_name: string;
+  tenant: string;
+  provider: SSOProvider;
+  roles: string[];
+}
+
+export async function ssoSetConfig(config: SSOConfig): Promise<SSOConfig> {
+  return safeInvoke<SSOConfig>("sso_set_config", { config }, () => config);
+}
+
+export async function ssoGetConfig(tenant: string): Promise<SSOConfig | null> {
+  return safeInvoke<SSOConfig | null>("sso_get_config", { tenant }, () => null);
+}
+
+export async function ssoListConfigs(): Promise<SSOConfig[]> {
+  return safeInvoke<SSOConfig[]>("sso_list_configs", undefined, () => []);
+}
+
+export async function ssoValidateSamlResponse(
+  tenant: string,
+  response: string,
+): Promise<SAMLAssertion> {
+  return safeInvoke<SAMLAssertion>(
+    "sso_validate_saml_response",
+    { tenant, response },
+    () => ({
+      email: `user@${tenant}.tangerine-cloud.com`,
+      display_name: `Test User (${tenant})`,
+      tenant,
+      provider: "okta",
+      roles: ["member"],
+    }),
+  );
+}
+// === end v3.5 sso ===
+
+// === v3.5 audit ===
+
+export interface AuditEntryInput {
+  user: string;
+  action: string;
+  resource: string;
+  ip?: string | null;
+  user_agent?: string | null;
+}
+
+export interface AuditEntry {
+  ts: string;
+  user: string;
+  action: string;
+  resource: string;
+  ip: string | null;
+  user_agent: string | null;
+  region: string;
+}
+
+export async function auditAppend(input: AuditEntryInput): Promise<AuditEntry> {
+  return safeInvoke<AuditEntry>("audit_append", { input }, () => ({
+    ts: new Date().toISOString(),
+    user: input.user,
+    action: input.action,
+    resource: input.resource,
+    ip: input.ip ?? null,
+    user_agent: input.user_agent ?? null,
+    region: "us-east",
+  }));
+}
+
+export async function auditReadWindow(days: number): Promise<AuditEntry[]> {
+  return safeInvoke<AuditEntry[]>("audit_read_window", { days }, () => []);
+}
+
+export async function auditReadDay(day: string): Promise<AuditEntry[]> {
+  return safeInvoke<AuditEntry[]>("audit_read_day", { day }, () => []);
+}
+
+export async function auditSearch(query: string, days: number): Promise<AuditEntry[]> {
+  return safeInvoke<AuditEntry[]>("audit_search", { query, days }, () => []);
+}
+// === end v3.5 audit ===

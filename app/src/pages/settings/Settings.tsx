@@ -17,11 +17,16 @@ import { AdaptersSettings } from "./AdaptersSettings";
 import { AdvancedSettings } from "./AdvancedSettings";
 import { AIToolsSettings } from "./AIToolsSettings";
 import { AGISettings } from "./AGISettings";
+// v3.0 §1 — Personal Agents tab. Strict opt-in capture for Cursor / Claude
+// Code / Codex / Windsurf logs into the personal vault.
+import { PersonalAgentsSettings } from "./PersonalAgentsSettings";
 
 const TABS = [
   { id: "general", label: "General" },
   { id: "ai-tools", label: "AI tools" },
   { id: "agi", label: "AGI" },
+  // v3.0 §1 — Personal Agents tab.
+  { id: "personal-agents", label: "Personal Agents" },
   { id: "team", label: "Team" },
   { id: "adapters", label: "Adapters" },
   { id: "advanced", label: "Advanced" },
@@ -111,6 +116,7 @@ export default function Settings() {
         {tab === "general" && <GeneralSettings draft={draft} update={update} />}
         {tab === "ai-tools" && <AIToolsSettings />}
         {tab === "agi" && <AGISettings />}
+        {tab === "personal-agents" && <PersonalAgentsSettings />}
         {tab === "team" && <TeamSettings draft={draft} update={update} />}
         {tab === "adapters" && <AdaptersSettings draft={draft} update={update} />}
         {tab === "advanced" && <AdvancedSettings draft={draft} update={update} />}

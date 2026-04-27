@@ -1,0 +1,48 @@
+# Tangerine for Legal Teams — sources config (v0.1.0)
+#
+# Recommended source connectors for solo / small-firm legal teams. The user
+# applies this config on install; specific channel ids / database ids are
+# filled in by the user during onboarding.
+
+template_id: tangerine-legal-pack
+version: "0.1.0"
+
+slack:
+  recommended_channels:
+    - pattern: "*intake*"
+      reason: "Client intake — contracts, retainer agreements arrive here"
+    - pattern: "*opposing-counsel*"
+      reason: "Opposing counsel correspondence; track tone + deadlines"
+    - pattern: "*court-filings*"
+      reason: "Court filings + filing-deadline reminders"
+    - pattern: "*case-*"
+      reason: "Per-case dedicated channels"
+
+notion:
+  recommended_databases:
+    - pattern: "*case files*"
+      reason: "Case law research + memos"
+    - pattern: "*contracts*"
+      reason: "Contract drafts + redlines + signed copies"
+    - pattern: "*deadlines*"
+      reason: "Filing-deadline tracker"
+
+email:
+  digest_labels:
+    - label: "court-filings"
+      reason: "Court e-filing system notifications"
+    - label: "opposing-counsel"
+      reason: "Opposing counsel correspondence"
+    - label: "client-intake"
+      reason: "Client intake form responses"
+
+documents:
+  globs:
+    - "*.docx"   # Word docs — contracts, motions
+    - "*.pdf"    # PDFs — court filings, signed agreements
+    - "*.eml"    # Saved email correspondence
+  exclude:
+    - "**/_archive/**"
+    - "**/draft-*"
+
+# v3.5 §3.2 — bundle contents row 2: sources config tuned for legal docs.
