@@ -2,9 +2,11 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import {
+  marketplaceIsInstalled,
   marketplaceListTemplates,
   type Template,
 } from "@/lib/tauri";
+import { useStore } from "@/lib/store";
 import { TemplateDetail } from "@/components/marketplace/TemplateDetail";
 
 /**
@@ -14,9 +16,14 @@ import { TemplateDetail } from "@/components/marketplace/TemplateDetail";
  * would be a single-template fetch; the stub doesn't have that endpoint
  * so we filter the list). The user can install / uninstall from this
  * page.
+ *
+ * Wave 2: the "Already installed" state is sourced from the new
+ * `marketplace_is_installed` backend command rather than `install_count > 0`,
+ * so the badge tracks the **current team** instead of any team on the box.
  */
 export default function MarketplaceDetailRoute() {
   const { id } = useParams<{ id: string }>();
+  const currentUser = useStore((s) => s.ui.currentUser);
   const [template, setTemplate] = useState<Template | null>(null);
   const [installed, setInstalled] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -26,20 +33,20 @@ export default function MarketplaceDetailRoute() {
     if (!id) return;
     let cancel = false;
     void (async () => {
-      const rows = await marketplaceListTemplates();
+      const [rows, isInstalled] = await Promise.all([
+        marketplaceListTemplates(),
+        marketplaceIsInstalled(id, currentUser),
+      ]);
       if (cancel) return;
       const t = rows.find((r) => r.id === id) ?? null;
       setTemplate(t);
-      // We treat install_count > 0 as "installed for the current team" in
-      // stub mode since the stub records every install in `installs.json`
-      // and the user's team is the only team on the box.
-      setInstalled(t !== null && t.install_count > 0);
+      setInstalled(isInstalled);
       setLoading(false);
     })();
     return () => {
       cancel = true;
     };
-  }, [id, reloadCounter]);
+  }, [id, reloadCounter, currentUser]);
 
   return (
     <div className="mx-auto w-full max-w-3xl px-6 py-8">

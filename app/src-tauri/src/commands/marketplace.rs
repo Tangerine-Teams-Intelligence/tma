@@ -35,8 +35,15 @@ pub async fn marketplace_list_templates(
     marketplace::list_templates(&root, &f)
 }
 
-/// Apply a template's content bundle to the team's memory dir. Stub mode
-/// writes placeholder content + appends to `installs.json`.
+/// Apply a template's content bundle to the team's memory dir.
+///
+/// Wave 2 — real install pipeline: walks the dependency graph, applies
+/// content (co-thinker prompts → agi/templates/, sources catalog append,
+/// canvas templates → canvas/templates/, suggestion rules → agi/rules/),
+/// rolls back on failure, and audit-logs the result. Already-installed
+/// `(template_id, team_id)` pairs short-circuit and return the existing
+/// record — the React `TemplateDetail` button reads this state via
+/// `marketplace_is_installed`.
 #[tauri::command]
 pub async fn marketplace_install_template(
     template_id: String,
@@ -44,6 +51,18 @@ pub async fn marketplace_install_template(
 ) -> Result<TemplateInstallation, AppError> {
     let root = resolve_memory_root()?;
     marketplace::install_template(&root, &template_id, &team_id)
+}
+
+/// Whether `(template_id, team_id)` is already installed. The React detail
+/// page calls this on mount to render the "Already installed" state without
+/// having to re-run the install pipeline.
+#[tauri::command]
+pub async fn marketplace_is_installed(
+    template_id: String,
+    team_id: String,
+) -> Result<bool, AppError> {
+    let root = resolve_memory_root()?;
+    marketplace::is_installed(&root, &template_id, &team_id)
 }
 
 /// Roll back a previous install. Removes the cache dir + drops the

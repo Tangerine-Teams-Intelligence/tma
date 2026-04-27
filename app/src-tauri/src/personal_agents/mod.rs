@@ -35,6 +35,18 @@ pub mod claude_code;
 pub mod codex;
 pub mod windsurf;
 
+// === v3.0 wave 2 personal agents ===
+// v3.0 wave 2 adds remote-source agents (Devin, Replit, Apple Intelligence,
+// MS Copilot personal). Each module is strict opt-in (default off in
+// `personal_agents.json`) and ships in stub mode for the cloud-API ones —
+// the real network fetch lands when a customer with an actual license/token
+// flips a single feature flag. Wave 1 sources stay file-tail based.
+pub mod devin;
+pub mod replit;
+pub mod apple_intelligence;
+pub mod ms_copilot;
+// === end v3.0 wave 2 personal agents ===
+
 use serde::{Deserialize, Serialize};
 
 /// Source identifier — used for the atom subdirectory name and the
@@ -174,6 +186,15 @@ pub fn render_atom(atom: &PersonalAgentAtom) -> String {
         out.push('\n');
     }
     out
+}
+
+/// Public re-export of [`yaml_scalar`] for wave 2 adapters that splice
+/// extra frontmatter lines (Devin / Apple Intelligence / MS Copilot
+/// `*_extras` renderers). Keeping the actual implementation private
+/// avoids accidental misuse from outside the crate while still letting
+/// sibling adapters reuse the same quoting rule.
+pub fn yaml_scalar_pub(s: &str) -> String {
+    yaml_scalar(s)
 }
 
 /// Quote a YAML scalar when it contains structural characters. Same shape

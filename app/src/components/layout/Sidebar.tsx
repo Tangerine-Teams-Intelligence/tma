@@ -17,6 +17,11 @@ import {
   Brain,
   GitPullRequest,
   Store,
+  // === v2.0-beta.1 graphs ===
+  Diamond,
+  Network,
+  Workflow,
+  // === end v2.0-beta.1 graphs ===
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { signOut } from "@/lib/auth";
@@ -173,6 +178,17 @@ export function Sidebar() {
           {/* === v3.5 marketplace sidebar === */}
           <ViewLink to="/marketplace" icon={Store} label="Marketplace" />
           {/* === end v3.5 marketplace sidebar === */}
+          {/* === v2.0-beta.1 graphs ===
+              Three graph surfaces hang off the existing detail views — kept
+              under a `Graphs` subhead so they don't compete with the primary
+              Views list. */}
+          <p className="mb-1 mt-3 px-2 text-[10px] uppercase tracking-wide text-stone-400 dark:text-stone-500">
+            Graphs
+          </p>
+          <ViewLink to="/decisions/lineage" icon={Diamond} label="Lineage" />
+          <ViewLink to="/people/social" icon={Network} label="Social" />
+          <ViewLink to="/projects/topology" icon={Workflow} label="Topology" />
+          {/* === end v2.0-beta.1 graphs === */}
         </Section>
 
         {/* MEMORY section */}

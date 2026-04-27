@@ -102,6 +102,15 @@ pub struct DaemonStatus {
     /// Re-fetches that hit dedup don't bump this — it strictly counts new
     /// material that landed on disk.
     pub external_atoms_total: u64,
+    /// v2.5 §2.6 — RFC 3339 timestamp of the last successful billing
+    /// reconcile sweep. The daemon walks every team file and (in real mode)
+    /// cross-checks Stripe to recover from missed webhooks. `None` until the
+    /// first sweep runs — in stub mode this is still set on every heartbeat
+    /// because the read-side trial expiry promotion runs regardless.
+    pub last_billing_reconcile: Option<String>,
+    /// v2.5 §2.6 — number of team records whose status changed during the
+    /// last reconcile (for "X teams reconciled" UI surfaces).
+    pub billing_teams_reconciled: u64,
 }
 
 #[derive(Default)]
@@ -464,6 +473,35 @@ async fn do_heartbeat(cfg: &DaemonConfig, control: &Arc<DaemonControl>) {
         }
     }
     // === end v3.0 personal agents tick ===
+
+    // === v2.5 billing reconcile ===
+    //
+    // v2.5 §2.6 (risk #1) — Stripe webhooks can drop. Each heartbeat we
+    // walk every team file and:
+    //   * promote `Trialing → PastDue` when `trial_end` has elapsed
+    //     (matches the read-side promotion in `billing_status` but persists
+    //     the change so the next webhook arrives at a consistent state)
+    //   * (real mode only) cross-check Stripe via `Subscription::list_for_customer`
+    //     and reconcile any drift. v2.5.0-alpha.1 wires the actual API call;
+    //     today the function is a deterministic local-state sweep so the
+    //     daemon snapshot stays accurate.
+    //
+    // Cost is one stat per team file plus a small JSON parse — well under
+    // 10ms for the v2.5 wave. The function is idempotent so a double-tick
+    // costs only the disk read.
+    {
+        let billing_cfg = crate::billing::current_config();
+        let outcome = crate::billing::reconcile_subscriptions(&billing_cfg).await;
+        for e in &outcome.errors {
+            control.record_error("billing_reconcile", e);
+        }
+        let mut s = control.status.lock();
+        s.last_billing_reconcile = Some(Utc::now().to_rfc3339());
+        s.billing_teams_reconciled = s
+            .billing_teams_reconciled
+            .saturating_add(outcome.teams_updated as u64);
+    }
+    // === end v2.5 billing reconcile ===
 
     // === v3.0 external world tick ===
     //

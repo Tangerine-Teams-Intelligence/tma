@@ -49,8 +49,15 @@ pub mod cloud_sync;
 // the full state machine end-to-end so the React surfaces (`/billing` route,
 // TrialBanner, paywall gate) integrate today and the real swap is a one-line
 // env change.
+//
+// Wave 2 deepens this: webhook event dispatch covers the 6 events listed in
+// spec §2.6, an IP rate-limit JSONL ledger backs the 3-trials-per-IP-per-7d
+// gate, the daemon polls a reconcile tick to recover from missed webhooks,
+// and `email_verify` owns the Postmark / SendGrid send + token-verify flow
+// that gates `trial_start`.
 pub mod auth;
 pub mod billing;
+pub mod email_verify;
 // === end v2.5 auth + billing ===
 
 // === v3.0 personal agents ===

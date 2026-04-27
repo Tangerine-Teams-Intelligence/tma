@@ -210,22 +210,54 @@ interface UiSlice {
    * known values so the Settings UI doesn't have to round-trip on every
    * keystroke. Default: ALL FALSE — the user must opt in per source
    * before any daemon-hook capture runs (spec §5.1).
+   *
+   * Wave 2 (v3.0 §1.7-§1.11) extends this map with `devin`, `replit`,
+   * `apple_intelligence`, `ms_copilot`. Each defaults `false` and ships
+   * in stub mode on the Rust side until a customer with a real
+   * token/license flips a single feature flag.
    */
   personalAgentsEnabled: {
     cursor: boolean;
     claude_code: boolean;
     codex: boolean;
     windsurf: boolean;
+    // === v3.0 wave 2 personal agents ===
+    devin: boolean;
+    replit: boolean;
+    apple_intelligence: boolean;
+    ms_copilot: boolean;
+    // === end v3.0 wave 2 personal agents ===
   };
   /** v3.0 — replace the whole personal-agents enable map (used after
    *  a successful `personal_agents_get_settings` round-trip). */
   setPersonalAgentsEnabled: (
-    next: { cursor: boolean; claude_code: boolean; codex: boolean; windsurf: boolean },
+    next: {
+      cursor: boolean;
+      claude_code: boolean;
+      codex: boolean;
+      windsurf: boolean;
+      // === v3.0 wave 2 personal agents ===
+      devin: boolean;
+      replit: boolean;
+      apple_intelligence: boolean;
+      ms_copilot: boolean;
+      // === end v3.0 wave 2 personal agents ===
+    },
   ) => void;
   /** v3.0 — flip a single agent toggle in the in-memory mirror. The
    *  caller is expected to also persist via `personal_agents_set_watcher`. */
   togglePersonalAgent: (
-    agent: "cursor" | "claude_code" | "codex" | "windsurf",
+    agent:
+      | "cursor"
+      | "claude_code"
+      | "codex"
+      | "windsurf"
+      // === v3.0 wave 2 personal agents ===
+      | "devin"
+      | "replit"
+      | "apple_intelligence"
+      | "ms_copilot",
+    // === end v3.0 wave 2 personal agents ===
     enabled: boolean,
   ) => void;
   // === v3.5 marketplace ===
@@ -576,11 +608,20 @@ export const useStore = create<Store>()(
         // — opt-in per source. Hydrated from `personal_agents_get_settings`
         // on Settings page mount; the flag map mirrors the Rust persisted
         // file so reducers don't have to round-trip on every keystroke.
+        // Wave 2 (v3.0 §1.7-§1.11) added devin/replit/apple_intelligence/
+        // ms_copilot — each ships in stub mode on the Rust side and stays
+        // off until the user explicitly opts in.
         personalAgentsEnabled: {
           cursor: false,
           claude_code: false,
           codex: false,
           windsurf: false,
+          // === v3.0 wave 2 personal agents ===
+          devin: false,
+          replit: false,
+          apple_intelligence: false,
+          ms_copilot: false,
+          // === end v3.0 wave 2 personal agents ===
         },
         // === v3.5 marketplace ===
         marketplaceLaunched: false,
@@ -1078,6 +1119,15 @@ export const useStore = create<Store>()(
                   claude_code: boolean;
                   codex: boolean;
                   windsurf: boolean;
+                  // === v3.0 wave 2 personal agents ===
+                  // Persisted-state read may pre-date wave 2; the merge
+                  // function below back-fills missing fields with `false`
+                  // so a v3.0-alpha.1 install upgrades cleanly.
+                  devin?: boolean;
+                  replit?: boolean;
+                  apple_intelligence?: boolean;
+                  ms_copilot?: boolean;
+                  // === end v3.0 wave 2 personal agents ===
                 };
                 authMode?: "stub" | "real";
                 billingStatus?:
@@ -1141,8 +1191,37 @@ export const useStore = create<Store>()(
             // v3.0 §1 — personal-agent capture flags. Persisted; the
             // Settings page also calls `personal_agents_get_settings`
             // on mount to reconcile with the Rust source of truth.
-            personalAgentsEnabled:
-              p?.ui?.personalAgentsEnabled ?? current.ui.personalAgentsEnabled,
+            // Wave 2 (v3.0 §1.7-§1.11) adds devin/replit/apple_intelligence/
+            // ms_copilot — back-fill missing keys with `false` so a v3.0-alpha
+            // install (only the wave 1 keys persisted) upgrades cleanly.
+            personalAgentsEnabled: {
+              cursor:
+                p?.ui?.personalAgentsEnabled?.cursor ??
+                current.ui.personalAgentsEnabled.cursor,
+              claude_code:
+                p?.ui?.personalAgentsEnabled?.claude_code ??
+                current.ui.personalAgentsEnabled.claude_code,
+              codex:
+                p?.ui?.personalAgentsEnabled?.codex ??
+                current.ui.personalAgentsEnabled.codex,
+              windsurf:
+                p?.ui?.personalAgentsEnabled?.windsurf ??
+                current.ui.personalAgentsEnabled.windsurf,
+              // === v3.0 wave 2 personal agents ===
+              devin:
+                p?.ui?.personalAgentsEnabled?.devin ??
+                current.ui.personalAgentsEnabled.devin,
+              replit:
+                p?.ui?.personalAgentsEnabled?.replit ??
+                current.ui.personalAgentsEnabled.replit,
+              apple_intelligence:
+                p?.ui?.personalAgentsEnabled?.apple_intelligence ??
+                current.ui.personalAgentsEnabled.apple_intelligence,
+              ms_copilot:
+                p?.ui?.personalAgentsEnabled?.ms_copilot ??
+                current.ui.personalAgentsEnabled.ms_copilot,
+              // === end v3.0 wave 2 personal agents ===
+            },
             // v2.5 §2 + §3 — auth mode + billing snapshot. Persisted so
             // the trial-gate check on cold launch sees the prior expiry
             // immediately without waiting on a Tauri round-trip.

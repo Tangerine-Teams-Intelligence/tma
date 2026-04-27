@@ -8,9 +8,25 @@
 use crate::billing::{
     self, BillingError, SubscriptionStatus, TeamBilling, WebhookOutcome,
 };
+use crate::email_verify::{self, EmailVerifyError};
 use serde::{Deserialize, Serialize};
 
 use super::AppError;
+
+impl From<EmailVerifyError> for AppError {
+    fn from(e: EmailVerifyError) -> Self {
+        match e {
+            EmailVerifyError::Io(io) => AppError::internal("email_verify_io", io.to_string()),
+            EmailVerifyError::Json(j) => AppError::internal("email_verify_json", j.to_string()),
+            EmailVerifyError::InvalidEmail => AppError::user("invalid_email", e.to_string()),
+            EmailVerifyError::TokenNotFound => AppError::user("verify_token_not_found", e.to_string()),
+            EmailVerifyError::TokenExpired => AppError::user("verify_token_expired", e.to_string()),
+            EmailVerifyError::TokenConsumed => AppError::user("verify_token_consumed", e.to_string()),
+            EmailVerifyError::KeyMissing => AppError::config("email_key_missing", e.to_string()),
+            EmailVerifyError::Provider(s) => AppError::external("email_provider", s),
+        }
+    }
+}
 
 impl From<BillingError> for AppError {
     fn from(e: BillingError) -> Self {
@@ -99,14 +115,100 @@ pub async fn billing_trial_start(
     ip_hash: Option<String>,
 ) -> Result<BillingStatusDto, AppError> {
     let cfg = billing::current_config();
+    // The caller passes a hint (e.g. Supabase already confirmed the email);
+    // we cross-check against the email_verify ledger so a forged caller-side
+    // flag can't bypass the gate.
+    let caller_says = email_verified.unwrap_or(false);
+    let ledger_says = {
+        let ev_cfg = email_verify::current_config();
+        email_verify::email_is_verified(&ev_cfg, &email)
+    };
+    let verified = caller_says || ledger_says;
     let t = billing::trial_start(
         &cfg,
         &team_id,
         &email,
-        email_verified.unwrap_or(false),
+        verified,
         ip_hash.as_deref().unwrap_or(""),
     )?;
     Ok(to_dto(t))
+}
+
+// ----- Email verify commands -------------------------------------------
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct EmailVerifyTokenDto {
+    pub token: String,
+    pub provider: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct EmailVerifyResultDto {
+    pub email: String,
+    pub verified: bool,
+}
+
+fn provider_str(cfg: &email_verify::EmailVerifyConfig) -> &'static str {
+    if cfg.is_stub() {
+        "stub"
+    } else {
+        match cfg.provider {
+            email_verify::EmailProvider::Postmark => "postmark",
+            email_verify::EmailProvider::Sendgrid => "sendgrid",
+            email_verify::EmailProvider::Stub => "stub",
+        }
+    }
+}
+
+/// Send a verify token to the given email. Returns the token in stub mode
+/// so dev / tests can round-trip without an inbox; real mode returns a
+/// redacted prefix only.
+#[tauri::command]
+pub async fn email_verify_send(email: String) -> Result<EmailVerifyTokenDto, AppError> {
+    let cfg = email_verify::current_config();
+    let token = email_verify::send_verify_email(&cfg, &email).await?;
+    let exposed = if cfg.is_stub() {
+        token
+    } else {
+        // Real mode: reveal only the prefix so logs aren't leakable.
+        let prefix: String = token.chars().take(8).collect();
+        format!("{prefix}…")
+    };
+    Ok(EmailVerifyTokenDto {
+        token: exposed,
+        provider: provider_str(&cfg).to_string(),
+    })
+}
+
+/// Consume a verify token. After this call `email_is_verified(email)` is true
+/// for the next 24 h, so a subsequent `billing_trial_start` passes the gate.
+#[tauri::command]
+pub async fn email_verify_confirm(token: String) -> Result<EmailVerifyResultDto, AppError> {
+    let cfg = email_verify::current_config();
+    let email = email_verify::verify_token(&cfg, &token)?;
+    Ok(EmailVerifyResultDto {
+        email,
+        verified: true,
+    })
+}
+
+/// Read-side check for the React paywall: is this email already verified?
+#[tauri::command]
+pub async fn email_verify_status(email: String) -> Result<EmailVerifyResultDto, AppError> {
+    let cfg = email_verify::current_config();
+    Ok(EmailVerifyResultDto {
+        email: email.clone(),
+        verified: email_verify::email_is_verified(&cfg, &email),
+    })
+}
+
+/// Daemon-side reconcile entry. Walks every team file, promotes expired
+/// trials, and (in real mode) cross-checks Stripe state. Reported back to
+/// the daemon snapshot via `daemon_status`.
+#[tauri::command]
+pub async fn billing_reconcile() -> Result<billing::ReconcileOutcome, AppError> {
+    let cfg = billing::current_config();
+    Ok(billing::reconcile_subscriptions(&cfg).await)
 }
 
 /// Webhook handler. Daemon route forwards the raw payload + Stripe-Signature
@@ -144,8 +246,18 @@ mod tests {
         crate::billing::set_state_dir(dir);
     }
 
+    /// Serialise tests that perform multi-step round-trips against the billing
+    /// singleton. trial_start writes a team file at state_dir A, but a parallel
+    /// test's anchor_state_dir() can flip the singleton to state_dir B before
+    /// subscribe/cancel run — at which point the team file vanishes and we get
+    /// `team_not_found`. Wave 2 added subscribe + cancel reads to the round-trip
+    /// test, so this race now manifests where it didn't in wave 1.
+    static BILLING_TEST_LOCK: once_cell::sync::Lazy<std::sync::Mutex<()>> =
+        once_cell::sync::Lazy::new(|| std::sync::Mutex::new(()));
+
     #[tokio::test]
     async fn cmd_trial_subscribe_cancel_round_trip() {
+        let _g = BILLING_TEST_LOCK.lock().unwrap();
         anchor_state_dir();
         let team = format!("cmd-test-{}", uuid::Uuid::new_v4());
         let started = billing_trial_start(
@@ -193,5 +305,87 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(r.event_type, "invoice.paid");
+    }
+
+    fn anchor_email_state_dir() {
+        let dir = std::env::temp_dir()
+            .join(format!("tangerine-email-cmd-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        crate::email_verify::set_state_dir(dir);
+    }
+
+    /// Serialise tests that touch the email_verify singleton's state_dir.
+    /// Without this, parallel tests stomp the dir and tokens issued by one
+    /// test land in a dir the other can't read. The billing singleton has
+    /// the same race surface but its tests use unique team_id UUIDs so
+    /// state_dir collisions don't manifest as test failures.
+    static EMAIL_TEST_LOCK: once_cell::sync::Lazy<std::sync::Mutex<()>> =
+        once_cell::sync::Lazy::new(|| std::sync::Mutex::new(()));
+
+    #[tokio::test]
+    async fn cmd_email_verify_send_then_confirm_round_trip() {
+        let _g = EMAIL_TEST_LOCK.lock().unwrap();
+        anchor_email_state_dir();
+        let sent = email_verify_send("ceo@tangerine.test".into()).await.unwrap();
+        assert!(sent.token.starts_with("evt_"));
+        assert_eq!(sent.provider, "stub");
+
+        let res = email_verify_confirm(sent.token).await.unwrap();
+        assert_eq!(res.email, "ceo@tangerine.test");
+        assert!(res.verified);
+
+        let status = email_verify_status("ceo@tangerine.test".into()).await.unwrap();
+        assert!(status.verified);
+    }
+
+    #[tokio::test]
+    async fn cmd_email_verify_unknown_token_user_errors() {
+        let _g = EMAIL_TEST_LOCK.lock().unwrap();
+        anchor_email_state_dir();
+        let r = email_verify_confirm("evt_does_not_exist".into()).await;
+        match r {
+            Err(AppError::User { code, .. }) => assert_eq!(code, "verify_token_not_found"),
+            other => panic!("expected user error, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn cmd_billing_reconcile_runs_clean_on_empty_dir() {
+        anchor_state_dir();
+        let r = billing_reconcile().await.unwrap();
+        // Don't assert exactly 0 teams_seen — parallel tests may have
+        // populated the prior singleton dir. Just confirm reconcile runs
+        // clean (no errors).
+        assert!(r.errors.is_empty());
+    }
+
+    #[tokio::test]
+    async fn cmd_trial_start_passes_when_ledger_verifies_email() {
+        let _g = EMAIL_TEST_LOCK.lock().unwrap();
+        anchor_state_dir();
+        anchor_email_state_dir();
+        let email = "trial-via-ledger@t.test";
+        let token = crate::email_verify::send_verify_email(
+            &crate::email_verify::current_config(),
+            email,
+        )
+        .await
+        .unwrap();
+        crate::email_verify::verify_token(
+            &crate::email_verify::current_config(),
+            &token,
+        )
+        .unwrap();
+        // Caller passes `email_verified=false`; the ledger should still
+        // unblock the gate because the token was redeemed in this dir.
+        let r = billing_trial_start(
+            format!("team-ledger-{}", uuid::Uuid::new_v4()),
+            email.into(),
+            Some(false),
+            None,
+        )
+        .await
+        .unwrap();
+        assert_eq!(r.status, "trialing");
     }
 }

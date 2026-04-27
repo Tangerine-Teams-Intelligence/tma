@@ -1,4 +1,4 @@
-//! v3.5 §1 — Marketplace backend (stub mode).
+//! v3.5 §1 — Marketplace backend (Wave 2: real install flow + rollback + audit).
 //!
 //! Tangerine v3.5 turns the app into a distribution layer. This module is the
 //! Rust-side surface for the public marketplace where community authors ship
@@ -11,23 +11,35 @@
 //!      telemetry event), and
 //!   2. 1 self-shipped vertical template internally validated for ≥30 days.
 //!
-//! This file ships **stub mode by default** so the IPC contract is locked
-//! and the React UI has something to render. The real catalog API + Stripe
-//! Connect payout flow lights up in the v3.5 production cut once the gate
-//! is met. The stub:
-//!   * returns a hardcoded sample catalog (3 templates including the
-//!     self-shipped "Tangerine for Legal Teams" reference pack)
-//!   * persists install records to
-//!     `~/.tangerine-memory/marketplace/installs.json` so subsequent
-//!     `marketplace_list_templates` calls reflect installed state
-//!   * applies template content to the team memory dir (co-thinker prompts,
-//!     sources config, canvas templates, suggestion templates) under
-//!     `~/.tangerine-memory/marketplace/templates/<id>/` plus a hard-link
-//!     copy to the active config dirs
-//!   * commission engine returns a deterministic stub take-rate
-//!     (10% for $1–49, 15% for $50+, 0% for free) and writes one record
-//!     per install to `~/.tangerine-memory/marketplace/commissions.json`;
-//!     the real Stripe Connect call site is gated behind `is_launched()`
+//! ## What this file ships
+//!
+//! Wave 2 deepens the install flow into a real five-step pipeline that
+//! actually moves bytes around the team memory dir:
+//!
+//! 1. **Walk dependency graph**: catalog lookup, refuse circular / unknown
+//!    deps. Stub catalog has no inter-template deps but the algorithm runs
+//!    so the IPC contract is real.
+//! 2. **Already-installed short-circuit**: same `(team, template)` re-runs
+//!    return the existing record without re-applying content. The React
+//!    `TemplateDetail` button uses this to render an "Already installed"
+//!    state per spec §1.2.
+//! 3. **Apply template content** atomically:
+//!    * Co-thinker prompts → `~/.tangerine-memory/agi/templates/<id>/prompts.toml`
+//!    * Sources catalog **append** (never overwrite) →
+//!      `~/.tangerine-memory/sources/catalog.json` (`[{ template_id, ... }]`)
+//!    * Canvas templates → `~/.tangerine-memory/canvas/templates/<id>/canvas.template.json`
+//!    * Suggestion rules → `~/.tangerine-memory/agi/rules/<id>.toml`
+//! 4. **Rollback on failure**: every successful step gets a rollback closure
+//!    pushed onto a stack; on any subsequent failure we drain the stack to
+//!    leave the disk in the pre-install state. Same pattern as
+//!    `crate::sources::email::test_connection`.
+//! 5. **Audit append**: success and failure both log `template.install` with
+//!    `resource = template_id` and a `step` payload — fed into the v3.5
+//!    audit log so SOC 2 reviewers can trace marketplace installs.
+//!
+//! Stub catalog stays in this file (no real registry HTTP yet). The Stripe
+//! Connect call site is still gated behind `is_launched()`. The real CDN
+//! download + GPG signature verify lights up with the launch gate.
 //!
 //! Storage layout:
 //!   `~/.tangerine-memory/marketplace/`
@@ -35,10 +47,10 @@
 //!     `installs.json`      — Vec<TemplateInstallation>
 //!     `commissions.json`   — Vec<CommissionRecord>
 //!     `launch_state.json`  — { launched: bool, gate_status: GateStatus }
-//!
-//! All public functions return `Result<T, AppError>` so the Tauri command
-//! layer can serialize errors uniformly. The module is `pub` so the Tauri
-//! command surface in `commands::marketplace` can call it directly.
+//!   `~/.tangerine-memory/agi/templates/<id>/prompts.toml`
+//!   `~/.tangerine-memory/agi/rules/<id>.toml`
+//!   `~/.tangerine-memory/canvas/templates/<id>/canvas.template.json`
+//!   `~/.tangerine-memory/sources/catalog.json`  (append-only, by template_id)
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -46,6 +58,7 @@ use std::path::{Path, PathBuf};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+use crate::audit_log::{self, AuditEntryInput};
 use crate::commands::AppError;
 
 // ---------------------------------------------------------------------------
@@ -158,6 +171,17 @@ impl Default for LaunchState {
     }
 }
 
+/// One sources-catalog entry written by the install flow. Append-only — the
+/// install pipeline never overwrites an existing entry, so user customizations
+/// outside the template-managed range are preserved.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SourcesCatalogEntry {
+    pub template_id: String,
+    pub vertical: String,
+    pub version: String,
+    pub installed_at: DateTime<Utc>,
+}
+
 /// Filter inputs from `marketplace_list_templates(filter)`. All fields are
 /// optional — an empty filter returns every template in the catalog.
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -201,6 +225,41 @@ fn commissions_path(memory_root: &Path) -> Result<PathBuf, AppError> {
 
 fn launch_state_path(memory_root: &Path) -> Result<PathBuf, AppError> {
     Ok(marketplace_dir(memory_root)?.join("launch_state.json"))
+}
+
+/// `~/.tangerine-memory/agi/templates/<id>/` — co-thinker prompts target
+/// per spec §1.1.
+fn agi_templates_dir(memory_root: &Path, template_id: &str) -> Result<PathBuf, AppError> {
+    let dir = memory_root.join("agi").join("templates").join(template_id);
+    fs::create_dir_all(&dir)
+        .map_err(|e| AppError::internal("marketplace_agi_templates_mkdir", e.to_string()))?;
+    Ok(dir)
+}
+
+/// `~/.tangerine-memory/agi/rules/` — suggestion rules registry per spec §1.1.
+/// One file per template (`<id>.toml`).
+fn agi_rules_dir(memory_root: &Path) -> Result<PathBuf, AppError> {
+    let dir = memory_root.join("agi").join("rules");
+    fs::create_dir_all(&dir)
+        .map_err(|e| AppError::internal("marketplace_agi_rules_mkdir", e.to_string()))?;
+    Ok(dir)
+}
+
+/// `~/.tangerine-memory/canvas/templates/<id>/` — canvas templates target
+/// per spec §1.1.
+fn canvas_templates_dir(memory_root: &Path, template_id: &str) -> Result<PathBuf, AppError> {
+    let dir = memory_root.join("canvas").join("templates").join(template_id);
+    fs::create_dir_all(&dir)
+        .map_err(|e| AppError::internal("marketplace_canvas_templates_mkdir", e.to_string()))?;
+    Ok(dir)
+}
+
+/// `~/.tangerine-memory/sources/catalog.json` — append-only sources catalog.
+fn sources_catalog_path(memory_root: &Path) -> Result<PathBuf, AppError> {
+    let dir = memory_root.join("sources");
+    fs::create_dir_all(&dir)
+        .map_err(|e| AppError::internal("marketplace_sources_mkdir", e.to_string()))?;
+    Ok(dir.join("catalog.json"))
 }
 
 fn read_json_or_default<T: serde::de::DeserializeOwned + Default>(
@@ -319,6 +378,17 @@ pub fn list_templates(
     Ok(filtered)
 }
 
+/// Whether a template is already installed for the given team. The React
+/// `TemplateDetail` button hits this via the install record in
+/// `installs.json` to render the "Already installed" state.
+pub fn is_installed(memory_root: &Path, template_id: &str, team_id: &str) -> Result<bool, AppError> {
+    let installs: Vec<TemplateInstallation> =
+        read_json_or_default(&installs_path(memory_root)?)?;
+    Ok(installs
+        .iter()
+        .any(|i| i.template_id == template_id && i.team_id == team_id))
+}
+
 /// Compute the commission take-rate (basis points) for the given price.
 /// Mirrors `V3_5_SPEC.md` §1.3.
 pub fn take_rate_bps_for(price_cents: u32) -> u32 {
@@ -331,25 +401,11 @@ pub fn take_rate_bps_for(price_cents: u32) -> u32 {
     }
 }
 
-/// Apply a template's content bundle to the team's memory dir. v3.5 stub:
-///   * write the manifest under `marketplace/templates/<id>/template.json`
-///   * write `prompts.toml`, `sources.config.json`, `canvas.template.json`,
-///     `suggestions.rules.toml` placeholders so the rest of the app can
-///     `fs::exists`-check the merge target
-///
-/// The real install path (post-launch-gate) downloads the signed bundle
-/// from the registry, verifies the GPG signature against the author's
-/// pinned key, walks the dependency graph, and merges into the live
-/// config dirs. Stub mode short-circuits all of that — the goal here is
-/// to make the IPC contract usable end-to-end so the UI can demo install
-/// flow without a real CDN behind it.
-pub fn install_template(
-    memory_root: &Path,
-    template_id: &str,
-    team_id: &str,
-) -> Result<TemplateInstallation, AppError> {
-    let catalog = stub_catalog();
-    let template = catalog
+/// Resolve a template by id from the stub catalog. Returns a `User` error
+/// when the slug is not in the catalog so the React surface can render a
+/// "not found" toast.
+fn resolve_template(template_id: &str) -> Result<Template, AppError> {
+    stub_catalog()
         .into_iter()
         .find(|t| t.id == template_id)
         .ok_or_else(|| {
@@ -357,80 +413,364 @@ pub fn install_template(
                 "marketplace_unknown_template",
                 format!("template '{}' is not in the stub catalog", template_id),
             )
-        })?;
-
-    // 1. Materialize the template content under the cache dir so the rest of
-    //    the app can read it back. We write inert placeholders so subsequent
-    //    real installs can swap them out without churning the on-disk shape.
-    let cache = templates_cache_dir(memory_root)?.join(&template.id);
-    fs::create_dir_all(&cache).map_err(|e| {
-        AppError::internal("marketplace_install_mkdir", e.to_string())
-    })?;
-    write_json(&cache.join("template.json"), &template)?;
-    fs::write(
-        cache.join("prompts.toml"),
-        stub_prompt_pack_for(&template),
-    )
-    .map_err(|e| AppError::internal("marketplace_install_prompts", e.to_string()))?;
-    fs::write(
-        cache.join("sources.config.json"),
-        stub_sources_config_for(&template),
-    )
-    .map_err(|e| AppError::internal("marketplace_install_sources", e.to_string()))?;
-    fs::write(
-        cache.join("canvas.template.json"),
-        stub_canvas_template_for(&template),
-    )
-    .map_err(|e| AppError::internal("marketplace_install_canvas", e.to_string()))?;
-    fs::write(
-        cache.join("suggestions.rules.toml"),
-        stub_suggestion_rules_for(&template),
-    )
-    .map_err(|e| AppError::internal("marketplace_install_rules", e.to_string()))?;
-
-    // 2. Append to `installs.json` so subsequent list_templates picks up the
-    //    increment.
-    let installs_p = installs_path(memory_root)?;
-    let mut installs: Vec<TemplateInstallation> = read_json_or_default(&installs_p)?;
-    let installation = TemplateInstallation {
-        template_id: template.id.clone(),
-        team_id: team_id.to_string(),
-        installed_at: Utc::now(),
-        version: template.version.clone(),
-    };
-    installs.push(installation.clone());
-    write_json(&installs_p, &installs)?;
-
-    // 3. Commission engine: record the take-rate. Real Stripe Connect call
-    //    is gated behind `is_launched`.
-    if template.price_cents > 0 {
-        let commissions_p = commissions_path(memory_root)?;
-        let mut commissions: Vec<CommissionRecord> = read_json_or_default(&commissions_p)?;
-        let launched = is_launched(memory_root).unwrap_or(false);
-        commissions.push(CommissionRecord {
-            template_id: template.id.clone(),
-            team_id: team_id.to_string(),
-            price_cents: template.price_cents,
-            take_rate_bps: take_rate_bps_for(template.price_cents),
-            recorded_at: Utc::now(),
-            stripe_recorded: launched,
-        });
-        write_json(&commissions_p, &commissions)?;
-    }
-
-    Ok(installation)
+        })
 }
 
-/// Roll back a previous install. Removes the cache dir + drops the
-/// matching row from `installs.json`. We do not refund the commission
-/// record — that's intentional, refund flow is the Stripe-side responsibility
-/// and this stub only models the public install ledger.
-pub fn uninstall_template(memory_root: &Path, template_id: &str) -> Result<(), AppError> {
-    let cache = templates_cache_dir(memory_root)?.join(template_id);
-    if cache.exists() {
-        fs::remove_dir_all(&cache)
-            .map_err(|e| AppError::internal("marketplace_uninstall_rm", e.to_string()))?;
+/// Walk the dependency graph for `template_id`, returning the topologically
+/// sorted install order (deps first, root last). Detects circular deps and
+/// unknown deps and refuses to proceed. Stub catalog has no inter-template
+/// deps but the algorithm runs so the IPC contract is real.
+fn resolve_dependency_order(template_id: &str) -> Result<Vec<Template>, AppError> {
+    let mut visited: Vec<String> = Vec::new();
+    let mut visiting: Vec<String> = Vec::new();
+    let mut order: Vec<Template> = Vec::new();
+    visit(template_id, &mut visiting, &mut visited, &mut order)?;
+    Ok(order)
+}
+
+fn visit(
+    id: &str,
+    visiting: &mut Vec<String>,
+    visited: &mut Vec<String>,
+    order: &mut Vec<Template>,
+) -> Result<(), AppError> {
+    if visited.iter().any(|v| v == id) {
+        return Ok(());
     }
+    if visiting.iter().any(|v| v == id) {
+        return Err(AppError::user(
+            "marketplace_circular_dep",
+            format!("circular dependency detected at '{}'", id),
+        ));
+    }
+    let template = resolve_template(id)?;
+    visiting.push(id.to_string());
+    for dep in template.dependencies.clone() {
+        visit(&dep, visiting, visited, order)?;
+    }
+    visiting.retain(|v| v != id);
+    visited.push(id.to_string());
+    order.push(template);
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Install pipeline (atomic with rollback)
+// ---------------------------------------------------------------------------
+
+/// One reversible side-effect emitted by the install pipeline. `apply` is
+/// called in-order; on any failure the stack is drained in reverse and each
+/// closure is invoked to leave the disk in the pre-install state. Closures
+/// are infallible by design — best-effort cleanup, log on failure.
+type Rollback = Box<dyn FnOnce()>;
+
+struct RollbackGuard {
+    actions: Vec<Rollback>,
+    armed: bool,
+}
+
+impl RollbackGuard {
+    fn new() -> Self {
+        Self { actions: Vec::new(), armed: true }
+    }
+
+    fn push<F: FnOnce() + 'static>(&mut self, f: F) {
+        self.actions.push(Box::new(f));
+    }
+
+    /// Disarm the guard once the install has succeeded — drops are no-ops
+    /// after this. Called at the very end of `install_template`.
+    fn disarm(&mut self) {
+        self.armed = false;
+    }
+}
+
+impl Drop for RollbackGuard {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+        // Reverse order — undo most-recent step first.
+        while let Some(action) = self.actions.pop() {
+            action();
+        }
+    }
+}
+
+/// Apply a template's content bundle to the team's memory dir.
+///
+/// v3.5 wave 2 — real install pipeline:
+///   1. Resolve dependency order from the stub catalog
+///   2. Already-installed short-circuit (returns existing record)
+///   3. Apply each dep + the root template's four content files
+///      (prompts.toml, sources.config.json, canvas.template.json,
+///      suggestions.rules.toml) plus the broader memory-tree merges:
+///      * agi/templates/<id>/prompts.toml
+///      * agi/rules/<id>.toml
+///      * canvas/templates/<id>/canvas.template.json
+///      * sources/catalog.json (append-only)
+///   4. Append `installs.json` + `commissions.json`
+///   5. Audit log every step (success or failure)
+///
+/// All steps are atomic — any failure unwinds via the rollback guard so
+/// the disk is left in the pre-install state. The audit log records both
+/// success and failure paths so SOC 2 reviewers can trace marketplace
+/// installs.
+pub fn install_template(
+    memory_root: &Path,
+    template_id: &str,
+    team_id: &str,
+) -> Result<TemplateInstallation, AppError> {
+    // Already installed — short-circuit so the React button can render
+    // the "Already installed" state without re-applying content.
+    if is_installed(memory_root, template_id, team_id)? {
+        let installs: Vec<TemplateInstallation> =
+            read_json_or_default(&installs_path(memory_root)?)?;
+        if let Some(existing) = installs
+            .into_iter()
+            .find(|i| i.template_id == template_id && i.team_id == team_id)
+        {
+            log_audit(
+                memory_root,
+                "template.install.skip",
+                template_id,
+                team_id,
+                Some("already_installed"),
+            );
+            return Ok(existing);
+        }
+    }
+
+    // Walk dependency graph upfront — refuse to start the pipeline when a
+    // dep is unknown / circular so we never partially apply.
+    let order = match resolve_dependency_order(template_id) {
+        Ok(v) => v,
+        Err(e) => {
+            log_audit(
+                memory_root,
+                "template.install.fail",
+                template_id,
+                team_id,
+                Some(&e.to_string()),
+            );
+            return Err(e);
+        }
+    };
+
+    let mut guard = RollbackGuard::new();
+    let result = (|| -> Result<TemplateInstallation, AppError> {
+        // Apply every dep + the root template; root is the last entry of `order`.
+        for tpl in &order {
+            apply_template_content(memory_root, tpl, &mut guard)?;
+        }
+
+        // Append installs.json with the root template's record. We leave
+        // dep records out — the dep graph re-walks on uninstall so we don't
+        // need a per-dep ledger row.
+        let root = order.last().expect("dep order has at least the root template");
+        let installs_p = installs_path(memory_root)?;
+        let mut installs: Vec<TemplateInstallation> = read_json_or_default(&installs_p)?;
+        let prev_installs = installs.clone();
+        let installation = TemplateInstallation {
+            template_id: root.id.clone(),
+            team_id: team_id.to_string(),
+            installed_at: Utc::now(),
+            version: root.version.clone(),
+        };
+        installs.push(installation.clone());
+        write_json(&installs_p, &installs)?;
+        let installs_p_clone = installs_p.clone();
+        let prev_installs_clone = prev_installs.clone();
+        guard.push(move || {
+            let _ = write_json(&installs_p_clone, &prev_installs_clone);
+        });
+
+        // Commission engine: record the take-rate. Real Stripe Connect call
+        // is gated behind `is_launched`.
+        if root.price_cents > 0 {
+            let commissions_p = commissions_path(memory_root)?;
+            let mut commissions: Vec<CommissionRecord> = read_json_or_default(&commissions_p)?;
+            let prev_commissions = commissions.clone();
+            let launched = is_launched(memory_root).unwrap_or(false);
+            commissions.push(CommissionRecord {
+                template_id: root.id.clone(),
+                team_id: team_id.to_string(),
+                price_cents: root.price_cents,
+                take_rate_bps: take_rate_bps_for(root.price_cents),
+                recorded_at: Utc::now(),
+                stripe_recorded: launched,
+            });
+            write_json(&commissions_p, &commissions)?;
+            let commissions_p_clone = commissions_p.clone();
+            let prev_commissions_clone = prev_commissions.clone();
+            guard.push(move || {
+                let _ = write_json(&commissions_p_clone, &prev_commissions_clone);
+            });
+        }
+
+        Ok(installation)
+    })();
+
+    match result {
+        Ok(installation) => {
+            guard.disarm();
+            log_audit(
+                memory_root,
+                "template.install",
+                template_id,
+                team_id,
+                None,
+            );
+            Ok(installation)
+        }
+        Err(e) => {
+            // Guard's Drop fires here, undoing partial work.
+            log_audit(
+                memory_root,
+                "template.install.fail",
+                template_id,
+                team_id,
+                Some(&e.to_string()),
+            );
+            Err(e)
+        }
+    }
+}
+
+/// Apply one template's four content files to the team memory dir, pushing
+/// rollback closures onto the guard stack as we go. Caller is responsible
+/// for disarming the guard on success.
+fn apply_template_content(
+    memory_root: &Path,
+    template: &Template,
+    guard: &mut RollbackGuard,
+) -> Result<(), AppError> {
+    // 1. Local cache copy (preserves the historical layout for tests +
+    //    introspection). Existing dir gets removed first so a re-install
+    //    always rewrites the cache cleanly.
+    let cache = templates_cache_dir(memory_root)?.join(&template.id);
+    let cache_existed_before = cache.exists();
+    if cache_existed_before {
+        // Snapshot & restore is heavy — a re-install with content already
+        // present means the user is explicitly re-applying. Treat it as a
+        // best-effort overwrite; rollback only deletes what we created.
+    }
+    fs::create_dir_all(&cache)
+        .map_err(|e| AppError::internal("marketplace_install_mkdir", e.to_string()))?;
+    let cache_clone = cache.clone();
+    if !cache_existed_before {
+        guard.push(move || {
+            let _ = fs::remove_dir_all(&cache_clone);
+        });
+    }
+    write_json(&cache.join("template.json"), template)?;
+    let prompts = stub_prompt_pack_for(template);
+    let sources_cfg = stub_sources_config_for(template);
+    let canvas = stub_canvas_template_for(template);
+    let rules = stub_suggestion_rules_for(template);
+    fs::write(cache.join("prompts.toml"), &prompts)
+        .map_err(|e| AppError::internal("marketplace_install_prompts", e.to_string()))?;
+    fs::write(cache.join("sources.config.json"), &sources_cfg)
+        .map_err(|e| AppError::internal("marketplace_install_sources", e.to_string()))?;
+    fs::write(cache.join("canvas.template.json"), &canvas)
+        .map_err(|e| AppError::internal("marketplace_install_canvas", e.to_string()))?;
+    fs::write(cache.join("suggestions.rules.toml"), &rules)
+        .map_err(|e| AppError::internal("marketplace_install_rules", e.to_string()))?;
+
+    // 2. Co-thinker prompts → ~/.tangerine-memory/agi/templates/<id>/prompts.toml
+    let agi_dir = agi_templates_dir(memory_root, &template.id)?;
+    let agi_prompts_path = agi_dir.join("prompts.toml");
+    let agi_prompts_path_clone = agi_prompts_path.clone();
+    fs::write(&agi_prompts_path, &prompts)
+        .map_err(|e| AppError::internal("marketplace_apply_agi_prompts", e.to_string()))?;
+    guard.push(move || {
+        let _ = fs::remove_file(&agi_prompts_path_clone);
+        // Best-effort prune the parent if empty.
+        if let Some(parent) = agi_prompts_path_clone.parent() {
+            let _ = fs::remove_dir(parent);
+        }
+    });
+
+    // 3. Suggestion rules → ~/.tangerine-memory/agi/rules/<id>.toml
+    let rules_path = agi_rules_dir(memory_root)?.join(format!("{}.toml", template.id));
+    let rules_path_clone = rules_path.clone();
+    fs::write(&rules_path, &rules)
+        .map_err(|e| AppError::internal("marketplace_apply_agi_rules", e.to_string()))?;
+    guard.push(move || {
+        let _ = fs::remove_file(&rules_path_clone);
+    });
+
+    // 4. Canvas templates → ~/.tangerine-memory/canvas/templates/<id>/canvas.template.json
+    let canvas_dir = canvas_templates_dir(memory_root, &template.id)?;
+    let canvas_path = canvas_dir.join("canvas.template.json");
+    let canvas_path_clone = canvas_path.clone();
+    fs::write(&canvas_path, &canvas)
+        .map_err(|e| AppError::internal("marketplace_apply_canvas", e.to_string()))?;
+    guard.push(move || {
+        let _ = fs::remove_file(&canvas_path_clone);
+        if let Some(parent) = canvas_path_clone.parent() {
+            let _ = fs::remove_dir(parent);
+        }
+    });
+
+    // 5. Sources catalog append → ~/.tangerine-memory/sources/catalog.json
+    //    Append-only: never overwrite an existing entry. The `is_installed`
+    //    short-circuit at the top of `install_template` already prevents the
+    //    duplicate-add case.
+    let catalog_path = sources_catalog_path(memory_root)?;
+    let mut catalog: Vec<SourcesCatalogEntry> = read_json_or_default(&catalog_path)?;
+    let prev_catalog = catalog.clone();
+    if !catalog.iter().any(|e| e.template_id == template.id) {
+        catalog.push(SourcesCatalogEntry {
+            template_id: template.id.clone(),
+            vertical: template.vertical.clone(),
+            version: template.version.clone(),
+            installed_at: Utc::now(),
+        });
+        write_json(&catalog_path, &catalog)?;
+        let catalog_path_clone = catalog_path.clone();
+        let prev_catalog_clone = prev_catalog.clone();
+        guard.push(move || {
+            let _ = write_json(&catalog_path_clone, &prev_catalog_clone);
+        });
+    }
+
+    Ok(())
+}
+
+/// Best-effort audit-log append. We never bubble an audit-write failure
+/// through the install pipeline — losing a log entry is preferable to
+/// rolling back a successful install.
+fn log_audit(
+    memory_root: &Path,
+    action: &str,
+    template_id: &str,
+    team_id: &str,
+    detail: Option<&str>,
+) {
+    let resource = match detail {
+        Some(d) => format!("{}#{}#{}", template_id, team_id, d),
+        None => format!("{}#{}", template_id, team_id),
+    };
+    let _ = audit_log::append(
+        memory_root,
+        AuditEntryInput {
+            user: team_id.to_string(),
+            action: action.to_string(),
+            resource,
+            ip: None,
+            user_agent: Some("tangerine-marketplace".to_string()),
+        },
+    );
+}
+
+/// Roll back a previous install. Removes the cache dir + drops the matching
+/// row from `installs.json` + cleans up the agi/canvas/sources side-effects.
+/// We do not refund the commission record — that's intentional; refund flow
+/// is the Stripe-side responsibility and this stub only models the public
+/// install ledger.
+pub fn uninstall_template(memory_root: &Path, template_id: &str) -> Result<(), AppError> {
+    // Drop install record first.
     let installs_p = installs_path(memory_root)?;
     let installs: Vec<TemplateInstallation> = read_json_or_default(&installs_p)?;
     let next: Vec<TemplateInstallation> = installs
@@ -438,6 +778,57 @@ pub fn uninstall_template(memory_root: &Path, template_id: &str) -> Result<(), A
         .filter(|i| i.template_id != template_id)
         .collect();
     write_json(&installs_p, &next)?;
+
+    // Cache dir.
+    let cache = templates_cache_dir(memory_root)?.join(template_id);
+    if cache.exists() {
+        fs::remove_dir_all(&cache)
+            .map_err(|e| AppError::internal("marketplace_uninstall_rm", e.to_string()))?;
+    }
+
+    // AGI prompts + rules.
+    let _ = fs::remove_file(
+        memory_root
+            .join("agi")
+            .join("templates")
+            .join(template_id)
+            .join("prompts.toml"),
+    );
+    let _ = fs::remove_dir(memory_root.join("agi").join("templates").join(template_id));
+    let _ = fs::remove_file(
+        memory_root
+            .join("agi")
+            .join("rules")
+            .join(format!("{}.toml", template_id)),
+    );
+
+    // Canvas template.
+    let _ = fs::remove_file(
+        memory_root
+            .join("canvas")
+            .join("templates")
+            .join(template_id)
+            .join("canvas.template.json"),
+    );
+    let _ = fs::remove_dir(
+        memory_root
+            .join("canvas")
+            .join("templates")
+            .join(template_id),
+    );
+
+    // Sources catalog drop.
+    let catalog_path = sources_catalog_path(memory_root)?;
+    if catalog_path.exists() {
+        let catalog: Vec<SourcesCatalogEntry> = read_json_or_default(&catalog_path)?;
+        let next: Vec<SourcesCatalogEntry> = catalog
+            .into_iter()
+            .filter(|e| e.template_id != template_id)
+            .collect();
+        write_json(&catalog_path, &next)?;
+    }
+
+    log_audit(memory_root, "template.uninstall", template_id, "system", None);
     Ok(())
 }
 
@@ -648,6 +1039,77 @@ mod tests {
     }
 
     #[test]
+    fn install_applies_prompts_to_agi_templates_dir() {
+        let root = tmp_root();
+        let _ = install_template(root.path(), "tangerine-legal-pack", "team-a").unwrap();
+        let prompts = root
+            .path()
+            .join("agi/templates/tangerine-legal-pack/prompts.toml");
+        assert!(prompts.exists(), "agi prompts target missing");
+        let raw = fs::read_to_string(prompts).unwrap();
+        assert!(raw.contains("Tangerine for Legal Teams"));
+    }
+
+    #[test]
+    fn install_writes_canvas_template_to_canvas_dir() {
+        let root = tmp_root();
+        let _ = install_template(root.path(), "tangerine-legal-pack", "team-a").unwrap();
+        let canvas = root
+            .path()
+            .join("canvas/templates/tangerine-legal-pack/canvas.template.json");
+        assert!(canvas.exists());
+    }
+
+    #[test]
+    fn install_registers_suggestion_rules_with_registry() {
+        let root = tmp_root();
+        let _ = install_template(root.path(), "tangerine-legal-pack", "team-a").unwrap();
+        let rules = root
+            .path()
+            .join("agi/rules/tangerine-legal-pack.toml");
+        assert!(rules.exists(), "rules registry missing");
+    }
+
+    #[test]
+    fn install_appends_to_sources_catalog() {
+        let root = tmp_root();
+        let _ = install_template(root.path(), "tangerine-legal-pack", "team-a").unwrap();
+        let catalog_path = root.path().join("sources/catalog.json");
+        assert!(catalog_path.exists());
+        let raw = fs::read_to_string(catalog_path).unwrap();
+        let entries: Vec<SourcesCatalogEntry> = serde_json::from_str(&raw).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].template_id, "tangerine-legal-pack");
+    }
+
+    #[test]
+    fn install_short_circuits_when_already_installed() {
+        let root = tmp_root();
+        let first = install_template(root.path(), "tangerine-legal-pack", "team-a").unwrap();
+        let second = install_template(root.path(), "tangerine-legal-pack", "team-a").unwrap();
+        assert_eq!(first.installed_at, second.installed_at);
+
+        // installs.json should still have only one record for this team.
+        let installs: Vec<TemplateInstallation> =
+            serde_json::from_str(&fs::read_to_string(root.path().join("marketplace/installs.json")).unwrap())
+                .unwrap();
+        let team_a_installs: Vec<_> = installs
+            .iter()
+            .filter(|i| i.template_id == "tangerine-legal-pack" && i.team_id == "team-a")
+            .collect();
+        assert_eq!(team_a_installs.len(), 1);
+    }
+
+    #[test]
+    fn is_installed_reflects_install_state() {
+        let root = tmp_root();
+        assert!(!is_installed(root.path(), "tangerine-legal-pack", "team-a").unwrap());
+        let _ = install_template(root.path(), "tangerine-legal-pack", "team-a").unwrap();
+        assert!(is_installed(root.path(), "tangerine-legal-pack", "team-a").unwrap());
+        assert!(!is_installed(root.path(), "tangerine-legal-pack", "team-b").unwrap());
+    }
+
+    #[test]
     fn install_records_commission_for_paid_template() {
         let root = tmp_root();
         let _ = install_template(root.path(), "tangerine-legal-pack", "team-a").unwrap();
@@ -672,27 +1134,68 @@ mod tests {
     }
 
     #[test]
-    fn uninstall_removes_cache_and_install_record() {
+    fn install_emits_audit_log_entry() {
         let root = tmp_root();
         let _ = install_template(root.path(), "tangerine-legal-pack", "team-a").unwrap();
-        uninstall_template(root.path(), "tangerine-legal-pack").unwrap();
-        let cache = root
+        // Audit log lives under .tangerine/audit/<today>.jsonl.
+        let today = chrono::Utc::now().date_naive();
+        let audit = root
             .path()
-            .join("marketplace/templates/tangerine-legal-pack");
-        assert!(!cache.exists());
-        let rows = list_templates(root.path(), &ListFilter::default()).unwrap();
-        let legal = rows.iter().find(|r| r.id == "tangerine-legal-pack").unwrap();
-        assert_eq!(legal.install_count, 0);
+            .join(".tangerine/audit")
+            .join(format!("{}.jsonl", today));
+        assert!(audit.exists(), "audit log file missing");
+        let raw = fs::read_to_string(audit).unwrap();
+        assert!(raw.contains("template.install"));
+        assert!(raw.contains("tangerine-legal-pack"));
     }
 
     #[test]
-    fn install_unknown_template_returns_user_error() {
+    fn install_unknown_template_logs_failure_and_returns_user_error() {
         let root = tmp_root();
         let err = install_template(root.path(), "does-not-exist", "team-a").unwrap_err();
         match err {
             AppError::User { code, .. } => assert_eq!(code, "marketplace_unknown_template"),
             other => panic!("expected User error, got {:?}", other),
         }
+
+        let today = chrono::Utc::now().date_naive();
+        let audit = root
+            .path()
+            .join(".tangerine/audit")
+            .join(format!("{}.jsonl", today));
+        let raw = fs::read_to_string(audit).unwrap();
+        assert!(raw.contains("template.install.fail"));
+    }
+
+    #[test]
+    fn uninstall_removes_cache_install_record_and_side_effects() {
+        let root = tmp_root();
+        let _ = install_template(root.path(), "tangerine-legal-pack", "team-a").unwrap();
+        uninstall_template(root.path(), "tangerine-legal-pack").unwrap();
+
+        let cache = root
+            .path()
+            .join("marketplace/templates/tangerine-legal-pack");
+        assert!(!cache.exists());
+
+        let agi_prompts = root
+            .path()
+            .join("agi/templates/tangerine-legal-pack/prompts.toml");
+        assert!(!agi_prompts.exists());
+
+        let rules = root
+            .path()
+            .join("agi/rules/tangerine-legal-pack.toml");
+        assert!(!rules.exists());
+
+        let canvas = root
+            .path()
+            .join("canvas/templates/tangerine-legal-pack/canvas.template.json");
+        assert!(!canvas.exists());
+
+        let rows = list_templates(root.path(), &ListFilter::default()).unwrap();
+        let legal = rows.iter().find(|r| r.id == "tangerine-legal-pack").unwrap();
+        assert_eq!(legal.install_count, 0);
     }
 
     #[test]

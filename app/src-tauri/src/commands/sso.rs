@@ -1,13 +1,16 @@
 //! v3.5 §5.1 — Tauri command surface for SSO SAML.
 //!
-//! Stub mode by default — `validate_saml_response` returns a deterministic
-//! mock assertion so the React JIT-provisioning UI can demo the flow
-//! without a real IdP wired up. Production cut wires `keycloak-rs` or
-//! WorkOS via a single-file swap inside this module.
+//! v3.5 wave 2: real-mode structural validation lights up when the tenant's
+//! `SSOConfig.sp_cert` is configured. Stub mode (no cert) returns the
+//! deterministic mock so the React JIT-provisioning UI keeps working in dev.
+//!
+//! Production cut wires `keycloak-rs` / WorkOS / `samael` for full XMLDSig
+//! signature verification + canonicalization via a single-file swap inside
+//! the lib.
 
 use std::path::PathBuf;
 
-use crate::sso::{self, SAMLAssertion, SSOConfig};
+use crate::sso::{self, AssertionResult, SAMLAssertion, SSOConfig};
 
 use super::AppError;
 
@@ -41,10 +44,10 @@ pub async fn sso_list_configs() -> Result<Vec<SSOConfig>, AppError> {
     sso::list_configs(&root)
 }
 
-/// Stub validator. v3.5 returns a deterministic mock `SAMLAssertion` for
-/// any non-empty `response` against a known tenant. Real SAML 2.0
-/// signature + audience + NotOnOrAfter checks live behind the production
-/// cutover.
+/// Validate a SAML response. Wave 2: returns the unwrapped `SAMLAssertion`
+/// for backward compat. New callers should prefer
+/// `sso_validate_saml_response_with_result` which surfaces stub vs real
+/// mode for UX disambiguation.
 #[tauri::command]
 pub async fn sso_validate_saml_response(
     tenant: String,
@@ -52,4 +55,17 @@ pub async fn sso_validate_saml_response(
 ) -> Result<SAMLAssertion, AppError> {
     let root = resolve_memory_root()?;
     sso::validate_saml_response(&root, &tenant, &response)
+}
+
+/// Validate a SAML response and return the result variant
+/// (`AssertionResult::Stub` or `AssertionResult::Real`). React-side
+/// admin UI uses the variant to render different UX — `Stub` lets the
+/// admin proceed with JIT provision, `Real` posts a hard error on failure.
+#[tauri::command]
+pub async fn sso_validate_saml_response_with_result(
+    tenant: String,
+    response: String,
+) -> Result<AssertionResult, AppError> {
+    let root = resolve_memory_root()?;
+    sso::validate_saml_response_with_result(&root, &tenant, &response)
 }

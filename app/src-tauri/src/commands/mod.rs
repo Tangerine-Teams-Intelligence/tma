@@ -492,6 +492,10 @@ macro_rules! tmi_invoke_handler {
             $crate::commands::billing::billing_status,
             $crate::commands::billing::billing_trial_start,
             $crate::commands::billing::billing_webhook,
+            $crate::commands::billing::billing_reconcile,
+            $crate::commands::billing::email_verify_send,
+            $crate::commands::billing::email_verify_confirm,
+            $crate::commands::billing::email_verify_status,
             // === end v2.5 auth + billing ===
             // === v3.0 personal agents ===
             $crate::commands::personal_agents::personal_agents_scan_all,
@@ -503,6 +507,14 @@ macro_rules! tmi_invoke_handler {
             $crate::commands::personal_agents::personal_agents_set_settings,
             $crate::commands::personal_agents::personal_agents_set_watcher,
             // === end v3.0 personal agents ===
+            // === v3.0 wave 2 personal agents ===
+            $crate::commands::personal_agents::personal_agents_capture_devin,
+            $crate::commands::personal_agents::personal_agents_devin_webhook,
+            $crate::commands::personal_agents::personal_agents_capture_replit,
+            $crate::commands::personal_agents::personal_agents_capture_apple_intelligence,
+            $crate::commands::personal_agents::personal_agents_apple_intel_hook,
+            $crate::commands::personal_agents::personal_agents_capture_ms_copilot,
+            // === end v3.0 wave 2 personal agents ===
             // === v3.0 external world ===
             $crate::commands::external::external_rss_subscribe,
             $crate::commands::external::external_rss_unsubscribe,
@@ -518,6 +530,7 @@ macro_rules! tmi_invoke_handler {
             // === v3.5 marketplace ===
             $crate::commands::marketplace::marketplace_list_templates,
             $crate::commands::marketplace::marketplace_install_template,
+            $crate::commands::marketplace::marketplace_is_installed,
             $crate::commands::marketplace::marketplace_uninstall_template,
             $crate::commands::marketplace::marketplace_publish_template,
             $crate::commands::marketplace::marketplace_get_launch_state,
@@ -533,12 +546,17 @@ macro_rules! tmi_invoke_handler {
             $crate::commands::sso::sso_get_config,
             $crate::commands::sso::sso_list_configs,
             $crate::commands::sso::sso_validate_saml_response,
+            $crate::commands::sso::sso_validate_saml_response_with_result,
             // === end v3.5 sso ===
             // === v3.5 audit ===
             $crate::commands::audit::audit_append,
             $crate::commands::audit::audit_read_window,
             $crate::commands::audit::audit_read_day,
             $crate::commands::audit::audit_search,
+            $crate::commands::audit::audit_log_export,
+            $crate::commands::audit::audit_verify_chain,
+            $crate::commands::audit::audit_get_region,
+            $crate::commands::audit::audit_set_region,
             // === end v3.5 audit ===
         ]
     };

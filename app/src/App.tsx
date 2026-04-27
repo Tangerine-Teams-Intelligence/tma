@@ -47,6 +47,15 @@ import ReviewsRoute from "@/routes/reviews";
 import MarketplaceRoute from "@/routes/marketplace/index";
 import MarketplaceDetailRoute from "@/routes/marketplace/[id]";
 // === end v3.5 marketplace ===
+// === v2.0-beta.1 graphs ===
+// V2_0_SPEC §2.2-§2.4 — three sibling graph surfaces sitting next to
+// /today's WorkflowGraph. Each is a thin wrapper over the matching
+// reactflow component in components/graphs/. No backend wiring — they
+// read the same `list_atoms` Tauri command the home graph already uses.
+import DecisionLineageRoute from "@/routes/decisions/lineage";
+import SocialGraphRoute from "@/routes/people/social";
+import ProjectTopologyRoute from "@/routes/projects/topology";
+// === end v2.0-beta.1 graphs ===
 import { getConfig } from "@/lib/tauri";
 import { useStore } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
@@ -178,6 +187,13 @@ export default function App() {
         <Route path="today" element={<TodayRoute />} />
         <Route path="this-week" element={<ThisWeekRoute />} />
         <Route path="people" element={<PeopleListRoute />} />
+        {/* === v2.0-beta.1 graphs ===
+            Static graph routes MUST sit above the param routes; otherwise
+            `:alias` / `:slug` swallow them. */}
+        <Route path="people/social" element={<SocialGraphRoute />} />
+        <Route path="projects/topology" element={<ProjectTopologyRoute />} />
+        <Route path="decisions/lineage" element={<DecisionLineageRoute />} />
+        {/* === end v2.0-beta.1 graphs === */}
         <Route path="people/:alias" element={<PersonDetailRoute />} />
         <Route path="projects" element={<ProjectsListRoute />} />
         <Route path="projects/:slug" element={<ProjectDetailRoute />} />

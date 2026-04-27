@@ -12,7 +12,7 @@
 // modes so the swap is keyless once the CEO ships keys.
 
 import { useEffect, useState } from "react";
-import { Loader2, AlertCircle, CheckCircle2, Clock } from "lucide-react";
+import { Loader2, AlertCircle, AlertTriangle, CheckCircle2, Clock, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useStore } from "@/lib/store";
@@ -27,14 +27,38 @@ import { isStubMode as stripeIsStub, STUB_PAYMENT_METHOD_ID } from "@/lib/stripe
 
 const PRICE_LABEL = "$5 / team / month";
 
-function fmtCountdown(secs: number): string {
+/**
+ * Urgency tier for the trial-countdown banner. v2.5 §2 — tiered escalation
+ * so the user sees progressively louder copy as the trial winds down.
+ *
+ *   * `relaxed`  — > 7d remaining (subtle orange chip, no banner)
+ *   * `warning`  — 1d–7d remaining (orange banner with "Add payment" CTA)
+ *   * `critical` — < 1d remaining (red banner, payment CTA prominent)
+ *   * `expired`  — trial ended (paywall blocks UI features)
+ */
+function urgencyTier(remainingSecs: number): "relaxed" | "warning" | "critical" | "expired" {
+  if (remainingSecs <= 0) return "expired";
+  const days = remainingSecs / (24 * 60 * 60);
+  if (days < 1) return "critical";
+  if (days < 7) return "warning";
+  return "relaxed";
+}
+
+/**
+ * Format a "X days, Y hours" countdown. Carries two units so the user sees
+ * literal hours remaining as the trial tightens — under 24h it shifts to
+ * "Hh Mm" so a 30-min remaining trial reads as "0h 30m" rather than collapsing
+ * into a vague "expiring soon".
+ */
+function fmtCountdownPrecise(secs: number): string {
   if (secs <= 0) return "expired";
   const days = Math.floor(secs / (24 * 60 * 60));
-  if (days >= 1) return `${days} day${days === 1 ? "" : "s"}`;
-  const hours = Math.floor(secs / (60 * 60));
-  if (hours >= 1) return `${hours}h`;
-  const mins = Math.max(1, Math.floor(secs / 60));
-  return `${mins}m`;
+  const hours = Math.floor((secs % (24 * 60 * 60)) / (60 * 60));
+  if (days >= 1) {
+    return `${days} day${days === 1 ? "" : "s"}, ${hours}h`;
+  }
+  const mins = Math.floor((secs % (60 * 60)) / 60);
+  return `${hours}h ${mins}m`;
 }
 
 export default function BillingRoute() {
@@ -118,6 +142,7 @@ export default function BillingRoute() {
   const now = Math.floor(Date.now() / 1000);
   const remaining = status && status.trial_end > 0 ? status.trial_end - now : 0;
   const isTrialActive = status?.status === "trialing" && remaining > 0;
+  const tier = isTrialActive ? urgencyTier(remaining) : null;
 
   return (
     <div className="mx-auto max-w-2xl px-6 py-10">
@@ -179,16 +204,101 @@ export default function BillingRoute() {
                 </div>
               </div>
 
-              {isTrialActive && (
+              {/* Tiered trial-countdown banner. The "relaxed" tier renders a
+                  subtle chip; "warning" (< 7d) escalates to an orange banner
+                  with a clear "Add payment" CTA; "critical" (< 1d) flips
+                  red and elevates the CTA prominence per spec §2.4. */}
+              {isTrialActive && tier === "relaxed" && (
                 <div className="flex items-center gap-2 rounded-md border border-[var(--ti-orange-500)]/30 bg-[var(--ti-orange-50)] px-3 py-2 text-sm text-[var(--ti-orange-700)]">
-                  <Clock size={14} /> {fmtCountdown(remaining)} left in trial · No card needed
+                  <Clock size={14} /> {fmtCountdownPrecise(remaining)} left in trial · No card needed
                 </div>
               )}
 
+              {isTrialActive && tier === "warning" && (
+                <div className="rounded-md border-2 border-[var(--ti-orange-500)]/60 bg-[var(--ti-orange-50)] px-4 py-3 text-sm text-[var(--ti-orange-700)]">
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+                    <div className="space-y-2">
+                      <div className="font-medium">
+                        Your trial ends in {fmtCountdownPrecise(remaining)}.
+                      </div>
+                      <div className="text-xs">
+                        Add payment now to keep Tangerine Cloud running. Cloud
+                        sync, team git mirror, and shared briefs stop at expiry —
+                        local OSS keeps working.
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {isTrialActive && tier === "critical" && (
+                <div className="rounded-md border-2 border-[#B83232]/70 bg-[#B83232]/5 px-4 py-3 text-sm text-[#B83232]">
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+                    <div className="space-y-2">
+                      <div className="font-semibold">
+                        Trial ends in {fmtCountdownPrecise(remaining)}.
+                      </div>
+                      <div className="text-xs">
+                        Add payment now or Cloud features pause at expiry.
+                      </div>
+                      <Button
+                        size="sm"
+                        onClick={subscribe}
+                        disabled={busy}
+                        className="bg-[#B83232] hover:bg-[#A02828]"
+                      >
+                        {busy ? (
+                          <>
+                            <Loader2 size={14} className="animate-spin" /> Adding payment…
+                          </>
+                        ) : (
+                          `Add payment · ${PRICE_LABEL}`
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Expired-trial paywall — blocks Cloud feature use until the
+                  user adds payment. Local OSS path stays usable; spec §2.4
+                  is explicit about no data loss. The "Add payment to resume"
+                  CTA is the primary action; we expose the cancel button only
+                  on `active` state below so the user can't accidentally
+                  cancel an expired-but-uncancelled trial. */}
               {status.status === "past_due" && (
-                <div className="rounded-md border border-[#B83232]/40 bg-[#B83232]/5 px-3 py-2 text-sm text-[#B83232]">
-                  Trial expired. Cloud sync paused until you upgrade. Local
-                  memory + OSS path keep working.
+                <div className="rounded-md border-2 border-[#B83232]/60 bg-[#B83232]/5 px-4 py-4 text-sm text-[#B83232]">
+                  <div className="flex items-start gap-3">
+                    <Lock size={20} className="mt-0.5 shrink-0" />
+                    <div className="space-y-2">
+                      <div className="text-base font-semibold">
+                        Trial expired · Cloud features paused
+                      </div>
+                      <div className="text-xs leading-relaxed">
+                        Cloud sync, team git mirror, and shared briefs are paused
+                        until you add payment. Local memory tree + OSS path keep
+                        working — no data loss.
+                      </div>
+                      <Button onClick={subscribe} disabled={busy} className="mt-1">
+                        {busy ? (
+                          <>
+                            <Loader2 size={14} className="animate-spin" /> Adding payment…
+                          </>
+                        ) : (
+                          `Add payment to resume · ${PRICE_LABEL}`
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {status.status === "canceled" && (
+                <div className="rounded-md border border-[var(--ti-ink-300)] bg-[var(--ti-ink-50)] px-3 py-2 text-sm text-[var(--ti-ink-700)]">
+                  Subscription cancelled. Re-subscribe at any time —
+                  your local memory tree is preserved.
                 </div>
               )}
 

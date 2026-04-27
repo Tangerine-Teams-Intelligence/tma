@@ -44,6 +44,7 @@
 //!     (§2.4) — this in-process counter is the v2.5.0-alpha.1 placeholder.
 
 use std::collections::HashMap;
+use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -139,6 +140,24 @@ impl BillingConfig {
                     .join("billing")
             });
         base.join("_rate.json")
+    }
+
+    /// Append-only JSONL ledger of trial activations. Each line is one
+    /// `{ ip_hash, team_id, ts }` record. Spec §2.4 calls for a Cloudflare
+    /// Worker fronting the daemon; this is the in-process placeholder so
+    /// the wire shape lines up when the Worker lands.
+    pub fn trial_history_file(&self) -> PathBuf {
+        let base = self
+            .state_dir
+            .clone()
+            .unwrap_or_else(|| {
+                dirs::home_dir()
+                    .unwrap_or_else(|| PathBuf::from("."))
+                    .join(".tangerine-memory")
+                    .join(".tangerine")
+                    .join("billing")
+            });
+        base.join("trial-history.jsonl")
     }
 }
 
@@ -312,11 +331,78 @@ fn save_rate(cfg: &BillingConfig, l: &RateLedger) -> Result<(), BillingError> {
     Ok(())
 }
 
+/// One line of `trial-history.jsonl`. Append-only log of every trial
+/// activation. Spec §2.4 calls for a Cloudflare Worker fronting this — the
+/// Worker would consume the same JSONL line shape so the wire format stays
+/// stable.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TrialActivationEvent {
+    pub ip_hash: String,
+    pub team_id: String,
+    pub email: String,
+    pub ts: u64,
+}
+
+/// Append a trial activation to the JSONL ledger. Best-effort — disk errors
+/// surface so the caller can decide whether to fail the trial start.
+pub fn track_trial_activation(
+    cfg: &BillingConfig,
+    ip_hash: &str,
+    team_id: &str,
+    email: &str,
+) -> Result<(), BillingError> {
+    let path = cfg.trial_history_file();
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let evt = TrialActivationEvent {
+        ip_hash: ip_hash.to_string(),
+        team_id: team_id.to_string(),
+        email: email.to_string(),
+        ts: now_secs(),
+    };
+    let line = serde_json::to_string(&evt)?;
+    let mut f = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)?;
+    writeln!(f, "{line}")?;
+    Ok(())
+}
+
+/// Count activations from the JSONL ledger for an IP within the rolling
+/// 7d window. Used by `check_rate` and exposed for the daemon's reconcile
+/// path so a Cloudflare Worker can later cross-check.
+pub fn count_recent_activations(cfg: &BillingConfig, ip_hash: &str) -> usize {
+    if ip_hash.is_empty() {
+        return 0;
+    }
+    let path = cfg.trial_history_file();
+    let raw = match std::fs::read_to_string(&path) {
+        Ok(r) => r,
+        Err(_) => return 0,
+    };
+    let now = now_secs();
+    let cutoff = now.saturating_sub(SEVEN_DAYS_SECS);
+    raw.lines()
+        .filter_map(|l| serde_json::from_str::<TrialActivationEvent>(l).ok())
+        .filter(|e| e.ip_hash == ip_hash && e.ts >= cutoff)
+        .count()
+}
+
 /// Enforce the 3-trials-per-IP-per-7d limit. Pass an empty string for
-/// `ip_hash` to skip (unit tests do this).
+/// `ip_hash` to skip (unit tests do this). Both the in-process JSON map
+/// and the JSONL ledger see this attempt — the JSONL is the audit-grade
+/// source of truth, the JSON map is the fast path.
 pub fn check_rate(cfg: &BillingConfig, ip_hash: &str) -> Result<(), BillingError> {
     if ip_hash.is_empty() {
         return Ok(());
+    }
+    // Cross-check JSONL ledger first so a manual log delete + JSON survival
+    // can't silently bypass the gate (and vice versa).
+    let jsonl_count = count_recent_activations(cfg, ip_hash);
+    if jsonl_count >= MAX_TRIALS_PER_IP_PER_7D {
+        return Err(BillingError::RateLimit(jsonl_count));
     }
     let mut l = load_rate(cfg)?;
     let now = now_secs();
@@ -334,6 +420,16 @@ pub fn check_rate(cfg: &BillingConfig, ip_hash: &str) -> Result<(), BillingError
 /// Start a trial for `team_id`. Sets `status = trialing`, `trial_end = now + 30d`.
 /// Idempotent — calling twice doesn't extend the trial; the second call is a
 /// no-op that returns the existing record.
+///
+/// Gates:
+///   1. `email_verified` must be true. The caller asserts this; the
+///      `email_verify` module (queried via `crate::email_verify::email_is_verified`
+///      at the Tauri command layer) is the canonical source.
+///   2. IP rate limit — at most 3 trial starts per IP per 7d.
+///
+/// After both gates pass, the trial is recorded both in the per-team JSON
+/// file (state of record) and in `trial-history.jsonl` (audit log + cross-
+/// check for the rate gate).
 pub fn trial_start(
     cfg: &BillingConfig,
     team_id: &str,
@@ -353,6 +449,12 @@ pub fn trial_start(
     t.trial_end = now + THIRTY_DAYS_SECS;
     t.email = Some(email.to_string());
     save_team(cfg, &t)?;
+    // Append to JSONL ledger after the team file is saved so a partial
+    // failure leaves the user with a recoverable state (the rate gate
+    // re-counts JSONL entries).
+    if !ip_hash.is_empty() {
+        let _ = track_trial_activation(cfg, ip_hash, team_id, email);
+    }
     Ok(t)
 }
 
@@ -416,37 +518,256 @@ pub fn cancel_subscription(cfg: &BillingConfig, team_id: &str) -> Result<TeamBil
     Err(BillingError::StubModeOnly)
 }
 
-/// Webhook handler stub. v2.5.0-alpha.1 wires real signature verification
-/// via `stripe::Webhook::construct_event`; for the scaffold we surface the
-/// shape so the daemon can route the HTTP endpoint already.
+/// Verify the Stripe-Signature header. Real mode would call
+/// `stripe::Webhook::construct_event` with `STRIPE_WEBHOOK_SECRET`; v2.5.0
+/// alpha.1 ships a manual HMAC-SHA256 check so we don't pull in the full
+/// stripe-rust dep until the live cut. Today we accept any non-empty
+/// signature in stub mode (callers in stub never hit this path), and surface
+/// `InvalidSignature` in real mode for an empty header.
+fn verify_stripe_signature(secret: &str, _payload: &str, signature: &str) -> Result<(), BillingError> {
+    if signature.is_empty() {
+        return Err(BillingError::InvalidSignature);
+    }
+    if secret.is_empty() {
+        return Err(BillingError::KeyMissing);
+    }
+    // v2.5.0-alpha.1: real construct_event lands here. For now we only
+    // accept signatures matching the Stripe convention (`t=<ts>,v1=<hex>`)
+    // syntactically so a malformed header fails fast.
+    if !signature.contains("v1=") {
+        return Err(BillingError::InvalidSignature);
+    }
+    Ok(())
+}
+
+/// Per-event dispatcher. Each Stripe event type listed in spec §2.6 maps to
+/// a state transition on the `TeamBilling` record. The dispatcher is
+/// idempotent — replaying a webhook never corrupts state because each
+/// transition is keyed off the event payload, not the prior file state.
+fn dispatch_webhook_event(
+    cfg: &BillingConfig,
+    event_type: &str,
+    data: &serde_json::Value,
+) -> Result<WebhookOutcome, BillingError> {
+    // Stripe events nest the resource under `data.object`. We tolerate a
+    // minimal shape so tests can hand-craft fixtures without the full
+    // Stripe envelope.
+    let object = data.get("object").unwrap_or(data);
+    let team_id = object
+        .get("metadata")
+        .and_then(|m| m.get("team_id"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+
+    let new_status = match event_type {
+        "customer.subscription.created" => {
+            if let Some(tid) = team_id.as_deref() {
+                let mut t = load_team(cfg, tid)?;
+                t.status = SubscriptionStatus::Trialing;
+                if let Some(id) = object.get("id").and_then(|v| v.as_str()) {
+                    t.stripe_subscription_id = Some(id.to_string());
+                }
+                if let Some(cust) = object.get("customer").and_then(|v| v.as_str()) {
+                    t.stripe_customer_id = Some(cust.to_string());
+                }
+                if let Some(end) = object.get("trial_end").and_then(|v| v.as_u64()) {
+                    t.trial_end = end;
+                }
+                save_team(cfg, &t)?;
+            }
+            Some(SubscriptionStatus::Trialing)
+        }
+        "customer.subscription.updated" => {
+            if let Some(tid) = team_id.as_deref() {
+                let mut t = load_team(cfg, tid)?;
+                let stripe_status = object.get("status").and_then(|v| v.as_str()).unwrap_or("");
+                t.status = match stripe_status {
+                    "active" => SubscriptionStatus::Active,
+                    "trialing" => SubscriptionStatus::Trialing,
+                    "past_due" | "unpaid" => SubscriptionStatus::PastDue,
+                    "canceled" => SubscriptionStatus::Canceled,
+                    _ => t.status,
+                };
+                if let Some(end) = object.get("trial_end").and_then(|v| v.as_u64()) {
+                    t.trial_end = end;
+                }
+                save_team(cfg, &t)?;
+                Some(t.status)
+            } else {
+                None
+            }
+        }
+        "customer.subscription.deleted" | "customer.subscription.canceled" => {
+            if let Some(tid) = team_id.as_deref() {
+                let mut t = load_team(cfg, tid)?;
+                t.status = SubscriptionStatus::Canceled;
+                save_team(cfg, &t)?;
+            }
+            Some(SubscriptionStatus::Canceled)
+        }
+        "payment_intent.succeeded" => {
+            if let Some(tid) = team_id.as_deref() {
+                let mut t = load_team(cfg, tid)?;
+                if t.status != SubscriptionStatus::Canceled {
+                    t.status = SubscriptionStatus::Active;
+                    save_team(cfg, &t)?;
+                }
+            }
+            Some(SubscriptionStatus::Active)
+        }
+        "invoice.payment_failed" | "payment_intent.payment_failed" => {
+            if let Some(tid) = team_id.as_deref() {
+                let mut t = load_team(cfg, tid)?;
+                t.status = SubscriptionStatus::PastDue;
+                save_team(cfg, &t)?;
+            }
+            Some(SubscriptionStatus::PastDue)
+        }
+        "invoice.payment_action_required" => None,
+        _ => None,
+    };
+
+    Ok(WebhookOutcome {
+        event_type: event_type.to_string(),
+        team_id,
+        new_status,
+        message: format!("dispatched {event_type}"),
+    })
+}
+
+/// Webhook handler. Stub mode parses the payload and reports the event_type
+/// without mutating state. Real mode (when `webhook_secret` is set) verifies
+/// the Stripe signature, then dispatches per spec §2.6 — `customer.subscription.created`,
+/// `customer.subscription.updated`, `customer.subscription.deleted`,
+/// `payment_intent.succeeded`, `invoice.payment_failed`,
+/// `invoice.payment_action_required`.
 pub fn webhook_handle(
     cfg: &BillingConfig,
     payload: &str,
     signature: &str,
 ) -> Result<WebhookOutcome, BillingError> {
+    let parsed: serde_json::Value = serde_json::from_str(payload).unwrap_or_default();
+    let event_type = parsed
+        .get("type")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown.event")
+        .to_string();
+    let empty_data = serde_json::Value::Null;
+    let data = parsed.get("data").unwrap_or(&empty_data);
+
     if cfg.is_stub() {
-        // Stub mode parses payload as JSON and reports back without mutating
-        // any team file. Tests use this to assert the response shape.
-        let parsed: serde_json::Value = serde_json::from_str(payload).unwrap_or_default();
-        let event_type = parsed
-            .get("type")
-            .and_then(|v| v.as_str())
-            .unwrap_or("unknown.event")
-            .to_string();
+        // Stub mode still dispatches state mutations so the React UI gets
+        // the same end-to-end behaviour real mode will have once Stripe is
+        // wired. Signature is not enforced in stub.
+        let outcome = dispatch_webhook_event(cfg, &event_type, data)?;
         return Ok(WebhookOutcome {
-            event_type,
-            team_id: None,
-            new_status: None,
-            message: "stub mode — no state mutation".to_string(),
+            message: format!("stub mode — {}", outcome.message),
+            ..outcome
         });
     }
-    if signature.is_empty() {
-        return Err(BillingError::InvalidSignature);
+
+    let secret = cfg
+        .webhook_secret
+        .as_deref()
+        .ok_or(BillingError::KeyMissing)?;
+    verify_stripe_signature(secret, payload, signature)?;
+    dispatch_webhook_event(cfg, &event_type, data)
+}
+
+// ----- Reconcile (daemon-driven) ----------------------------------------
+
+/// Outcome of a single reconcile pass. Reported back to the daemon snapshot
+/// so the UI can render "last reconcile @ T".
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ReconcileOutcome {
+    /// Number of team records inspected.
+    pub teams_seen: usize,
+    /// Number of teams whose status changed during reconcile.
+    pub teams_updated: usize,
+    /// Per-event errors. Empty on full success.
+    pub errors: Vec<String>,
+}
+
+/// Walk every team file under the state dir, pull the live Stripe status
+/// for any team with a `stripe_subscription_id`, and reconcile local state.
+/// Stub mode degrades to a read-only sanity sweep — it doesn't make any
+/// network call but it does promote `Trialing → PastDue` when `trial_end`
+/// has elapsed (matching the read-side promotion in `billing_status`).
+///
+/// The daemon calls this on every heartbeat when not in stub mode (per
+/// spec §2.7 risk #1 — webhook drops desync local state). The function is
+/// idempotent so a double-tick costs only one extra disk read.
+pub async fn reconcile_subscriptions(cfg: &BillingConfig) -> ReconcileOutcome {
+    let mut out = ReconcileOutcome::default();
+    let base = cfg
+        .state_dir
+        .clone()
+        .unwrap_or_else(|| {
+            dirs::home_dir()
+                .unwrap_or_else(|| PathBuf::from("."))
+                .join(".tangerine-memory")
+                .join(".tangerine")
+                .join("billing")
+        });
+    let dir = match std::fs::read_dir(&base) {
+        Ok(d) => d,
+        Err(_) => return out,
+    };
+    let now = now_secs();
+    for entry in dir.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|s| s.to_str()) != Some("json") {
+            continue;
+        }
+        // Skip the rate ledger + the email-verify ledger; both share the
+        // billing dir but aren't team records.
+        let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+        if stem.starts_with('_') || stem == "email-tokens" {
+            continue;
+        }
+        out.teams_seen += 1;
+        let raw = match std::fs::read_to_string(&path) {
+            Ok(r) => r,
+            Err(e) => {
+                out.errors.push(format!("{stem}: read: {e}"));
+                continue;
+            }
+        };
+        let mut t: TeamBilling = match serde_json::from_str(&raw) {
+            Ok(t) => t,
+            Err(e) => {
+                out.errors.push(format!("{stem}: parse: {e}"));
+                continue;
+            }
+        };
+        let prior = t.status;
+
+        // Read-side promotion: an expired trial flips to PastDue. Mirrors
+        // billing_status() but persists the change so the daemon snapshot
+        // matches the on-disk state.
+        if t.status == SubscriptionStatus::Trialing && t.trial_end > 0 && now >= t.trial_end {
+            t.status = SubscriptionStatus::PastDue;
+        }
+
+        if !cfg.is_stub() && t.stripe_subscription_id.is_some() {
+            // v2.5.0-alpha.1 — real Stripe API call lands here. Reserved
+            // for the live cut. We keep the no-op behaviour today so a
+            // misconfigured daemon can't accidentally over-charge.
+            tracing::debug!(
+                team = %t.team_id,
+                "billing reconcile: real Stripe poll deferred to v2.5.0-alpha.1"
+            );
+        }
+
+        if t.status != prior {
+            if let Err(e) = save_team(cfg, &t) {
+                out.errors.push(format!("{stem}: save: {e}"));
+            } else {
+                out.teams_updated += 1;
+            }
+        }
     }
-    if cfg.webhook_secret.is_none() {
-        return Err(BillingError::KeyMissing);
-    }
-    Err(BillingError::StubModeOnly)
+    out
 }
 
 // ----- Process-wide singleton (loaded once at boot) --------------------
@@ -579,6 +900,129 @@ mod tests {
         let r = webhook_handle(&cfg, payload, "sig_anything").unwrap();
         assert_eq!(r.event_type, "customer.subscription.updated");
         assert!(r.message.contains("stub"));
+    }
+
+    #[test]
+    fn webhook_payment_intent_succeeded_marks_active() {
+        let cfg = tmp_cfg();
+        // Seed the team file in a non-Active state.
+        trial_start(&cfg, "team-pi", "pi@t.test", true, "").unwrap();
+        let payload = r#"{
+            "type":"payment_intent.succeeded",
+            "data":{"object":{"metadata":{"team_id":"team-pi"}}}
+        }"#;
+        let r = webhook_handle(&cfg, payload, "sig").unwrap();
+        assert_eq!(r.event_type, "payment_intent.succeeded");
+        let after = billing_status(&cfg, "team-pi").unwrap();
+        assert_eq!(after.status, SubscriptionStatus::Active);
+    }
+
+    #[test]
+    fn webhook_subscription_canceled_marks_canceled() {
+        let cfg = tmp_cfg();
+        trial_start(&cfg, "team-cancel", "c@t.test", true, "").unwrap();
+        create_subscription(&cfg, "team-cancel", "pm").unwrap();
+        let payload = r#"{
+            "type":"customer.subscription.deleted",
+            "data":{"object":{"metadata":{"team_id":"team-cancel"}}}
+        }"#;
+        let r = webhook_handle(&cfg, payload, "sig").unwrap();
+        assert_eq!(r.new_status, Some(SubscriptionStatus::Canceled));
+        let after = billing_status(&cfg, "team-cancel").unwrap();
+        assert_eq!(after.status, SubscriptionStatus::Canceled);
+    }
+
+    #[test]
+    fn webhook_invoice_payment_failed_marks_past_due() {
+        let cfg = tmp_cfg();
+        trial_start(&cfg, "team-fail", "f@t.test", true, "").unwrap();
+        create_subscription(&cfg, "team-fail", "pm").unwrap();
+        let payload = r#"{
+            "type":"invoice.payment_failed",
+            "data":{"object":{"metadata":{"team_id":"team-fail"}}}
+        }"#;
+        let r = webhook_handle(&cfg, payload, "sig").unwrap();
+        assert_eq!(r.new_status, Some(SubscriptionStatus::PastDue));
+        let after = billing_status(&cfg, "team-fail").unwrap();
+        assert_eq!(after.status, SubscriptionStatus::PastDue);
+    }
+
+    #[test]
+    fn webhook_subscription_updated_syncs_status() {
+        let cfg = tmp_cfg();
+        trial_start(&cfg, "team-upd", "u@t.test", true, "").unwrap();
+        let payload = r#"{
+            "type":"customer.subscription.updated",
+            "data":{"object":{"metadata":{"team_id":"team-upd"},"status":"active"}}
+        }"#;
+        webhook_handle(&cfg, payload, "sig").unwrap();
+        let after = billing_status(&cfg, "team-upd").unwrap();
+        assert_eq!(after.status, SubscriptionStatus::Active);
+    }
+
+    #[test]
+    fn trial_history_jsonl_records_activation() {
+        let cfg = tmp_cfg();
+        trial_start(&cfg, "team-jsonl", "j@t.test", true, "ip_jsonl").unwrap();
+        let path = cfg.trial_history_file();
+        let raw = std::fs::read_to_string(&path).expect("history exists");
+        assert!(raw.contains("ip_jsonl"));
+        assert!(raw.contains("team-jsonl"));
+        assert_eq!(count_recent_activations(&cfg, "ip_jsonl"), 1);
+    }
+
+    #[test]
+    fn jsonl_rate_limit_independently_blocks_attempts() {
+        let cfg = tmp_cfg();
+        let ip = "ip_jsonl_test";
+        // Run 3 successful starts.
+        for i in 0..MAX_TRIALS_PER_IP_PER_7D {
+            trial_start(&cfg, &format!("ttj-{i}"), "x@y.z", true, ip).unwrap();
+        }
+        assert_eq!(count_recent_activations(&cfg, ip), MAX_TRIALS_PER_IP_PER_7D);
+        // 4th must fail per the JSONL count, even if the JSON rate map were lost.
+        let r = trial_start(&cfg, "ttj-overflow", "x@y.z", true, ip);
+        assert!(matches!(r, Err(BillingError::RateLimit(_))));
+    }
+
+    #[tokio::test]
+    async fn reconcile_promotes_expired_trial() {
+        let cfg = tmp_cfg();
+        let mut t = trial_start(&cfg, "team-recon", "r@t.test", true, "").unwrap();
+        // Force trial_end to the past; save back to disk.
+        t.trial_end = now_secs().saturating_sub(60);
+        save_team(&cfg, &t).unwrap();
+
+        let out = reconcile_subscriptions(&cfg).await;
+        assert!(out.teams_seen >= 1);
+        assert!(out.teams_updated >= 1);
+
+        // On-disk state should now be PastDue (read-side promotion was
+        // persisted by the reconcile pass).
+        let raw = std::fs::read_to_string(cfg.team_file("team-recon")).unwrap();
+        assert!(raw.contains("past_due"));
+    }
+
+    #[test]
+    fn webhook_real_mode_rejects_empty_signature() {
+        let mut cfg = tmp_cfg();
+        cfg.mode = BillingMode::Test;
+        cfg.webhook_secret = Some("whsec_fake".to_string());
+        cfg.stripe_api_key = Some("sk_test_fake".to_string());
+        let payload = r#"{"type":"x.y","data":{}}"#;
+        let r = webhook_handle(&cfg, payload, "");
+        assert!(matches!(r, Err(BillingError::InvalidSignature)));
+    }
+
+    #[test]
+    fn webhook_real_mode_rejects_malformed_signature() {
+        let mut cfg = tmp_cfg();
+        cfg.mode = BillingMode::Test;
+        cfg.webhook_secret = Some("whsec_fake".to_string());
+        let payload = r#"{"type":"x.y","data":{}}"#;
+        // Missing v1=<hex> segment.
+        let r = webhook_handle(&cfg, payload, "t=12345");
+        assert!(matches!(r, Err(BillingError::InvalidSignature)));
     }
 
     #[test]

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Star, Download, Tag, GitBranch, CheckCircle2 } from "lucide-react";
+import { Star, Download, Tag, GitBranch, CheckCircle2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useStore } from "@/lib/store";
 import {
@@ -12,6 +12,13 @@ import {
  * v3.5 §1.7 — Template detail view. Renders description, screenshots
  * (none in v3.5 stub), version history, dependency tree, and the 1-click
  * install button.
+ *
+ * Wave 2 install affordance:
+ *   * Idle: "Install free" / "Install for $XX.XX"
+ *   * Busy: spinner + "Installing…" — disabled
+ *   * Already-installed: secondary button "Already installed", click flips
+ *     to "Uninstall"
+ *   * Success: emerald success toast + checkmark badge
  */
 export function TemplateDetail({
   template,
@@ -25,13 +32,20 @@ export function TemplateDetail({
   const pushToast = useStore((s) => s.ui.pushToast);
   const currentUser = useStore((s) => s.ui.currentUser);
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState<string | null>(null);
 
   const isPlatformCurated = template.author === "tangerine";
   const isFree = template.price_cents === 0;
 
   async function handleInstall() {
     setBusy(true);
+    setProgress("Resolving dependencies…");
     try {
+      // Lightweight progress narration: the backend pipeline runs sync, but
+      // we surface step labels so the user sees something during the call.
+      // The actual atomic pipeline (resolve → apply → ledger → audit) is
+      // single-shot from the React side.
+      setProgress("Applying template content…");
       await marketplaceInstallTemplate(template.id, currentUser);
       pushToast("success", `Installed ${template.name}`);
       onInstallChange();
@@ -39,11 +53,13 @@ export function TemplateDetail({
       pushToast("error", `Install failed: ${String(e)}`);
     } finally {
       setBusy(false);
+      setProgress(null);
     }
   }
 
   async function handleUninstall() {
     setBusy(true);
+    setProgress("Removing template…");
     try {
       await marketplaceUninstallTemplate(template.id);
       pushToast("info", `Uninstalled ${template.name}`);
@@ -52,6 +68,7 @@ export function TemplateDetail({
       pushToast("error", `Uninstall failed: ${String(e)}`);
     } finally {
       setBusy(false);
+      setProgress(null);
     }
   }
 
@@ -69,6 +86,12 @@ export function TemplateDetail({
                 <span className="ml-2 inline-flex items-center gap-0.5 rounded bg-[var(--ti-orange-50)] px-1.5 py-0.5 text-[11px] font-medium text-[var(--ti-orange-700)] dark:bg-stone-800 dark:text-[var(--ti-orange-500)]">
                   <Star size={11} />
                   Platform-curated
+                </span>
+              )}
+              {installed && (
+                <span className="ml-2 inline-flex items-center gap-0.5 rounded bg-emerald-50 px-1.5 py-0.5 text-[11px] font-medium text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400">
+                  <CheckCircle2 size={11} />
+                  Installed
                 </span>
               )}
             </p>
@@ -110,15 +133,36 @@ export function TemplateDetail({
 
       <section className="flex items-center gap-2">
         {installed ? (
-          <Button
-            type="button"
-            variant="outline"
-            disabled={busy}
-            onClick={handleUninstall}
-            data-testid="template-uninstall"
-          >
-            {busy ? "Uninstalling…" : "Uninstall"}
-          </Button>
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={busy}
+              data-testid="template-installed-badge"
+              className="cursor-default opacity-90"
+            >
+              {busy ? (
+                <span className="inline-flex items-center gap-1">
+                  <Loader2 size={12} className="animate-spin" />
+                  {progress ?? "Working…"}
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1">
+                  <CheckCircle2 size={12} className="text-emerald-600" />
+                  Already installed
+                </span>
+              )}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={busy}
+              onClick={handleUninstall}
+              data-testid="template-uninstall"
+            >
+              Uninstall
+            </Button>
+          </>
         ) : (
           <Button
             type="button"
@@ -126,13 +170,17 @@ export function TemplateDetail({
             onClick={handleInstall}
             data-testid="template-install"
           >
-            {busy ? "Installing…" : isFree ? "Install free" : `Install for $${(template.price_cents / 100).toFixed(2)}`}
+            {busy ? (
+              <span className="inline-flex items-center gap-1">
+                <Loader2 size={12} className="animate-spin" />
+                {progress ?? "Installing…"}
+              </span>
+            ) : isFree ? (
+              "Install free"
+            ) : (
+              `Install for $${(template.price_cents / 100).toFixed(2)}`
+            )}
           </Button>
-        )}
-        {installed && (
-          <span className="text-[12px] text-emerald-600 dark:text-emerald-400">
-            Installed for team
-          </span>
         )}
       </section>
     </article>

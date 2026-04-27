@@ -27,6 +27,13 @@ import {
   personalAgentsCaptureClaudeCode,
   personalAgentsCaptureCodex,
   personalAgentsCaptureWindsurf,
+  // === v3.0 wave 2 personal agents ===
+  personalAgentsCaptureDevin,
+  personalAgentsCaptureReplit,
+  personalAgentsCaptureAppleIntelligence,
+  personalAgentsCaptureMsCopilot,
+  type PersonalAgentId,
+  // === end v3.0 wave 2 personal agents ===
   type PersonalAgentSummary,
   type PersonalAgentCaptureResult,
 } from "@/lib/tauri";
@@ -36,7 +43,7 @@ type AgentRow = {
    *  field on the summary. */
   atomDir: string;
   /** Toggle key in the persisted settings struct. */
-  flagKey: "cursor" | "claude_code" | "codex" | "windsurf";
+  flagKey: PersonalAgentId;
   label: string;
   description: string;
   capture: (currentUser?: string) => Promise<PersonalAgentCaptureResult>;
@@ -71,6 +78,39 @@ const AGENTS: AgentRow[] = [
     description: "Reads Windsurf sessions dir (Codeium fork, Cursor-like shape).",
     capture: personalAgentsCaptureWindsurf,
   },
+  // === v3.0 wave 2 personal agents ===
+  {
+    atomDir: "devin",
+    flagKey: "devin",
+    label: "Devin",
+    description:
+      "Cognition Labs cloud agent. Webhook + REST poll fallback (token + secret in Settings).",
+    capture: personalAgentsCaptureDevin,
+  },
+  {
+    atomDir: "replit",
+    flagKey: "replit",
+    label: "Replit Agent",
+    description: "Replit cloud agent. REST poll (token in Settings, stub default).",
+    capture: personalAgentsCaptureReplit,
+  },
+  {
+    atomDir: "apple-intelligence",
+    flagKey: "apple_intelligence",
+    label: "Apple Intelligence",
+    description:
+      "macOS Shortcuts post-action hook (Writing Tools / Image Playground / Genmoji). macOS only.",
+    capture: personalAgentsCaptureAppleIntelligence,
+  },
+  {
+    atomDir: "ms-copilot",
+    flagKey: "ms_copilot",
+    label: "MS Copilot (personal)",
+    description:
+      "Microsoft Copilot via Graph API. Enterprise license required — stub mode by default.",
+    capture: personalAgentsCaptureMsCopilot,
+  },
+  // === end v3.0 wave 2 personal agents ===
 ];
 
 export function PersonalAgentsSettings() {
@@ -108,6 +148,12 @@ export function PersonalAgentsSettings() {
           claude_code: settings.claude_code,
           codex: settings.codex,
           windsurf: settings.windsurf,
+          // === v3.0 wave 2 personal agents ===
+          devin: settings.devin,
+          replit: settings.replit,
+          apple_intelligence: settings.apple_intelligence,
+          ms_copilot: settings.ms_copilot,
+          // === end v3.0 wave 2 personal agents ===
         });
         setLastSyncAt(settings.last_sync_at ?? null);
       } catch (e) {
@@ -135,6 +181,12 @@ export function PersonalAgentsSettings() {
         claude_code: updated.claude_code,
         codex: updated.codex,
         windsurf: updated.windsurf,
+        // === v3.0 wave 2 personal agents ===
+        devin: updated.devin,
+        replit: updated.replit,
+        apple_intelligence: updated.apple_intelligence,
+        ms_copilot: updated.ms_copilot,
+        // === end v3.0 wave 2 personal agents ===
       });
       setLastSyncAt(updated.last_sync_at ?? null);
     } catch (e) {

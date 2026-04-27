@@ -2012,6 +2012,18 @@ export interface PersonalAgentSettings {
   claude_code: boolean;
   codex: boolean;
   windsurf: boolean;
+  // === v3.0 wave 2 personal agents ===
+  /** Devin (Cognition Labs) instance webhook + REST poll capture flag. */
+  devin: boolean;
+  /** Replit Agent REST poll capture flag. */
+  replit: boolean;
+  /** Apple Intelligence (macOS Shortcuts) post-action webhook capture
+   *  flag. The Rust adapter is platform-gated — even with this flag on,
+   *  capture is a no-op on non-macOS hosts. */
+  apple_intelligence: boolean;
+  /** Microsoft Copilot personal Graph API capture flag (stub default). */
+  ms_copilot: boolean;
+  // === end v3.0 wave 2 personal agents ===
   last_sync_at: string | null;
 }
 
@@ -2027,6 +2039,17 @@ export async function personalAgentsScanAll(): Promise<PersonalAgentSummary[]> {
       { source: "claude-code", detected: false, home_path: "(mock)", conversation_count: 0 },
       { source: "codex", detected: false, home_path: "(mock)", conversation_count: 0 },
       { source: "windsurf", detected: false, home_path: "(mock)", conversation_count: 0 },
+      // === v3.0 wave 2 personal agents ===
+      { source: "devin", detected: false, home_path: "(mock)", conversation_count: 0 },
+      { source: "replit", detected: false, home_path: "(mock)", conversation_count: 0 },
+      {
+        source: "apple-intelligence",
+        detected: false,
+        home_path: "(mock)",
+        conversation_count: 0,
+      },
+      { source: "ms-copilot", detected: false, home_path: "(mock)", conversation_count: 0 },
+      // === end v3.0 wave 2 personal agents ===
     ],
   );
 }
@@ -2074,6 +2097,57 @@ export async function personalAgentsCaptureWindsurf(
   );
 }
 
+// === v3.0 wave 2 personal agents ===
+// Wave 2 capture wrappers. Each one is opt-in / stub-default on the Rust
+// side. The mock returns an empty result so vitest / browser-dev renders
+// the same UI affordances as the wave 1 sources.
+
+export async function personalAgentsCaptureDevin(
+  current_user?: string,
+): Promise<PersonalAgentCaptureResult> {
+  return safeInvoke<PersonalAgentCaptureResult>(
+    "personal_agents_capture_devin",
+    { args: { current_user: current_user ?? null } },
+    () => ({ source: "devin", written: 0, skipped: 0, errors: ["no Tauri bridge"] }),
+  );
+}
+
+export async function personalAgentsCaptureReplit(
+  current_user?: string,
+): Promise<PersonalAgentCaptureResult> {
+  return safeInvoke<PersonalAgentCaptureResult>(
+    "personal_agents_capture_replit",
+    { args: { current_user: current_user ?? null } },
+    () => ({ source: "replit", written: 0, skipped: 0, errors: ["no Tauri bridge"] }),
+  );
+}
+
+export async function personalAgentsCaptureAppleIntelligence(
+  current_user?: string,
+): Promise<PersonalAgentCaptureResult> {
+  return safeInvoke<PersonalAgentCaptureResult>(
+    "personal_agents_capture_apple_intelligence",
+    { args: { current_user: current_user ?? null } },
+    () => ({
+      source: "apple-intelligence",
+      written: 0,
+      skipped: 0,
+      errors: ["no Tauri bridge"],
+    }),
+  );
+}
+
+export async function personalAgentsCaptureMsCopilot(
+  current_user?: string,
+): Promise<PersonalAgentCaptureResult> {
+  return safeInvoke<PersonalAgentCaptureResult>(
+    "personal_agents_capture_ms_copilot",
+    { args: { current_user: current_user ?? null } },
+    () => ({ source: "ms-copilot", written: 0, skipped: 0, errors: ["no Tauri bridge"] }),
+  );
+}
+// === end v3.0 wave 2 personal agents ===
+
 export async function personalAgentsGetSettings(): Promise<PersonalAgentSettings> {
   return safeInvoke<PersonalAgentSettings>(
     "personal_agents_get_settings",
@@ -2083,6 +2157,12 @@ export async function personalAgentsGetSettings(): Promise<PersonalAgentSettings
       claude_code: false,
       codex: false,
       windsurf: false,
+      // === v3.0 wave 2 personal agents ===
+      devin: false,
+      replit: false,
+      apple_intelligence: false,
+      ms_copilot: false,
+      // === end v3.0 wave 2 personal agents ===
       last_sync_at: null,
     }),
   );
@@ -2101,10 +2181,25 @@ export async function personalAgentsSetSettings(
   );
 }
 
+/** Every personal-agent flag id known to the Rust set_watcher command.
+ *  Wave 1: cursor / claude_code / codex / windsurf. Wave 2: devin /
+ *  replit / apple_intelligence / ms_copilot. */
+export type PersonalAgentId =
+  | "cursor"
+  | "claude_code"
+  | "codex"
+  | "windsurf"
+  // === v3.0 wave 2 personal agents ===
+  | "devin"
+  | "replit"
+  | "apple_intelligence"
+  | "ms_copilot";
+// === end v3.0 wave 2 personal agents ===
+
 /** Flip a single agent toggle. Returns the updated settings struct so
  *  the caller can sync the zustand mirror to disk-truth in one round. */
 export async function personalAgentsSetWatcher(
-  agent_id: "cursor" | "claude_code" | "codex" | "windsurf",
+  agent_id: PersonalAgentId,
   enabled: boolean,
 ): Promise<PersonalAgentSettings> {
   return safeInvoke<PersonalAgentSettings>(
@@ -2115,6 +2210,12 @@ export async function personalAgentsSetWatcher(
       claude_code: agent_id === "claude_code" ? enabled : false,
       codex: agent_id === "codex" ? enabled : false,
       windsurf: agent_id === "windsurf" ? enabled : false,
+      // === v3.0 wave 2 personal agents ===
+      devin: agent_id === "devin" ? enabled : false,
+      replit: agent_id === "replit" ? enabled : false,
+      apple_intelligence: agent_id === "apple_intelligence" ? enabled : false,
+      ms_copilot: agent_id === "ms_copilot" ? enabled : false,
+      // === end v3.0 wave 2 personal agents ===
       last_sync_at: null,
     }),
   );
@@ -2585,6 +2686,22 @@ export async function marketplaceInstallTemplate(
       installed_at: new Date().toISOString(),
       version: "0.1.0",
     }),
+  );
+}
+
+/**
+ * Whether the given (template, team) is already installed. Wave 2 — backend
+ * reads `installs.json`. Used by the detail page to render the "Already
+ * installed" state without re-running the install pipeline.
+ */
+export async function marketplaceIsInstalled(
+  templateId: string,
+  teamId: string,
+): Promise<boolean> {
+  return safeInvoke<boolean>(
+    "marketplace_is_installed",
+    { templateId, teamId },
+    () => false,
   );
 }
 
