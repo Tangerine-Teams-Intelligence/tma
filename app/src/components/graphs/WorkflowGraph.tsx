@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
+// Hoisted nodeTypes lives at the bottom of this file (after the
+// Node component declarations) — see NODE_TYPES.
 import { useNavigate } from "react-router-dom";
 import ReactFlow, {
   Background,
@@ -88,16 +90,6 @@ export function WorkflowGraph() {
     [navigate],
   );
 
-  const nodeTypes = useMemo(
-    () => ({
-      person: PersonNode,
-      project: ProjectNode,
-      decision: DecisionNode,
-      agent: AgentNode,
-    }),
-    [],
-  );
-
   if (atoms === null) {
     return (
       <div
@@ -146,7 +138,7 @@ export function WorkflowGraph() {
       <ReactFlow
         nodes={nodes}
         edges={edges}
-        nodeTypes={nodeTypes}
+        nodeTypes={NODE_TYPES}
         onNodeClick={onNodeClick}
         fitView
         fitViewOptions={{ padding: 0.25 }}
@@ -477,5 +469,19 @@ function AgentNode({ data }: NodeProps<WorkflowNodeData>) {
     </div>
   );
 }
+
+/**
+ * Hoisted nodeTypes object. Defining this outside the component body
+ * stops React Flow from emitting the "[React Flow]: It looks like you've
+ * created a new nodeTypes…" warning on every render — the prop identity
+ * is now stable across renders by reference, not just per-component
+ * `useMemo` (which still creates a fresh object on remount).
+ */
+const NODE_TYPES = {
+  person: PersonNode,
+  project: ProjectNode,
+  decision: DecisionNode,
+  agent: AgentNode,
+} as const;
 
 export default WorkflowGraph;

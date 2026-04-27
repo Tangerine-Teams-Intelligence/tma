@@ -105,8 +105,6 @@ export function SocialGraph({
     [navigate],
   );
 
-  const nodeTypes = useMemo(() => ({ "social-person": PersonNode }), []);
-
   if (atoms === null) {
     return (
       <div
@@ -154,7 +152,7 @@ export function SocialGraph({
       <ReactFlow
         nodes={nodes}
         edges={edges}
-        nodeTypes={nodeTypes}
+        nodeTypes={NODE_TYPES}
         onNodeClick={onNodeClick}
         fitView
         fitViewOptions={{ padding: 0.25 }}
@@ -410,5 +408,12 @@ function PersonNode({ data }: NodeProps<SocialNodeData>) {
     </div>
   );
 }
+
+/**
+ * Hoisted nodeTypes — see WorkflowGraph for the rationale.
+ */
+const NODE_TYPES = {
+  "social-person": PersonNode,
+} as const;
 
 export default SocialGraph;

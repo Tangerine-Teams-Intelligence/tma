@@ -111,12 +111,30 @@ export function HomeStrip() {
       <span data-testid="co-thinker-home-strip-heartbeat">
         last heartbeat {lastHeartbeat ? relativeTime(lastHeartbeat) : "never"}
       </span>
-      <span aria-hidden>·</span>
-      <span data-testid="co-thinker-home-strip-observations">
-        {observations} thing{observations === 1 ? "" : "s"} watching
-      </span>
+      {/* Observations counter is gated on a real heartbeat. Pre-init the
+          strip would otherwise flash "0 things watching", which reads as
+          a broken empty state — friendlier to point at the Initialize CTA
+          on /co-thinker until the first heartbeat actually fires. */}
+      {lastHeartbeat ? (
+        <>
+          <span aria-hidden>·</span>
+          <span data-testid="co-thinker-home-strip-observations">
+            {observations} thing{observations === 1 ? "" : "s"} watching
+          </span>
+        </>
+      ) : (
+        <>
+          <span aria-hidden>·</span>
+          <span
+            data-testid="co-thinker-home-strip-uninitialized"
+            className="italic text-stone-500 dark:text-stone-500"
+          >
+            not started yet — click to initialize
+          </span>
+        </>
+      )}
       <span className="ml-auto text-stone-500 dark:text-stone-500">
-        click to dive
+        {lastHeartbeat ? "click to dive" : "→"}
       </span>
     </Link>
   );

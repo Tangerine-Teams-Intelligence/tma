@@ -4,19 +4,70 @@ import { useTranslation } from "react-i18next";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { activeLocale, setLocale } from "@/i18n";
+import { useStore } from "@/lib/store";
 import type { ConfigDraft } from "./Settings";
 
 interface Props {
   draft: ConfigDraft;
   update: <K extends keyof ConfigDraft>(key: K, val: ConfigDraft[K]) => void;
+  /** Jump the parent Settings page to the AGI tab. Optional — the widget
+   *  hides its "adjust" affordance when omitted. Wired by `Settings.tsx`
+   *  via `setTab("agi")`. */
+  onJumpToAGI?: () => void;
 }
 
-export function GeneralSettings({ draft, update }: Props) {
+export function GeneralSettings({ draft, update, onJumpToAGI }: Props) {
   const { t } = useTranslation();
   const [lang, setLang] = useState<"en" | "zh">(activeLocale());
+  // Quick-access mirror of the AGI sensitivity slider. Read-only here —
+  // the canonical knob lives on the AGI tab (see AGISettings) so we don't
+  // duplicate write paths. Clicking "adjust" jumps to the AGI tab.
+  const agiSensitivity = useStore((s) => s.ui.agiSensitivity);
+  const agiParticipation = useStore((s) => s.ui.agiParticipation);
 
   return (
     <div className="flex max-w-xl flex-col gap-4">
+      {/* AGI sensitivity quick-access. Lives at the top of General because
+          it's the most-tweaked AGI knob and users shouldn't have to dig
+          into the AGI sub-tab to glance at the current value. The full
+          slider stays on the AGI tab — clicking "adjust" jumps there. */}
+      <div
+        data-testid="st-general-agi-sensitivity-quick"
+        className="rounded-md border border-[var(--ti-border-default)] bg-[var(--ti-paper-50)] px-3 py-2"
+      >
+        <div className="flex items-center gap-3">
+          <span className="text-xs font-medium text-[var(--ti-ink-700)]">
+            AGI sensitivity:
+          </span>
+          {/* Inline preview slider. Disabled — the canonical control is
+              on the AGI tab. We still render the track so the user can
+              see the current value at a glance. */}
+          <input
+            type="range"
+            min={0}
+            max={100}
+            step={1}
+            value={agiSensitivity}
+            disabled
+            aria-label="AGI sensitivity (preview)"
+            className="h-1 flex-1 accent-[var(--ti-orange-500)] disabled:cursor-not-allowed disabled:opacity-70"
+          />
+          <span className="w-10 text-right font-mono text-xs text-[var(--ti-ink-700)]">
+            {agiParticipation ? agiSensitivity : "off"}
+          </span>
+          {onJumpToAGI && (
+            <button
+              type="button"
+              onClick={onJumpToAGI}
+              data-testid="st-general-agi-sensitivity-adjust"
+              className="text-xs text-[var(--ti-orange-700)] hover:underline"
+            >
+              adjust →
+            </button>
+          )}
+        </div>
+      </div>
+
       <div>
         <Label htmlFor="st-meetings-repo">Meetings repo</Label>
         <Input

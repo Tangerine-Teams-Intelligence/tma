@@ -132,15 +132,6 @@ export function DecisionLineageTree() {
     [navigate],
   );
 
-  const nodeTypes = useMemo(
-    () => ({
-      "lineage-source": SourceNode,
-      "lineage-decision": DecisionNode,
-      "lineage-writeback": WritebackNode,
-    }),
-    [],
-  );
-
   if (atoms === null) {
     return (
       <div
@@ -182,7 +173,7 @@ export function DecisionLineageTree() {
       <ReactFlow
         nodes={nodes}
         edges={edges}
-        nodeTypes={nodeTypes}
+        nodeTypes={NODE_TYPES}
         onNodeClick={onNodeClick}
         fitView
         fitViewOptions={{ padding: 0.2 }}
@@ -603,5 +594,16 @@ function writebackIcon(flavor?: string) {
       return FileText;
   }
 }
+
+/**
+ * Hoisted nodeTypes — see WorkflowGraph for the rationale. Stable object
+ * identity across renders silences React Flow's "new nodeTypes object on
+ * every render" warning.
+ */
+const NODE_TYPES = {
+  "lineage-source": SourceNode,
+  "lineage-decision": DecisionNode,
+  "lineage-writeback": WritebackNode,
+} as const;
 
 export default DecisionLineageTree;

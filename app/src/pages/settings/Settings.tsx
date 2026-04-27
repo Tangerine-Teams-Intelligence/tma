@@ -113,7 +113,13 @@ export default function Settings() {
       </nav>
 
       <section className="flex-1 overflow-auto">
-        {tab === "general" && <GeneralSettings draft={draft} update={update} />}
+        {tab === "general" && (
+          <GeneralSettings
+            draft={draft}
+            update={update}
+            onJumpToAGI={() => setTab("agi")}
+          />
+        )}
         {tab === "ai-tools" && <AIToolsSettings />}
         {tab === "agi" && <AGISettings />}
         {tab === "personal-agents" && <PersonalAgentsSettings />}

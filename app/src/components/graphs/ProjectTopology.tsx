@@ -103,8 +103,6 @@ export function ProjectTopology() {
     [navigate],
   );
 
-  const nodeTypes = useMemo(() => ({ "topology-project": ProjectNode }), []);
-
   if (atoms === null) {
     return (
       <div
@@ -149,7 +147,7 @@ export function ProjectTopology() {
       <ReactFlow
         nodes={nodes}
         edges={edges}
-        nodeTypes={nodeTypes}
+        nodeTypes={NODE_TYPES}
         onNodeClick={onNodeClick}
         fitView
         fitViewOptions={{ padding: 0.25 }}
@@ -426,5 +424,12 @@ function statusStyle(status: ProjectStatus): { border: string; dot: string } {
 function prettyProjectLabel(slug: string): string {
   return slug.replace(/[-_]+/g, " ").trim().slice(0, 40) || slug;
 }
+
+/**
+ * Hoisted nodeTypes — see WorkflowGraph for the rationale.
+ */
+const NODE_TYPES = {
+  "topology-project": ProjectNode,
+} as const;
 
 export default ProjectTopology;
