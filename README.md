@@ -80,6 +80,18 @@ Reminder: cd "<target_repo>" && git push
 
 Not a competitor to Granola — different customer. Run both if you want human notes AND AI context.
 
+## How we make money
+
+Tangerine is open source forever. You can run it on your laptop, fork the repo, name your AI whatever you want, and never pay us anything.
+
+If you want zero-config, use Tangerine Cloud:
+- **Bring your own Cursor Pro / Claude Pro** — Tangerine borrows your existing subscriptions, no API keys, no Tangerine cost.
+- **Or use Tangerine credits** — backed by DeepSeek V4. Pay per token, not per seat. ~$2-5/team/month for a typical co-thinker.
+
+[Marketplace + Enterprise white-label coming v2.0]
+
+See [BUSINESS_MODEL_SPEC.md](./BUSINESS_MODEL_SPEC.md) for the full breakdown.
+
 ## Three differentiators
 
 1. **Vendor-less output.** No hosted dashboard. Output is a git commit to *your* repo. You own the bytes.
