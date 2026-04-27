@@ -1,3 +1,7 @@
+//! Perf (API_SURFACE_SPEC §5): `suppression_check` / `suppression_list` are
+//! read commands → 50 ms p95 (in-memory map). `suppression_clear` /
+//! `suppression_recompute` are write commands → 200 ms p95.
+//!
 //! v1.9.0-beta.3 P3-A — Suppression Tauri command surface.
 //!
 //! Thin envelope around `crate::agi::suppression`. The frontend's

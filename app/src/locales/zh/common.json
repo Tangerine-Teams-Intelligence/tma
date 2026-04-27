@@ -1,0 +1,71 @@
+{
+  "sidebar": {
+    "today": "今天",
+    "thisWeek": "本周",
+    "people": "成员",
+    "projects": "项目",
+    "threads": "话题",
+    "alignment": "对齐",
+    "inbox": "收件箱",
+    "canvas": "画布",
+    "coThinker": "协同思考",
+    "reviews": "审阅",
+    "marketplace": "市场",
+    "memory": "记忆",
+    "sources": "来源",
+    "aiTools": "AI 工具",
+    "advanced": "高级",
+    "activeAgents": "活跃代理"
+  },
+  "onboarding": {
+    "welcome": "欢迎使用 Tangerine",
+    "solo": "单人",
+    "team": "团队",
+    "existingRepo": "使用已有仓库",
+    "newRepo": "新建",
+    "continue": "继续",
+    "skip": "跳过"
+  },
+  "buttons": {
+    "save": "保存",
+    "cancel": "取消",
+    "confirm": "确认",
+    "apply": "应用",
+    "signIn": "登录",
+    "signOut": "退出",
+    "retry": "重试",
+    "dismiss": "忽略",
+    "close": "关闭"
+  },
+  "settings": {
+    "tabs": {
+      "general": "常规",
+      "aiTools": "AI 工具",
+      "agi": "AGI",
+      "team": "团队",
+      "adapters": "适配器",
+      "advanced": "高级",
+      "personalAgents": "个人代理"
+    },
+    "language": {
+      "label": "语言",
+      "subtitle": "界面语言。记忆内容不会被翻译。",
+      "english": "English",
+      "chinese": "中文"
+    }
+  },
+  "empty": {
+    "noAtoms": "暂无记录",
+    "connectSource": "连接一个数据源"
+  },
+  "errors": {
+    "internal_io": "保存失败。磁盘可能已满或没有权限。",
+    "not_found": "未找到。请重新加载。",
+    "unauthorized": "需要重新连接。",
+    "network": "网络异常,正在重试。",
+    "parse": "文件已损坏。详情见日志。",
+    "config": "配置不完整。",
+    "offline": "离线 — 网络恢复后将同步更改。",
+    "online": "已恢复在线。"
+  }
+}

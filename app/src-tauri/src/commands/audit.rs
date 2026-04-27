@@ -1,3 +1,9 @@
+//! Perf (API_SURFACE_SPEC §5): `audit_append` is a write command → 200 ms p95
+//! (append-only JSONL). `audit_read_*` / `audit_search` / `audit_log_export`
+//! / `audit_get_region` / `audit_verify_chain` are read commands → 50 ms p95
+//! for typical day windows; longer ranges scale linearly. `audit_set_region`
+//! is a write command → 200 ms p95.
+//!
 //! v3.5 §5.2 — Tauri command surface for the audit log.
 //!
 //! Thin envelope around `crate::audit_log`. v3.5 wave 2 adds:

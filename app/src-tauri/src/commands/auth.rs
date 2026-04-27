@@ -1,3 +1,7 @@
+//! Perf (API_SURFACE_SPEC §5): `auth_session` / `auth_sign_out` are read/write
+//! local commands → 50 ms / 200 ms p95. `auth_sign_in_*` / `auth_sign_up` /
+//! `auth_verify_email` are upstream-validation commands → 3 s p95.
+//!
 //! v2.5 — Tauri command surface for Supabase auth.
 //!
 //! Thin shim over `crate::auth`. Each command resolves the current

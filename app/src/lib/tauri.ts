@@ -2915,4 +2915,280 @@ export async function auditReadDay(day: string): Promise<AuditEntry[]> {
 export async function auditSearch(query: string, days: number): Promise<AuditEntry[]> {
   return safeInvoke<AuditEntry[]>("audit_search", { query, days }, () => []);
 }
+
+export async function auditLogExport(days: number): Promise<string> {
+  return safeInvoke<string>("audit_log_export", { days }, () => "");
+}
+
+export async function auditVerifyChain(
+  days: number
+): Promise<{ ok: boolean; broken_at: string | null; checked: number }> {
+  return safeInvoke("audit_verify_chain", { days }, () => ({
+    ok: true,
+    broken_at: null,
+    checked: 0,
+  }));
+}
+
+export async function auditGetRegion(): Promise<string> {
+  return safeInvoke<string>("audit_get_region", undefined, () => "us-east");
+}
+
+export async function auditSetRegion(region: string): Promise<void> {
+  return safeInvoke<void>("audit_set_region", { region }, () => undefined);
+}
 // === end v3.5 audit ===
+
+// ============================================================
+// Wave 3 — gap-fill wrappers (commands that previously lacked a
+// typed bridge in any lib/*.ts). All adhere to API_SURFACE_SPEC §3:
+// `safeInvoke` + structurally-valid mock fallback. Argument shapes
+// mirror the Rust `*Args` structs exactly.
+// ============================================================
+
+// === bot lifecycle (grandfathered names) ===
+
+export interface StartBotArgs {
+  meeting_id: string;
+  dry_run?: boolean;
+}
+export interface StartBotResult {
+  run_id: string;
+  pid: number | null;
+}
+export interface BotStatusResult {
+  pid: number | null;
+  voice_channel_id: string | null;
+}
+
+export async function startBot(args: StartBotArgs): Promise<StartBotResult> {
+  return safeInvoke<StartBotResult>("start_bot", { args }, () => ({
+    run_id: "",
+    pid: null,
+  }));
+}
+
+export async function stopBot(meetingId: string): Promise<void> {
+  return safeInvoke<void>(
+    "stop_bot",
+    { args: { meeting_id: meetingId } },
+    () => undefined
+  );
+}
+
+export async function botStatus(meetingId: string): Promise<BotStatusResult> {
+  return safeInvoke<BotStatusResult>(
+    "bot_status",
+    { args: { meeting_id: meetingId } },
+    () => ({ pid: null, voice_channel_id: null })
+  );
+}
+
+// === meeting file read (read commands; <50ms p95) ===
+
+export interface ReadMeetingFileArgs {
+  meeting_id: string;
+  /** One of: "transcript" | "observations" | "summary" | "knowledge-diff". */
+  file: string;
+  offset?: number;
+  limit?: number;
+}
+
+export async function readMeetingFile(args: ReadMeetingFileArgs): Promise<string> {
+  return safeInvoke<string>("read_meeting_file", { args }, () => "");
+}
+
+// === fs tail / watch (event-emitter handles; <200ms p95) ===
+// `tailFile` is defined earlier with an event-subscriber signature; `untailFile`
+// is exposed via the unsubscribe callback returned by `tailFile`. Wave-3 adds
+// the watcher pair below — they emit `fs:meeting:{watch_id}:*` events that the
+// React Live route subscribes to.
+
+export interface WatchMeetingResult {
+  watch_id: string;
+}
+
+export async function watchMeeting(meetingId: string): Promise<WatchMeetingResult> {
+  return safeInvoke<WatchMeetingResult>(
+    "watch_meeting",
+    { args: { meeting_id: meetingId } },
+    () => ({ watch_id: "" })
+  );
+}
+
+export async function unwatchMeeting(watchId: string): Promise<void> {
+  return safeInvoke<void>(
+    "unwatch_meeting",
+    { args: { watch_id: watchId } },
+    () => undefined
+  );
+}
+
+// === env / external helpers (grandfathered) ===
+
+export async function writeEnvFile(entries: Record<string, string>): Promise<void> {
+  return safeInvoke<void>("write_env_file", { args: { entries } }, () => undefined);
+}
+
+export async function openInEditor(path: string, line?: number): Promise<void> {
+  return safeInvoke<void>(
+    "open_in_editor",
+    { args: { path, line: line ?? null } },
+    () => undefined
+  );
+}
+
+export interface UpdateCheckResult {
+  available: boolean;
+  version: string | null;
+  notes: string | null;
+}
+
+export async function checkUpdates(): Promise<UpdateCheckResult> {
+  return safeInvoke<UpdateCheckResult>("check_updates", undefined, () => ({
+    available: false,
+    version: null,
+    notes: null,
+  }));
+}
+
+export interface WsPortInfo {
+  port: number | null;
+  endpoint: string;
+}
+
+export async function getWsPort(): Promise<WsPortInfo> {
+  return safeInvoke<WsPortInfo>("get_ws_port", undefined, () => ({
+    port: null,
+    endpoint: "",
+  }));
+}
+
+// === discord (validate token) ===
+
+export async function validateDiscordBotToken(
+  token: string
+): Promise<{ ok: boolean; error?: string }> {
+  return safeInvoke("validate_discord_bot_token", { token }, () => ({
+    ok: false,
+    error: "mock: not validated outside Tauri",
+  }));
+}
+
+// === billing reconcile + email-verify trio (admin / paywall) ===
+
+export interface BillingReconcileOutcome {
+  promoted_to_past_due: number;
+  promoted_to_active: number;
+  errors: string[];
+}
+
+export async function billingReconcile(): Promise<BillingReconcileOutcome> {
+  return safeInvoke<BillingReconcileOutcome>(
+    "billing_reconcile",
+    undefined,
+    () => ({ promoted_to_past_due: 0, promoted_to_active: 0, errors: [] })
+  );
+}
+
+export interface EmailVerifyTokenDto {
+  token: string;
+  provider: string;
+}
+export interface EmailVerifyResultDto {
+  email: string;
+  verified: boolean;
+}
+
+export async function emailVerifySend(email: string): Promise<EmailVerifyTokenDto> {
+  return safeInvoke<EmailVerifyTokenDto>("email_verify_send", { email }, () => ({
+    token: "",
+    provider: "stub",
+  }));
+}
+
+export async function emailVerifyConfirm(token: string): Promise<EmailVerifyResultDto> {
+  return safeInvoke<EmailVerifyResultDto>(
+    "email_verify_confirm",
+    { token },
+    () => ({ email: "", verified: false })
+  );
+}
+
+export async function emailVerifyStatus(email: string): Promise<EmailVerifyResultDto> {
+  return safeInvoke<EmailVerifyResultDto>(
+    "email_verify_status",
+    { email },
+    () => ({ email, verified: false })
+  );
+}
+
+// === ai_tools (single-tool read-through) ===
+
+export interface AIToolStatusBridge {
+  id: string;
+  name: string;
+  state: string;
+  detail: string | null;
+}
+
+export async function getAiToolStatus(id: string): Promise<AIToolStatusBridge | null> {
+  return safeInvoke<AIToolStatusBridge | null>(
+    "get_ai_tool_status",
+    { id },
+    () => null
+  );
+}
+
+// === sso (variant-aware result) ===
+
+export interface SamlValidationResult {
+  variant: "stub" | "real";
+  assertion: {
+    user_email: string;
+    user_name: string;
+    tenant: string;
+  } | null;
+  error: string | null;
+}
+
+export async function ssoValidateSamlResponseWithResult(
+  tenant: string,
+  response: string
+): Promise<SamlValidationResult> {
+  return safeInvoke<SamlValidationResult>(
+    "sso_validate_saml_response_with_result",
+    { tenant, response },
+    () => ({ variant: "stub", assertion: null, error: "mock: not validated" })
+  );
+}
+
+// === personal_agents (webhook entry points) ===
+
+export async function personalAgentsAppleIntelHook(args: {
+  current_user?: string | null;
+  payload: Record<string, unknown>;
+}): Promise<PersonalAgentCaptureResult> {
+  return safeInvoke<PersonalAgentCaptureResult>(
+    "personal_agents_apple_intel_hook",
+    { args },
+    () => ({
+      source: "apple-intelligence",
+      written: 0,
+      skipped: 0,
+      errors: [],
+    })
+  );
+}
+
+export async function personalAgentsDevinWebhook(args: {
+  current_user?: string | null;
+  payload: Record<string, unknown>;
+}): Promise<PersonalAgentCaptureResult> {
+  return safeInvoke<PersonalAgentCaptureResult>(
+    "personal_agents_devin_webhook",
+    { args },
+    () => ({ source: "devin", written: 0, skipped: 0, errors: [] })
+  );
+}
+// === end Wave 3 gap-fill wrappers ===

@@ -32,6 +32,9 @@ use tokio::sync::Notify;
 use tangerine_meeting_lib::commands;
 use tangerine_meeting_lib::daemon;
 use tangerine_meeting_lib::migration;
+// Wave 3 cross-cut — perf budget probe (OBSERVABILITY_SPEC §5).
+use tangerine_meeting_lib::perf::{Budget, Probe};
+use tangerine_meeting_lib::monitoring;
 use tangerine_meeting_lib::tmi_invoke_handler;
 use tangerine_meeting_lib::uri_handler;
 use tangerine_meeting_lib::ws_server;
@@ -58,6 +61,10 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .setup(|app| {
+            // Wave 3 — cold-start perf probe (OBSERVABILITY_SPEC §5 budget < 2s)
+            let cold_start_probe = Probe::start(Budget::COLD_START);
+            // Wave 3 — monitoring singleton (OBSERVABILITY_SPEC §9). Idempotent.
+            monitoring::init();
             // Initialise AppState (paths, runs, watchers, bots, downloads,
             // http, sync) so every command in the macro can read it from
             // `state::<AppState>()`.
@@ -268,6 +275,8 @@ fn main() {
                 daemon_control.install_event_sink(sink);
             }
             state.daemon.install(daemon_control);
+            // Close the cold-start probe (warns if > 2s budget)
+            let _ = cold_start_probe.finish();
             Ok(())
         })
         .invoke_handler(tmi_invoke_handler!())

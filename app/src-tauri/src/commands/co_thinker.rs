@@ -1,3 +1,8 @@
+//! Perf (API_SURFACE_SPEC §5): `co_thinker_read_brain` / `co_thinker_status`
+//! are read commands → 50 ms p95. `co_thinker_write_brain` is a write command
+//! → 200 ms p95. `co_thinker_trigger_heartbeat` is the heartbeat bucket →
+//! 30 s p95 (the entire ambient ingest + brain rewrite cycle).
+//!
 //! v1.8 Phase 3-B — Tauri command surface for the co-thinker brain.
 //!
 //! Exposed to the React `/co-thinker` route (P3-C):

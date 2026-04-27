@@ -1,3 +1,8 @@
+//! Perf (API_SURFACE_SPEC §5): `co_thinker_dispatch` is the LLM dispatch
+//! bucket → 5 s p95 for one round trip. Exhausting every channel and returning
+//! `AppError::External { code: "all_channels_exhausted" }` MUST also fit in 5 s
+//! (each channel is bounded by its own per-channel timeout).
+//!
 //! v1.8 Phase 3-A — Tauri command surface for the session borrower.
 //!
 //! Single command (`co_thinker_dispatch`) the React side calls when it needs

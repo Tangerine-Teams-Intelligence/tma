@@ -1,3 +1,6 @@
+//! Perf (API_SURFACE_SPEC §5): `agi_analyze_input` is the LLM dispatch bucket
+//! → 5 s p95 (routes through `co_thinker_dispatch` under the hood).
+//!
 //! v1.8 Phase 4-A — Tauri command surface for the ambient input analyser.
 //!
 //! Single command (`agi_analyze_input`) the React side

@@ -61,6 +61,12 @@ const config: Config = {
             failed: "#B83232",
             warn: "#B8860B",
           },
+          /* Wave 3 cross-cut — VISUAL_DESIGN_SPEC §1 semantic state tokens.
+             Backed by CSS variables in index.css so dark mode shifts via the
+             token swap rather than a parallel `dark:` class on every site. */
+          success: "var(--ti-success)",
+          warn: "var(--ti-warn)",
+          danger: "var(--ti-danger)",
         },
       },
       fontFamily: {
@@ -76,6 +82,12 @@ const config: Config = {
       },
       transitionDuration: {
         fast: "var(--ti-dur-fast)",
+        /* Wave 3 — spec §3 timing scale. `quick` = 100ms (hover/focus),
+           `medium` = 200ms (panel open, accept flash), `slow` = 400ms
+           (route change, graph layout settle). */
+        quick: "var(--ti-dur-quick)",
+        medium: "var(--ti-dur-medium)",
+        slow: "var(--ti-dur-slow)",
       },
       keyframes: {
         "live-pulse": {
@@ -86,10 +98,19 @@ const config: Config = {
           from: { opacity: "0", transform: "translateY(8px)" },
           to: { opacity: "1", transform: "translateY(0)" },
         },
+        /* Spec §3 — `ti-pulse` is the canonical co-thinker "alive" cadence
+           (1.4s). Existing call sites pass it inline as `animation:
+           ti-pulse 1.4s …`; exposing it through tailwind lets new components
+           reach the canonical cadence via `animate-ti-pulse`. */
+        "ti-pulse": {
+          "0%, 100%": { opacity: "0.25" },
+          "50%": { opacity: "1" },
+        },
       },
       animation: {
         "live-pulse": "live-pulse 2s ease-in-out infinite",
         "fade-in": "fade-in 200ms ease-out",
+        "ti-pulse": "ti-pulse 1.4s ease-in-out infinite",
       },
     },
   },

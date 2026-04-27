@@ -270,6 +270,10 @@ async fn do_heartbeat(cfg: &DaemonConfig, control: &Arc<DaemonControl>) {
         s.last_heartbeat = Some(started.to_rfc3339());
         s.heartbeat_count = s.heartbeat_count.saturating_add(1);
     }
+    // Wave 3 — feed the monitoring singleton (OBSERVABILITY_SPEC §9 SOC 2
+    // monitoring control). Every successful tick bumps the counter so
+    // the future Grafana dashboard can chart heartbeat liveness.
+    crate::monitoring::record_heartbeat_ok();
 
     // 1. Pull (best-effort)
     if cfg.git_pull_enabled {

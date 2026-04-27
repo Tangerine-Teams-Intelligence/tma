@@ -1,3 +1,9 @@
+//! Perf (API_SURFACE_SPEC §5): `billing_status` / `email_verify_status` are
+//! read commands → 50 ms p95. `billing_subscribe` / `billing_cancel` /
+//! `billing_trial_start` / `billing_webhook` / `email_verify_send` /
+//! `email_verify_confirm` are upstream-validation commands → 3 s p95.
+//! `billing_reconcile` is a daemon-only sweep → 30 s p95 (heartbeat bucket).
+//!
 //! v2.5 — Tauri command surface for Stripe Connect billing.
 //!
 //! Thin shim over `crate::billing`. Resolves the singleton config on every

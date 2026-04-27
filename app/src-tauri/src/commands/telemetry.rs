@@ -1,3 +1,8 @@
+//! Perf (API_SURFACE_SPEC §5): `telemetry_log` is a write command → 200 ms p95
+//! (append-only JSONL, single fsync). `telemetry_read_window` is a read command
+//! → 50 ms p95 for ≤ 7-day windows; longer windows scale linearly. `telemetry_clear`
+//! is a write command → 200 ms p95.
+//!
 //! v1.9.0-beta.1 P1-A — Action telemetry Tauri command surface.
 //!
 //! Thin envelope around `crate::agi::telemetry`. The frontend wrapper at

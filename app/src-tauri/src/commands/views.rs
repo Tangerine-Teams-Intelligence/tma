@@ -1,3 +1,8 @@
+//! Perf (API_SURFACE_SPEC §5): every `read_*` is a read command → 50 ms p95.
+//! `mark_atom_viewed` / `mark_atom_acked` / `mark_user_opened` are write
+//! commands → 200 ms p95. The timeline index is rebuilt by the daemon, not by
+//! these commands, so even large memory dirs stay within the read budget.
+//!
 //! Stage 1 Wave 3 — view-layer commands. Read-only surface that the
 //! React UX layer calls into to render `/today`, `/people`, `/projects`,
 //! `/threads`, `/alignment`, and `/inbox`.

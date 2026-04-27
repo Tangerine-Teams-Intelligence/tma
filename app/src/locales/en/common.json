@@ -1,0 +1,71 @@
+{
+  "sidebar": {
+    "today": "Today",
+    "thisWeek": "This week",
+    "people": "People",
+    "projects": "Projects",
+    "threads": "Threads",
+    "alignment": "Alignment",
+    "inbox": "Inbox",
+    "canvas": "Canvas",
+    "coThinker": "Co-thinker",
+    "reviews": "Reviews",
+    "marketplace": "Marketplace",
+    "memory": "Memory",
+    "sources": "Sources",
+    "aiTools": "AI tools",
+    "advanced": "Advanced",
+    "activeAgents": "Active agents"
+  },
+  "onboarding": {
+    "welcome": "Welcome to Tangerine",
+    "solo": "Solo",
+    "team": "Team",
+    "existingRepo": "Existing repo",
+    "newRepo": "Create new",
+    "continue": "Continue",
+    "skip": "Skip"
+  },
+  "buttons": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "apply": "Apply",
+    "signIn": "Sign in",
+    "signOut": "Sign out",
+    "retry": "Retry",
+    "dismiss": "Dismiss",
+    "close": "Close"
+  },
+  "settings": {
+    "tabs": {
+      "general": "General",
+      "aiTools": "AI tools",
+      "agi": "AGI",
+      "team": "Team",
+      "adapters": "Adapters",
+      "advanced": "Advanced",
+      "personalAgents": "Personal Agents"
+    },
+    "language": {
+      "label": "Language",
+      "subtitle": "UI language. Memory content is never translated.",
+      "english": "English",
+      "chinese": "中文"
+    }
+  },
+  "empty": {
+    "noAtoms": "No atoms yet",
+    "connectSource": "Connect a source"
+  },
+  "errors": {
+    "internal_io": "Couldn't save. Disk may be full or permissions blocked.",
+    "not_found": "Couldn't find that. Try reloading.",
+    "unauthorized": "Reconnect needed.",
+    "network": "Network glitch. Retrying.",
+    "parse": "File is corrupt. See log for details.",
+    "config": "Setup incomplete.",
+    "offline": "Offline — changes will sync when connection returns.",
+    "online": "Back online."
+  }
+}

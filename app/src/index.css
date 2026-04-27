@@ -32,13 +32,31 @@
      dark it's slightly lifted from paper-100 to keep the same hierarchy. */
   --ti-bg-elevated: #FFFFFF;
 
+  /* Wave 3 cross-cut (VISUAL_DESIGN_SPEC §1) — semantic state tokens.
+     Existing call sites use raw hex (`#B83232`, `#2D8659`, `#B8860B`); these
+     three vars normalise to the spec values so new components and gradual
+     rewrites can reach the canonical palette via `var(--ti-success|warn|danger)`.
+     Hex fallbacks match the spec light-mode column. */
+  --ti-success: #2D8F4E;
+  --ti-warn: #C8841A;
+  --ti-danger: #B5341E;
+
   --ti-font-sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
   --ti-font-mono: "JetBrains Mono", Consolas, "SF Mono", monospace;
   --ti-font-display: "EB Garamond", "Charter", Georgia, serif;
 
   --ti-radius: 8px;
+  /* `--ti-dur-fast` predates the v2 spec; spec §3 calls for 100ms but several
+     components already lean on the 150ms cadence, so we leave it untouched
+     and add `medium` / `slow` (and a spec-canonical `quick` alias = 100ms)
+     so new components can opt into the spec values without breaking existing
+     transitions. */
+  --ti-dur-quick: 100ms;
   --ti-dur-fast: 150ms;
+  --ti-dur-medium: 200ms;
+  --ti-dur-slow: 400ms;
   --ti-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ti-ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
 
   /* shadcn-style aliases on top of our tokens */
   --background: var(--ti-paper-100);
@@ -68,6 +86,14 @@
   /* Polish 1 (v1.9.0-beta.3) — elevated surface in dark sits above
      --ti-paper-100 (the body bg) so suggestion strips read as "lifted". */
   --ti-bg-elevated: #20203A;
+
+  /* Wave 3 cross-cut — semantic state tokens lift one shade in dark per spec
+     §1. Brand orange does not change (it is the brand mark anchor); state
+     colors stay saturated but get a touch brighter so they remain legible
+     against the lifted dark surfaces. */
+  --ti-success: #4FBE6F;
+  --ti-warn: #E5A638;
+  --ti-danger: #E55A3D;
 
   --background: var(--ti-paper-100);
   --foreground: var(--ti-ink-900);
@@ -204,4 +230,48 @@ body {
 .dark .border-stone-200:not([class*="dark:border-"]),
 [data-theme="dark"] .border-stone-200:not([class*="dark:border-"]) {
   border-color: var(--ti-border-default);
+}
+
+/* ============================================================
+   Wave 3 cross-cut — VISUAL_DESIGN_SPEC §3 + §7 + §8 backstops.
+   ============================================================ */
+
+/* Spec §3 — `ti-fade-in` is a global keyframe alias for components that
+   reach for the animation through inline style rather than the tailwind
+   `animate-fade-in` utility. Both compile to the same 200ms ease-out
+   curve. The tailwind utility is still the preferred call site. */
+@keyframes ti-fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Spec §3 + §7 — `prefers-reduced-motion: reduce` collapses every
+   animation to instant. The one exception is `ti-pulse`, which carries
+   semantic meaning (co-thinker "alive" indicator) — we freeze it at full
+   opacity instead of removing it entirely so the steady-state still
+   communicates "agent is online". */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  /* Override: ti-pulse keeps semantic meaning, freeze at full opacity. */
+  [style*="ti-pulse"] {
+    animation: none !important;
+    opacity: 1 !important;
+  }
+}
+
+/* Spec §8 — CJK lines need a touch more vertical breathing room than
+   Latin to avoid feeling cramped at the same point size. We bump
+   line-height to ≈22px on body text in Chinese mode (vs 20px Latin). */
+:lang(zh) body,
+[lang="zh"] body,
+[lang="zh-CN"] body,
+[lang="zh-Hans"] body {
+  line-height: 1.57;
 }

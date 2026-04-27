@@ -154,6 +154,46 @@ impl HeartbeatCadence {
     }
 }
 
+/// Wave 3 cross-cut — outcome of `recover_from_corrupt`.
+/// Returned so the caller (Tauri command / daemon hook) can surface a
+/// toast and log structured fields.
+#[derive(Debug, Clone, Serialize)]
+pub struct RecoveryOutcome {
+    /// Path of the quarantined brain copy. `None` when nothing needed
+    /// recovery (healthy brain or absent file).
+    pub quarantined: Option<PathBuf>,
+    /// Whether `co-thinker.md` was regenerated from the seed template.
+    pub regenerated: bool,
+    /// Plain-English reason — surfaces in support logs.
+    pub reason: String,
+}
+
+/// Wave 3 cross-cut — corruption sniff for the brain doc.
+///
+/// Three "obviously corrupt" markers we treat as recoverable:
+///   * Empty file (or whitespace-only).
+///   * Mid-file `<<<<<<<` / `>>>>>>>` git conflict markers.
+///   * No `# ` heading at all (every healthy seed starts with one).
+///
+/// We deliberately don't try to parse the full markdown — false negatives
+/// here are fine (the heartbeat will keep using the file) but a false
+/// positive throws away the user's brain. So the test is intentionally
+/// conservative.
+pub fn is_brain_corrupt(raw: &str) -> bool {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return true;
+    }
+    if trimmed.contains("<<<<<<<") || trimmed.contains(">>>>>>>") {
+        return true;
+    }
+    // No top-level heading anywhere → almost certainly truncated.
+    if !raw.lines().any(|l| l.trim_start().starts_with("# ")) {
+        return true;
+    }
+    false
+}
+
 /// Outcome of one heartbeat. Returned by `heartbeat()` and the
 /// `co_thinker_trigger_heartbeat` Tauri command.
 #[derive(Debug, Clone, Serialize)]
@@ -255,6 +295,83 @@ impl CoThinkerEngine {
                 .map_err(|e| AppError::internal("mkdir_agi", e.to_string()))?;
         }
         atomic_write(&p, content)
+    }
+
+    /// Wave 3 cross-cut — corruption recovery (OBSERVABILITY_SPEC §8 edge
+    /// case "Co-thinker brain corrupt").
+    ///
+    /// When the brain doc parses cleanly we read it, fine. When the parser
+    /// trips (frontmatter unparseable / sentinel-only file / truncated
+    /// write from a power loss), we:
+    ///   1. Move the corrupt file to `.tangerine/quarantine/{ts}.md` so
+    ///      the user can grep-recover anything they cared about.
+    ///   2. Re-seed the brain from `seed_brain_doc(now)` — the same
+    ///      neutral skeleton a fresh install starts with.
+    ///   3. Return `RecoveryOutcome` describing what happened so the
+    ///      caller can surface a toast ("Co-thinker brain refreshed").
+    ///
+    /// Idempotent: `recover_from_corrupt` on a healthy brain is a no-op
+    /// (returns `RecoveryOutcome { quarantined: None, ... }`). Cheap to
+    /// call from a daemon tick that already failed to parse.
+    pub fn recover_from_corrupt(&self) -> Result<RecoveryOutcome, AppError> {
+        let brain_path = self.brain_doc_path();
+        // Healthy → no-op.
+        if !brain_path.exists() {
+            return Ok(RecoveryOutcome {
+                quarantined: None,
+                regenerated: false,
+                reason: "brain doc absent — nothing to recover".into(),
+            });
+        }
+        let raw = std::fs::read_to_string(&brain_path)
+            .map_err(|e| AppError::internal("read_brain_for_recovery", e.to_string()))?;
+        if !is_brain_corrupt(&raw) {
+            return Ok(RecoveryOutcome {
+                quarantined: None,
+                regenerated: false,
+                reason: "brain parses cleanly".into(),
+            });
+        }
+
+        // Quarantine the corrupt file. The directory layout matches the
+        // §2 crash-dump convention so support tickets can find both
+        // brain quarantines + crash logs in adjacent folders.
+        let now = Utc::now();
+        let qdir = self
+            .memory_root
+            .join(".tangerine")
+            .join("quarantine");
+        std::fs::create_dir_all(&qdir)
+            .map_err(|e| AppError::internal("mkdir_quarantine", e.to_string()))?;
+        let qpath = qdir.join(format!(
+            "co-thinker-{}.md",
+            now.format("%Y-%m-%dT%H-%M-%SZ"),
+        ));
+        // `rename` works in-volume; quarantine + brain share the memory
+        // root so cross-device rename is a non-issue here. We still
+        // fall back to a copy + remove so the recovery never aborts.
+        if let Err(e) = std::fs::rename(&brain_path, &qpath) {
+            // Cross-device fallback (rare on Windows when memory root
+            // and the OS temp dir end up on different volumes).
+            std::fs::copy(&brain_path, &qpath).map_err(|e2| {
+                AppError::internal(
+                    "quarantine_brain",
+                    format!("rename={e}; copy={e2}"),
+                )
+            })?;
+            let _ = std::fs::remove_file(&brain_path);
+        }
+
+        // Regenerate from seed. Atomic write so a second crash mid-recover
+        // leaves either the old brain (already quarantined) or the new
+        // seed — never a half file.
+        let seed = seed_brain_doc(now);
+        atomic_write(&brain_path, &seed)?;
+        Ok(RecoveryOutcome {
+            quarantined: Some(qpath),
+            regenerated: true,
+            reason: "brain marker missing or parse failed".into(),
+        })
     }
 
     /// Run one heartbeat. See module-level docs for the flow.
@@ -1707,6 +1824,73 @@ Last heartbeat: 2026-04-26
         let sticky_pos = raw.find("[sticky:p/t/agi-abcd]").unwrap();
         let earlier_pos = raw.find("earlier").unwrap();
         assert!(sticky_pos < earlier_pos);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // === Wave 3 — corruption recovery tests (OBSERVABILITY_SPEC §8) ===
+
+    #[test]
+    fn corrupt_sniff_flags_empty_file() {
+        assert!(is_brain_corrupt(""));
+        assert!(is_brain_corrupt("   \n\n  \t"));
+    }
+
+    #[test]
+    fn corrupt_sniff_flags_git_conflict_markers() {
+        let raw = "# Brain\n<<<<<<< HEAD\nfoo\n=======\nbar\n>>>>>>> branch\n";
+        assert!(is_brain_corrupt(raw));
+    }
+
+    #[test]
+    fn corrupt_sniff_flags_no_heading() {
+        assert!(is_brain_corrupt("just some text\nno heading\n"));
+    }
+
+    #[test]
+    fn corrupt_sniff_passes_healthy_brain() {
+        let raw = seed_brain_doc(Utc::now());
+        assert!(!is_brain_corrupt(&raw));
+    }
+
+    #[test]
+    fn recover_quarantines_and_regenerates() {
+        let root = tmp_root();
+        let engine = CoThinkerEngine::new(root.clone());
+        // Plant a corrupt brain.
+        let brain_path = engine.brain_doc_path();
+        std::fs::create_dir_all(brain_path.parent().unwrap()).unwrap();
+        std::fs::write(&brain_path, "garbage\n<<<<<<< HEAD\noops").unwrap();
+        let outcome = engine.recover_from_corrupt().unwrap();
+        assert!(outcome.regenerated);
+        assert!(outcome.quarantined.is_some());
+        let q = outcome.quarantined.unwrap();
+        assert!(q.exists());
+        // New brain is the seed.
+        let new_raw = std::fs::read_to_string(&brain_path).unwrap();
+        assert!(!is_brain_corrupt(&new_raw));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn recover_noop_on_healthy_brain() {
+        let root = tmp_root();
+        let engine = CoThinkerEngine::new(root.clone());
+        let brain_path = engine.brain_doc_path();
+        std::fs::create_dir_all(brain_path.parent().unwrap()).unwrap();
+        std::fs::write(&brain_path, seed_brain_doc(Utc::now())).unwrap();
+        let outcome = engine.recover_from_corrupt().unwrap();
+        assert!(!outcome.regenerated);
+        assert!(outcome.quarantined.is_none());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn recover_noop_on_absent_file() {
+        let root = tmp_root();
+        let engine = CoThinkerEngine::new(root.clone());
+        let outcome = engine.recover_from_corrupt().unwrap();
+        assert!(!outcome.regenerated);
+        assert!(outcome.quarantined.is_none());
         let _ = std::fs::remove_dir_all(&root);
     }
 }

@@ -17,7 +17,8 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "smoke": "playwright test --project=smoke",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "lint:a11y": "tsc --noEmit"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.104.1",
@@ -27,9 +28,11 @@
     "@tauri-apps/plugin-shell": "^2.0.1",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
+    "i18next": "^23.16.8",
     "lucide-react": "^0.460.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "react-i18next": "^15.7.4",
     "react-markdown": "^9.1.0",
     "react-router-dom": "^6.28.0",
     "reactflow": "^11.11.4",

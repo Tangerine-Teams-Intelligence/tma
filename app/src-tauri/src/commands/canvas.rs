@@ -1,3 +1,7 @@
+//! Perf (API_SURFACE_SPEC §5): `canvas_load_topic` / `canvas_list_*` are read
+//! commands → 50 ms p95. `canvas_save_topic` is a write command → 200 ms p95.
+//! Budget assumes < 1k topics per project.
+//!
 //! v1.8 Phase 4-B — Tauri command surface for the canvas ideation surface.
 //!
 //! Exposed to the React `/canvas` and `/canvas/:project` routes:

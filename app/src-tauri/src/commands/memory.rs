@@ -1,3 +1,7 @@
+//! Perf (API_SURFACE_SPEC §5): `resolve_memory_root` / `list_atoms` are read
+//! commands → 50 ms p95. `init_memory_with_samples` is a write command → 200 ms
+//! p95 (bundled sample copy is < 50 small files).
+//!
 //! Memory layer commands.
 //!
 //! `resolve_memory_root` returns the absolute path to the user's memory dir

@@ -5,6 +5,8 @@ import { CommandPalette } from "@/components/CommandPalette";
 import { ActivityFeed } from "@/components/ActivityFeed";
 import { WhatsNewBanner } from "@/components/WhatsNewBanner";
 import { LicenseTransitionBanner } from "@/components/LicenseTransitionBanner";
+// Wave 3 — offline indicator (OBSERVABILITY_SPEC §8 edge case catalog)
+import { ConnectionBanner } from "@/components/ConnectionBanner";
 import { AmbientInputObserver } from "@/components/ambient/AmbientInputObserver";
 // v1.9.0-beta.1 — banner + modal hosts. The bus pushes into bannerStack /
 // modalQueue and these hosts read the top entry. The hosts MUST live
@@ -447,6 +449,10 @@ export function AppShell() {
               localStorage so it never nags after the user clicks ×.
               Always visible in dev mode for contributor awareness. */}
           <LicenseTransitionBanner />
+          {/* Wave 3 — connection state. Shows when offline + flashes
+              briefly on recovery. Above WhatsNewBanner so a network
+              drop is the loudest signal in the strip stack. */}
+          <ConnectionBanner />
           <WhatsNewBanner />
           {/* === v2.0-beta.3 co-thinker home strip ===
               Sits between the system banners and the suggestion banner so

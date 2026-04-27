@@ -1,3 +1,8 @@
+//! Perf (API_SURFACE_SPEC §5): `notion_get_config` is a read command → 50 ms p95.
+//! `notion_set_config` is a write command → 200 ms p95. `notion_validate_token` /
+//! `notion_list_databases` / `notion_writeback_decision` are validation/upstream
+//! buckets → 3 s p95 each. `notion_capture` is the capture bucket → 10 s p95.
+//!
 //! Notion source — v1.8 Phase 2 real-wire.
 //!
 //! Read path:

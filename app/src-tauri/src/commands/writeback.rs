@@ -1,3 +1,7 @@
+//! Perf (API_SURFACE_SPEC §5): `writeback_decision` is the capture/upstream
+//! bucket → 10 s p95 (one upstream POST). `read_writeback_log` is a read
+//! command → 50 ms p95. `set_writeback_watcher` is a write command → 200 ms p95.
+//!
 //! Tauri commands for v1.8 Phase 2-A writeback (GitHub + Linear).
 //!
 //! Three commands exposed:

@@ -100,3 +100,10 @@ pub mod sso;
 // `region = "us-east"`; real region routing in v3.5 enterprise tier.
 pub mod audit_log;
 // === end v3.5 audit ===
+
+// === Wave 3 cross-cut: observability ===
+// Per OBSERVABILITY_SPEC §5 — performance budget instrumentation.
+pub mod perf;
+// Per OBSERVABILITY_SPEC §9 — SOC 2 monitoring controls.
+pub mod monitoring;
+// === end Wave 3 cross-cut ===

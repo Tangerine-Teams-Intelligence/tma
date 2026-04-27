@@ -1,3 +1,7 @@
+//! Perf (API_SURFACE_SPEC §5): `detect_ai_tools` / `get_ai_tool_status` are
+//! read commands → 50 ms p95 typical (one Ollama probe with 1 s timeout pushes
+//! worst-case to ~1.1 s; sidebar polls at 60 s so this is acceptable).
+//!
 //! v1.8 Phase 1 — AI tools detection.
 //!
 //! Detects whether the user has each of the 10 supported AI tools installed

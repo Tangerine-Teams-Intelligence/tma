@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { NavLink, useNavigate } from "react-router-dom";
 import {
   Settings,
@@ -61,6 +62,7 @@ import { kbdShortcut } from "@/lib/platform";
  */
 export function Sidebar() {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const memoryRoot = useStore((s) => s.ui.memoryRoot);
   const samplesSeeded = useStore((s) => s.ui.samplesSeeded);
   const togglePalette = useStore((s) => s.ui.togglePalette);
@@ -162,7 +164,8 @@ export function Sidebar() {
       <div className="flex-1 overflow-y-auto">
         {/* VIEWS — primary nav for the Chief of Staff surface */}
         <Section label="Views" subtitle="Today / week / people / projects">
-          <ViewLink to="/today" icon={Calendar} label="Today" />
+          {/* i18n demo — first translated label per OBSERVABILITY_SPEC §6 */}
+          <ViewLink to="/today" icon={Calendar} label={t("sidebar.today")} />
           <ViewLink to="/this-week" icon={CalendarRange} label="This week" />
           <ViewLink to="/people" icon={Users} label="People" />
           <ViewLink to="/projects" icon={FolderKanban} label="Projects" />

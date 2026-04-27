@@ -1,5 +1,9 @@
+import { useState } from "react";
+import { useTranslation } from "react-i18next";
+
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { activeLocale, setLocale } from "@/i18n";
 import type { ConfigDraft } from "./Settings";
 
 interface Props {
@@ -8,6 +12,9 @@ interface Props {
 }
 
 export function GeneralSettings({ draft, update }: Props) {
+  const { t } = useTranslation();
+  const [lang, setLang] = useState<"en" | "zh">(activeLocale());
+
   return (
     <div className="flex max-w-xl flex-col gap-4">
       <div>
@@ -38,6 +45,29 @@ export function GeneralSettings({ draft, update }: Props) {
           <option value="warning">warning</option>
           <option value="error">error</option>
         </select>
+      </div>
+
+      {/* Wave 3 — Language toggle (OBSERVABILITY_SPEC §6) */}
+      <div>
+        <Label htmlFor="st-language">{t("settings.language.label")}</Label>
+        <select
+          id="st-language"
+          value={lang}
+          onChange={async (e) => {
+            const next = e.target.value === "zh" ? "zh" : "en";
+            setLang(next);
+            await setLocale(next);
+          }}
+          data-testid="st-language"
+          aria-label={t("settings.language.label")}
+          className="mt-1 h-10 w-full rounded-md border border-[var(--ti-border-default)] bg-[var(--ti-paper-50)] px-3 text-sm"
+        >
+          <option value="en">{t("settings.language.english")}</option>
+          <option value="zh">{t("settings.language.chinese")}</option>
+        </select>
+        <p className="mt-1 text-xs text-[var(--ti-ink-500)]">
+          {t("settings.language.subtitle")}
+        </p>
       </div>
 
       <div>
