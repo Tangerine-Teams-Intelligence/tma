@@ -78,8 +78,17 @@ export default function MemoryRoute() {
   const folderCounts = useMemo(() => countMemoryByFolder(tree), [tree]);
   const coverage: CoverageStats = useMemo(() => {
     const stats = emptyCoverage();
-    stats.activeSources = SOURCES.filter((s) => s.status === "active").map((s) => s.title);
+    // === wave 7 ===
+    // v1.9.3 honesty pass: SourceStatus changed from "active" to
+    // "shipped" / "beta" / "coming". Memory cover counts both shipped
+    // and beta as "available now" (their setup pages are live), and
+    // coming as future. The previous "active" filter excluded beta
+    // surfaces — now they roll up so the user sees an honest catalog count.
+    stats.activeSources = SOURCES.filter(
+      (s) => s.status === "shipped" || s.status === "beta",
+    ).map((s) => s.title);
     stats.comingSources = SOURCES.filter((s) => s.status === "coming").map((s) => s.title);
+    // === end wave 7 ===
     stats.meetings = folderCounts.meetings;
     stats.decisions = folderCounts.decisions;
     stats.people = folderCounts.people;

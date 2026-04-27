@@ -205,6 +205,20 @@ interface UiSlice {
    */
   welcomed: boolean;
   setWelcomed: (v: boolean) => void;
+  /**
+   * === wave 6 === BUG #3 — version-aware welcome tour replay.
+   *
+   * Tracks the app version that was running when the user dismissed the
+   * WelcomeOverlay. The AppShell compares this to `__APP_VERSION__` on cold
+   * launch — when the user upgrades to a build with new tour content, the
+   * overlay re-shows so they catch the changes. Persisted across launches.
+   *
+   * Empty string on a fresh install (no prior dismissal); a recorded
+   * version string ("1.9.2", "1.9.3", ...) once the user has clicked
+   * Get-started or Skip-tour at least once.
+   */
+  lastWelcomedVersion: string;
+  setLastWelcomedVersion: (v: string) => void;
   // === wave 5-α ===
   /**
    * Wave 5-α — settings progressive disclosure latch.
@@ -636,6 +650,9 @@ export const useStore = create<Store>()(
         // once the user clicks "Get started" or "Skip tour" so the
         // overlay never re-mounts on a future launch.
         welcomed: false,
+        // === wave 6 === BUG #3 — last app version for which the user
+        // dismissed the welcome tour. Empty string on first install.
+        lastWelcomedVersion: "",
         // === wave 5-α ===
         // Settings progressive disclosure. False by default so first-time
         // users see only General / AGI / Personal Agents. Persisted so
@@ -829,6 +846,9 @@ export const useStore = create<Store>()(
         // Wave 4-C — welcome overlay latch.
         setWelcomed: (v) =>
           set((s) => ({ ui: { ...s.ui, welcomed: v } })),
+        // === wave 6 === BUG #3 — record the version at dismissal time.
+        setLastWelcomedVersion: (v) =>
+          set((s) => ({ ui: { ...s.ui, lastWelcomedVersion: v } })),
         // === wave 5-α ===
         setShowAdvancedSettings: (v) =>
           set((s) => ({ ui: { ...s.ui, showAdvancedSettings: v } })),
@@ -1127,6 +1147,10 @@ export const useStore = create<Store>()(
             newcomerOnboardingShown: s.ui.newcomerOnboardingShown,
             // Wave 4-C — welcome overlay latch.
             welcomed: s.ui.welcomed,
+            // === wave 6 === BUG #3 — version that was running when the
+            // user dismissed the tour. Compared against `__APP_VERSION__`
+            // on app load to re-show the overlay after upgrades.
+            lastWelcomedVersion: s.ui.lastWelcomedVersion,
             // === wave 5-α ===
             showAdvancedSettings: s.ui.showAdvancedSettings,
             // === end wave 5-α ===
@@ -1166,6 +1190,7 @@ export const useStore = create<Store>()(
                 agiSensitivity?: number;
                 newcomerOnboardingShown?: boolean;
                 welcomed?: boolean;
+                lastWelcomedVersion?: string;
                 showAdvancedSettings?: boolean;
                 personalAgentsEnabled?: {
                   cursor: boolean;
@@ -1243,6 +1268,15 @@ export const useStore = create<Store>()(
               p?.ui?.newcomerOnboardingShown ?? current.ui.newcomerOnboardingShown,
             // Wave 4-C — welcome overlay latch.
             welcomed: p?.ui?.welcomed ?? current.ui.welcomed,
+            // === wave 6 === BUG #3 — last-welcomed version. Default to ""
+            // (current.ui default) so a v1.9.2-and-earlier persisted state
+            // upgrades cleanly: if `welcomed: true` came forward but
+            // `lastWelcomedVersion` is missing, the cold-launch effect in
+            // AppShell will detect the empty string vs `__APP_VERSION__`
+            // mismatch and re-show the overlay so the user catches new
+            // tour content.
+            lastWelcomedVersion:
+              p?.ui?.lastWelcomedVersion ?? current.ui.lastWelcomedVersion,
             // === wave 5-α ===
             showAdvancedSettings:
               p?.ui?.showAdvancedSettings ?? current.ui.showAdvancedSettings,

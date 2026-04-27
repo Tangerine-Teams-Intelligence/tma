@@ -34,7 +34,9 @@
     "subtitleActiveAgents": "跨团队代理可见性",
     "statusOn": "已连",
     "statusOff": "已断",
-    "statusSoon": "待发布"
+    "statusSoon": "待发布",
+    "statusReady": "可用",
+    "statusBeta": "测试"
   },
   "auth": {
     "brand": "Tangerine AI Teams",
@@ -648,5 +650,35 @@
     "unknown": "未知错误。",
     "retry": "重试",
     "reportIssue": "上报问题"
+  },
+  "welcome": {
+    "kicker": "欢迎来到 Tangerine",
+    "title": "团队的 AGI,30 秒搞定。",
+    "subtitle": "开始前 4 件事要知道。",
+    "card1": {
+      "title": "不需要新的 AI 订阅",
+      "body": "我们借用你已有的 Cursor / Claude Pro / ChatGPT 会话。团队的 AGI 跑在你已经付费的 AI 上。"
+    },
+    "card2": {
+      "title": "AGI 大脑就是一份 Markdown 文档",
+      "body": "可读、可编辑、可 git 跟踪。打开 `co-thinker.md`,你就能看到 AGI 在想什么 — 直接改就能引导它。"
+    },
+    "card3": {
+      "title": "跨厂商全视角",
+      "body": "团队用的每一个 AI 工具我们都看(Cursor、Codex、Claude、ChatGPT、Devin、Replit、Copilot、Windsurf、Gemini、Ollama)。一个地方,看完整画面。"
+    },
+    "card4": {
+      "title": "10 个 AI 工具已对齐",
+      "body": "侧边栏标出哪些工具已经接入,哪个是你的 ⭐ 主工具。再加一个只要几秒。"
+    },
+    "cta": "30 秒上手",
+    "skip": "跳过",
+    "close": "关闭欢迎导览",
+    "tourLabel": "欢迎导览",
+    "tourReplay": "重新显示欢迎导览",
+    "tourReplayHint": "重新显示首次启动时看到的 4 张介绍卡。",
+    "heartbeatNoChannelTitle": "心跳失败:没有可用的 LLM 通道。",
+    "heartbeatNoChannelBody": "开启 Tangerine 大脑需要 [a] 安装 Cursor 并在 MCP 配置中加 `TANGERINE_SAMPLING_BRIDGE=1`,或 [b] 安装 Ollama 并跑在默认端口。",
+    "heartbeatNoChannelCta": "打开配置指引"
   }
 }

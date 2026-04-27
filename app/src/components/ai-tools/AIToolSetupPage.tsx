@@ -562,21 +562,27 @@ interface TestQueryRecord {
   query: string;
   /** "loading" while we dispatch to the upstream tool, "done" once back. */
   state: "loading" | "done";
-  /** Final answer text once `state === "done"`. */
+  /** Final answer text once `state === "done"` and `source !== "error"`. */
   answer?: string;
   /**
    * "real" when the answer came back from a real session-borrowed channel
    * (Ollama HTTP / MCP-stub canned response). "mock" when the channel is
    * not yet implemented (browser ext / IDE plugin) — we fall back to the
    * Phase 1 canned answer with a clear disclaimer.
+   *
+   * === wave 6 === added "error" — when no LLM channel is reachable in a
+   * production Tauri build. Renders a real setup-help block instead of a
+   * misleading mock answer.
    */
-  source?: "real" | "mock";
+  source?: "real" | "mock" | "error";
   /** Channel reported by Rust (only set when `source === "real"`). */
   channel?: string;
   /** Tool id reported by Rust (only set when `source === "real"`). */
   toolId?: string;
   /** Round-trip latency (only set when `source === "real"`). */
   latencyMs?: number;
+  /** Raw Rust error message (only set when `source === "error"`). */
+  errorMessage?: string;
 }
 
 function TestQuerySection({ config }: { config: AIToolConfig }) {
@@ -616,22 +622,40 @@ function TestQuerySection({ config }: { config: AIToolConfig }) {
       // Tauri returns AppError for `not_implemented` (browser ext / IDE
       // plugin tools) and `all_channels_exhausted`. We treat the former as
       // expected during Phase 3 and fall back to the canned mock answer
-      // with a Phase-4 disclaimer; the latter still shows the canned
-      // answer but with a more pessimistic note.
+      // with a Phase-4 disclaimer.
+      //
+      // === wave 6 === — the latter (no LLM channel reachable) used to fall
+      // through to the same mock answer, which LIED to the user about why the
+      // call failed. We now render a real error card with setup guidance.
       const msg = e instanceof Error ? e.message : String(e);
       const isNotImplemented =
         /not_implemented|browser_ext|wires in Phase 4/i.test(msg);
-      setResults((prev) => ({
-        ...prev,
-        [idx]: {
-          query,
-          state: "done",
-          answer: mockAnswer(query, config.name),
-          source: "mock",
-          channel: isNotImplemented ? "browser_ext" : undefined,
-          toolId: config.id,
-        },
-      }));
+      if (isNotImplemented) {
+        setResults((prev) => ({
+          ...prev,
+          [idx]: {
+            query,
+            state: "done",
+            answer: mockAnswer(query, config.name),
+            source: "mock",
+            channel: "browser_ext",
+            toolId: config.id,
+          },
+        }));
+      } else {
+        // Real dispatch failure — no LLM channel reachable. Show the user how
+        // to fix it instead of a fake "mock" answer.
+        setResults((prev) => ({
+          ...prev,
+          [idx]: {
+            query,
+            state: "done",
+            source: "error",
+            toolId: config.id,
+            errorMessage: msg,
+          },
+        }));
+      }
     }
   };
 
@@ -677,6 +701,55 @@ function TestQuerySection({ config }: { config: AIToolConfig }) {
 }
 
 function ResultCard({ record }: { record: TestQueryRecord }) {
+  // === wave 6 === — error variant has its own card style so the user can't
+  // confuse a real failure with a successful (or mock) response.
+  if (record.state === "done" && record.source === "error") {
+    return (
+      <div className="rounded-md border border-rose-300 bg-rose-50 p-4 dark:border-rose-900/50 dark:bg-rose-950/30">
+        <p className="font-mono text-[10px] uppercase tracking-wider text-rose-600 dark:text-rose-400">
+          Query failed
+        </p>
+        <p className="mt-1 text-[12px] text-stone-700 dark:text-stone-300">
+          {record.query}
+        </p>
+        <div className="mt-3 border-t border-rose-200 pt-3 dark:border-rose-900/50">
+          <p className="text-[13px] font-medium text-rose-900 dark:text-rose-100">
+            All LLM channels failed.
+          </p>
+          <p className="mt-1 text-[12px] leading-relaxed text-rose-800 dark:text-rose-200">
+            To use Tangerine's borrowed-LLM feature you need at least one of:
+          </p>
+          <ul className="mt-2 space-y-1 pl-5 text-[12px] leading-relaxed text-rose-800 dark:text-rose-200">
+            <li className="list-disc">
+              Install Cursor / Claude Code / Codex / Windsurf and add{" "}
+              <code className="rounded bg-rose-100 px-1 py-0.5 font-mono text-[11px] text-rose-900 dark:bg-rose-900/40 dark:text-rose-100">
+                TANGERINE_SAMPLING_BRIDGE=1
+              </code>{" "}
+              to that tool's MCP config (see the setup steps above), <strong>or</strong>
+            </li>
+            <li className="list-disc">
+              Install Ollama at the default port (
+              <code className="rounded bg-rose-100 px-1 py-0.5 font-mono text-[11px] text-rose-900 dark:bg-rose-900/40 dark:text-rose-100">
+                localhost:11434
+              </code>
+              ) — Tangerine borrows your local model automatically.
+            </li>
+          </ul>
+          {record.errorMessage && (
+            <details className="mt-3">
+              <summary className="cursor-pointer font-mono text-[10px] text-rose-600 hover:underline dark:text-rose-400">
+                Show technical details
+              </summary>
+              <pre className="mt-1 overflow-x-auto rounded bg-rose-100 p-2 font-mono text-[10px] text-rose-900 dark:bg-rose-900/40 dark:text-rose-100">
+                {record.errorMessage}
+              </pre>
+            </details>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="rounded-md border border-stone-200 bg-stone-50 p-4 dark:border-stone-800 dark:bg-stone-900">
       <p className="font-mono text-[10px] uppercase tracking-wider text-stone-400 dark:text-stone-500">

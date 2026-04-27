@@ -140,13 +140,14 @@ export function GeneralSettings({ draft, update, onJumpToAGI }: Props) {
       </div>
 
       {/* === wave 5-β === */}
+      {/* === wave 6 === BUG #7 — wrapped in i18n. */}
       {/* Replay welcome tour. Flips `welcomed` back to false so the
           WelcomeOverlay re-mounts on the next render. Mirrors the
           `Run welcome tour` palette command — both call setWelcomed(false).
           Wave 5-α may relocate this control during integration; the
           implementation surface (the click handler) stays here. */}
       <div data-testid="st-tour-replay-row">
-        <Label htmlFor="st-tour-replay">Welcome tour</Label>
+        <Label htmlFor="st-tour-replay">{t("welcome.tourLabel")}</Label>
         <button
           id="st-tour-replay"
           type="button"
@@ -157,10 +158,10 @@ export function GeneralSettings({ draft, update, onJumpToAGI }: Props) {
           }}
           className="mt-1 rounded-md border border-[var(--ti-border-default)] bg-[var(--ti-paper-50)] px-3 py-1.5 text-sm text-[var(--ti-ink-700)] hover:bg-stone-100 dark:hover:bg-stone-800"
         >
-          Show welcome tour again
+          {t("welcome.tourReplay")}
         </button>
         <p className="mt-1 text-xs text-[var(--ti-ink-500)]">
-          Re-shows the 4-card intro overlay you saw on first launch.
+          {t("welcome.tourReplayHint")}
         </p>
       </div>
       {/* === end wave 5-β === */}

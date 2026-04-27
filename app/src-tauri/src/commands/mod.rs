@@ -437,6 +437,10 @@ macro_rules! tmi_invoke_handler {
             $crate::commands::co_thinker::co_thinker_write_brain,
             $crate::commands::co_thinker::co_thinker_trigger_heartbeat,
             $crate::commands::co_thinker::co_thinker_status,
+            // === wave 6 === BUG #2 — Initialize button writes the seed
+            // before triggering the heartbeat so the brain doc is on disk
+            // even when no LLM channel is reachable.
+            $crate::commands::co_thinker::co_thinker_initialize_brain,
             // === end Phase 3-B co-thinker engine ===
             // === Phase 4-B canvas surface ===
             $crate::commands::canvas::canvas_list_projects,

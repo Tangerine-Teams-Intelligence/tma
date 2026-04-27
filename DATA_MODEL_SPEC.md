@@ -159,7 +159,7 @@ The bundled sample at `app/resources/sample-memory/decisions/sample-pricing-20-s
 
 ## §3 Co-thinker brain doc shape
 
-`agi/co-thinker.md` is the persistent stateful brain. Owner: `agi::co_thinker::CoThinkerEngine` in `app/src-tauri/src/agi/co_thinker.rs`. The user can `cat`, edit, or git-blame it.
+`team/co-thinker.md` is the persistent stateful brain. Owner: `agi::co_thinker::CoThinkerEngine` in `app/src-tauri/src/agi/co_thinker.rs`. The user can `cat`, edit, or git-blame it. (v1.9.2 and earlier wrote it to `agi/co-thinker.md`; v1.9.3 lazy-migrates that path on first read so existing installs keep their hand-edits.)
 
 ### §3.1 Frontmatter
 

@@ -15,6 +15,7 @@ import {
   coThinkerWriteBrain,
   coThinkerStatus,
   coThinkerTriggerHeartbeat,
+  coThinkerInitializeBrain,
   type CoThinkerStatus,
 } from "@/lib/tauri";
 import {
@@ -35,9 +36,11 @@ import { logEvent } from "@/lib/telemetry";
  * /co-thinker — Phase 3-C real renderer.
  *
  * Tangerine's persistent AGI brain lives in
- * `~/.tangerine-memory/agi/co-thinker.md`. The daemon (P3-A) re-reads atoms
- * every 5 minutes and asks the user's primary AI tool (P3-B) to update the
- * doc. This route is the human-facing window into that doc:
+ * `~/.tangerine-memory/team/co-thinker.md` (v1.9.3+; the legacy v1.9.2
+ * location was `agi/co-thinker.md` — `read_brain_doc` lazy-migrates that
+ * path on first read). The daemon (P3-A) re-reads atoms every 5 minutes
+ * and asks the user's primary AI tool (P3-B) to update the doc. This
+ * route is the human-facing window into that doc:
  *
  *   • read-mode renders the markdown with citation links rewritten to
  *     in-app /memory routes;
@@ -118,6 +121,29 @@ export default function CoThinkerRoute() {
     void refresh();
   }, [refresh]);
 
+  // === wave 6 === BUG #4 — translate Rust-side "primary tool unreachable"
+  // / `all_channels_exhausted` errors into a friendly toast that explains
+  // exactly how the user can fix it. We treat any error containing
+  // `unreachable`, `all channels`, `not_implemented`, or `borrowed` as a
+  // configuration problem (not a code bug) and show the setup-help variant.
+  function isLlmConfigError(err: string): boolean {
+    return /unreachable|all channels|all_channels_exhausted|not_implemented|borrow|external error/i.test(
+      err,
+    );
+  }
+  function pushHeartbeatErrorToast(err: string) {
+    if (isLlmConfigError(err)) {
+      pushToast({
+        kind: "error",
+        msg: `${t("welcome.heartbeatNoChannelTitle")} ${t("welcome.heartbeatNoChannelBody")}`,
+        ctaLabel: t("welcome.heartbeatNoChannelCta"),
+        ctaHref: "/ai-tools/cursor",
+      });
+    } else {
+      pushToast("error", `${t("coThinker.heartbeatFailed")} ${err}`);
+    }
+  }
+
   const onTrigger = useCallback(async () => {
     setTriggerLoading(true);
     // v1.9.0-beta.1 P1-A — manual heartbeat trigger. The HeartbeatBadge is
@@ -128,39 +154,72 @@ export default function CoThinkerRoute() {
     void logEvent("trigger_heartbeat", { manual: true });
     try {
       const outcome = await coThinkerTriggerHeartbeat(primaryAITool ?? undefined);
-      pushToast(
-        outcome.error ? "error" : "success",
-        outcome.error
-          ? `${t("coThinker.heartbeatFailed")} ${outcome.error}`
-          : `${t("coThinker.brainUpdated")} · ${outcome.atoms_seen} atoms · ${outcome.channel_used}`,
-      );
+      if (outcome.error) {
+        pushHeartbeatErrorToast(outcome.error);
+      } else {
+        pushToast(
+          "success",
+          `${t("coThinker.brainUpdated")} · ${outcome.atoms_seen} atoms · ${outcome.channel_used}`,
+        );
+      }
       await refresh();
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      pushToast("error", `${t("coThinker.heartbeatFailed")} ${msg}`);
+      pushHeartbeatErrorToast(msg);
     } finally {
       setTriggerLoading(false);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [primaryAITool, pushToast, refresh, t]);
+
+  // === wave 6 === BUG #2 — Initialize button writes the seed template
+  // first (Rust-side `co_thinker_initialize_brain` does both the seed write
+  // + the heartbeat). Even when no LLM channel is reachable, the user ends
+  // up with a real co-thinker.md on disk — solving the "I clicked Initialize
+  // but the file isn't there" empty-state confusion.
+  const onInitialize = useCallback(async () => {
+    setTriggerLoading(true);
+    void logEvent("trigger_heartbeat", { manual: true, initialize: true });
+    try {
+      const outcome = await coThinkerInitializeBrain(primaryAITool ?? undefined);
+      if (outcome.error) {
+        pushHeartbeatErrorToast(outcome.error);
+      } else {
+        pushToast(
+          "success",
+          `${t("coThinker.brainUpdated")} · ${outcome.atoms_seen} atoms · ${outcome.channel_used}`,
+        );
+      }
+      await refresh();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      pushHeartbeatErrorToast(msg);
+    } finally {
+      setTriggerLoading(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [primaryAITool, pushToast, refresh, t]);
 
   // === wave 5-β ===
   // Auto-trigger first heartbeat when the user got here via the Cmd+K
   // "Initialize co-thinker brain" command. The palette dispatches a
   // `tangerine:co-thinker-init` window event ~50ms after navigation;
-  // we listen for it and call onTrigger if the brain is currently
+  // we listen for it and call onInitialize if the brain is currently
   // empty. Empty-only so a returning user who triggers the command
   // doesn't lose existing brain content to an unintended heartbeat.
+  // === wave 6 === — switched to onInitialize so the seed lands on disk
+  // (BUG #2) even if the heartbeat can't reach an LLM channel.
   useEffect(() => {
     function onInit() {
       const isCurrentlyEmpty = content.trim().length === 0;
       if (isCurrentlyEmpty && !triggerLoading) {
-        void onTrigger();
+        void onInitialize();
       }
     }
     window.addEventListener("tangerine:co-thinker-init", onInit);
     return () =>
       window.removeEventListener("tangerine:co-thinker-init", onInit);
-  }, [content, triggerLoading, onTrigger]);
+  }, [content, triggerLoading, onInitialize]);
   // === end wave 5-β ===
 
   const onEdit = useCallback(() => {
@@ -267,7 +326,7 @@ export default function CoThinkerRoute() {
         ) : isEmpty ? (
           <EmptyState
             primaryToolName={primaryToolName}
-            onInitialize={onTrigger}
+            onInitialize={onInitialize}
             initializing={triggerLoading}
           />
         ) : editing ? (

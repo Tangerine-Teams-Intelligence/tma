@@ -34,7 +34,9 @@
     "subtitleActiveAgents": "Cross-team agent visibility",
     "statusOn": "on",
     "statusOff": "off",
-    "statusSoon": "soon"
+    "statusSoon": "soon",
+    "statusReady": "ready",
+    "statusBeta": "beta"
   },
   "auth": {
     "brand": "Tangerine AI Teams",
@@ -648,5 +650,35 @@
     "unknown": "Unknown error.",
     "retry": "Retry",
     "reportIssue": "Report issue"
+  },
+  "welcome": {
+    "kicker": "Welcome to Tangerine",
+    "title": "Your team's AGI, in 30 seconds.",
+    "subtitle": "Four things to know before you start.",
+    "card1": {
+      "title": "No new AI subscription",
+      "body": "We borrow your existing Cursor / Claude Pro / ChatGPT session. Your team's AGI runs on the AI you already pay for."
+    },
+    "card2": {
+      "title": "Your AGI brain is a markdown doc",
+      "body": "Readable, editable, git-able. Open `co-thinker.md` to see exactly what the AGI is thinking — edit it to steer."
+    },
+    "card3": {
+      "title": "Cross-vendor visibility",
+      "body": "We watch every AI tool your team uses (Cursor, Codex, Claude, ChatGPT, Devin, Replit, Copilot, Windsurf, Gemini, Ollama). The full picture, in one place."
+    },
+    "card4": {
+      "title": "10 AI tools aligned",
+      "body": "The sidebar shows which tools we've wired in and which one is your starred ⭐ primary. Add more in seconds."
+    },
+    "cta": "Get started in 30 seconds",
+    "skip": "Skip tour",
+    "close": "Close welcome tour",
+    "tourLabel": "Welcome tour",
+    "tourReplay": "Show welcome tour again",
+    "tourReplayHint": "Re-shows the 4-card intro overlay you saw on first launch.",
+    "heartbeatNoChannelTitle": "Heartbeat failed: no LLM channel is set up.",
+    "heartbeatNoChannelBody": "To enable Tangerine's brain, [a] install Cursor and add `TANGERINE_SAMPLING_BRIDGE=1` to your MCP config, or [b] install Ollama at the default port.",
+    "heartbeatNoChannelCta": "Open setup guide"
   }
 }

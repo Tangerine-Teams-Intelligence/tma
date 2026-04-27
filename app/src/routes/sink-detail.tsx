@@ -3,9 +3,14 @@ import { ArrowLeft, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { findSink, type SinkId, SINKS } from "@/lib/sinks";
 
+// === wave 7 ===
 /**
- * /sinks/:id — every sink in v1.5 is "Coming v1.6+". Page exists so users
- * see what we're building and what shape the integration will take.
+ * /sinks/:id — sink detail page.
+ *
+ * v1.9.3 honesty pass: replaced the "Not yet shippable in v1.5" hardcoded
+ * footer with a status-aware footer that reads `def.status` from the
+ * SINKS catalog (shipped / beta / coming) so the surface tells the
+ * user the current truth instead of a 4-version-old planning marker.
  */
 export default function SinkDetailRoute() {
   const { id } = useParams<{ id: string }>();
@@ -68,9 +73,7 @@ export default function SinkDetailRoute() {
       </section>
 
       <div className="mt-6 flex items-center justify-between">
-        <p className="flex items-center gap-1 font-mono text-[11px] text-stone-500 dark:text-stone-400">
-          <AlertCircle size={11} /> Not yet shippable in v1.5.
-        </p>
+        <SinkStatusFooter status={def.status} comingIn={def.comingIn} />
         <Link to="/memory">
           <Button variant="outline" size="sm">
             Back to memory
@@ -80,3 +83,33 @@ export default function SinkDetailRoute() {
     </div>
   );
 }
+
+// === wave 7 ===
+function SinkStatusFooter({
+  status,
+  comingIn,
+}: {
+  status: "shipped" | "beta" | "coming";
+  comingIn?: string;
+}) {
+  if (status === "shipped") {
+    return (
+      <p className="flex items-center gap-1 font-mono text-[11px] text-emerald-600 dark:text-emerald-400">
+        Available now — install instructions above.
+      </p>
+    );
+  }
+  if (status === "beta") {
+    return (
+      <p className="flex items-center gap-1 font-mono text-[11px] text-amber-600 dark:text-amber-400">
+        <AlertCircle size={11} /> Beta. Expected stable: {comingIn ?? "v1.10"}.
+      </p>
+    );
+  }
+  return (
+    <p className="flex items-center gap-1 font-mono text-[11px] text-stone-500 dark:text-stone-400">
+      <AlertCircle size={11} /> Coming {comingIn ?? "in a future release"}.
+    </p>
+  );
+}
+// === end wave 7 ===

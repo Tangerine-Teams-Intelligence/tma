@@ -26,7 +26,9 @@ use chrono::{DateTime, Utc};
 use serde::Serialize;
 use tauri::{AppHandle, Runtime};
 
-use crate::agi::co_thinker::{CoThinkerEngine, HeartbeatCadence, HeartbeatOutcome};
+use crate::agi::co_thinker::{
+    seed_brain_doc, CoThinkerEngine, HeartbeatCadence, HeartbeatOutcome,
+};
 use crate::agi::observations;
 use crate::agi::templates::common::TauriEventSink;
 
@@ -81,6 +83,48 @@ pub async fn co_thinker_trigger_heartbeat<R: Runtime>(
         .await
 }
 
+/// === wave 6 === BUG #2 — Initialize the brain doc to the cold-start seed
+/// template so the file exists on disk immediately after the user clicks
+/// "Initialize co-thinker brain" — even if the subsequent heartbeat can't
+/// reach an LLM channel.
+///
+/// Idempotent: if the brain doc already exists (with non-trivial content),
+/// this is a no-op so we don't clobber a hand-edit. After the seed lands,
+/// we still try to fire one heartbeat — failure there is fine; the user has
+/// a real, on-disk brain doc they can `cat`/`edit` regardless.
+///
+/// Returns the heartbeat outcome (the seed-write itself is implicit). The
+/// frontend uses the `error` field to show a friendly explanation when the
+/// LLM is unreachable; the user's brain doc is on disk either way.
+#[tauri::command]
+pub async fn co_thinker_initialize_brain<R: Runtime>(
+    app: AppHandle<R>,
+    primary_tool_id: Option<String>,
+) -> Result<HeartbeatOutcome, AppError> {
+    let root = memory_root()?;
+    let mut engine = CoThinkerEngine::new(root);
+
+    // Step 1 — ensure the seed is on disk. If the user already has a brain
+    // doc with real content, skip; otherwise (missing, or just the seed
+    // template echo) write the seed.
+    let brain_path = engine.brain_doc_path();
+    let needs_seed = match std::fs::read_to_string(&brain_path) {
+        Ok(s) => s.trim().is_empty(),
+        Err(_) => true,
+    };
+    if needs_seed {
+        engine.write_brain_doc(&seed_brain_doc(Utc::now()))?;
+    }
+
+    // Step 2 — fire one heartbeat. If the LLM is unreachable the seed stays
+    // on disk and the outcome carries the dispatch error for the frontend
+    // to surface.
+    engine.set_event_sink(Arc::new(TauriEventSink::new(app)));
+    engine
+        .heartbeat(HeartbeatCadence::Manual, primary_tool_id)
+        .await
+}
+
 /// Lightweight status snapshot for the /co-thinker route's header strip.
 /// All fields are best-effort (`None` / `0` on read errors).
 #[derive(Debug, Serialize)]
@@ -94,13 +138,26 @@ pub struct CoThinkerStatus {
 #[tauri::command]
 pub async fn co_thinker_status() -> Result<CoThinkerStatus, AppError> {
     let root = memory_root()?;
-    let brain_path = root.join("agi").join("co-thinker.md");
-    let brain_doc_size = std::fs::metadata(&brain_path).map(|m| m.len()).unwrap_or(0);
+    // === wave 6 === BUG #1 — brain doc moved from `agi/` to `team/`. We
+    // still fall back to reading from the legacy path's metadata if a v1.9.2
+    // install hasn't triggered a heartbeat yet (so the new path doesn't
+    // exist) but the legacy doc does — so the status strip shows the real
+    // last-write time instead of "never".
+    let brain_path = root.join("team").join("co-thinker.md");
+    let legacy_brain_path = root.join("agi").join("co-thinker.md");
+    let metadata_source = if brain_path.exists() {
+        brain_path.clone()
+    } else {
+        legacy_brain_path
+    };
+    let brain_doc_size = std::fs::metadata(&metadata_source)
+        .map(|m| m.len())
+        .unwrap_or(0);
 
     // last_heartbeat_at: derived from the brain doc's mtime (since the engine
     // overwrites it on every tick that produces output). Falls back to None
     // on a fresh install.
-    let last_heartbeat_at: Option<DateTime<Utc>> = std::fs::metadata(&brain_path)
+    let last_heartbeat_at: Option<DateTime<Utc>> = std::fs::metadata(&metadata_source)
         .and_then(|m| m.modified())
         .ok()
         .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())

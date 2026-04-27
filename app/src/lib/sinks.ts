@@ -15,7 +15,14 @@ import { Globe, Plug, Radio } from "lucide-react";
 
 export type SinkId = "browser" | "mcp" | "local-ws";
 
-export type SinkStatus = "active" | "coming" | "disconnected";
+// === wave 7 ===
+// v1.9.3 honesty pass: same vocabulary as SourceStatus.
+//   "shipped" — the channel is wired (browser-ext + MCP server are real
+//                packages in this repo; user can install them today)
+//   "beta"    — wired but unvalidated end-to-end on Windows
+//   "coming"  — placeholder, no implementation yet
+export type SinkStatus = "shipped" | "beta" | "coming";
+// === end wave 7 ===
 
 export interface SinkDef {
   id: SinkId;
@@ -30,41 +37,50 @@ export interface SinkDef {
   comingIn?: string;
 }
 
+// === wave 7 ===
+// v1.9.3 honesty pass:
+//   - browser-ext + MCP server: source code lives in `browser-ext/` and
+//     `mcp-server/` of this repo — they're "shipped" (installable) but
+//     end-to-end Tangerine integration is still a manual flow, so we
+//     mark them "beta" and call out the manual install in the longBlurb.
+//   - local-ws server: Rust side has `get_ws_port` / launch logic; the
+//     surface to *expose* this to a user (start/stop button) is still
+//     not wired into the Sinks page — keep "coming" with v1.10 marker.
 export const SINKS: SinkDef[] = [
   {
     id: "browser",
     title: "Browser extension",
     produces: "Tangerine button on ChatGPT / Claude.ai / Gemini",
-    blurb: "Inject team memory into your AI chat sessions.",
+    blurb: "Beta — install from /browser-ext (manual load).",
     longBlurb:
-      "Install the Chrome / Edge / Safari extension. Visit ChatGPT, Claude.ai, or Gemini. A Tangerine button appears in the composer. Click it, the extension finds memory files relevant to your prompt, and prepends them — so the chat AI knows what your team decided last week without you re-typing.",
+      "Source lives in this repo at `browser-ext/`. Today it's a manual unpacked-extension load — open `chrome://extensions`, enable developer mode, point at `browser-ext/dist/`. Once loaded, visit ChatGPT, Claude.ai, or Gemini — a Tangerine button appears in the composer that injects relevant memory atoms before your prompt. Chrome Web Store listing lands in v1.10.",
     icon: Globe,
-    status: "coming",
-    comingIn: "v1.6",
+    status: "beta",
+    comingIn: "v1.10 (Web Store)",
   },
   {
     id: "mcp",
     title: "MCP server",
     produces: "query_team_memory() tool in Claude Code / Cursor",
-    blurb: "Expose memory as an MCP tool for your code editor.",
+    blurb: "Run `npx tangerine-mcp@latest` and point your AI tool at it.",
     longBlurb:
-      "Run `npx tangerine-mcp` and add it to your Claude Code or Cursor MCP config. Your editor gets a `query_team_memory()` tool — Claude can ask 'what did we decide about auth last sprint?' and get the answer from your memory dir, in context, without you switching windows.",
+      "Source lives in this repo at `mcp-server/`. Add the snippet shown on /ai-tools/cursor (or /ai-tools/claude-code etc.) to your MCP config — your editor gets a `query_team_memory()` tool. Claude can ask 'what did we decide about auth last sprint?' and get the answer from your memory dir, in context, without you switching windows.",
     icon: Plug,
-    status: "coming",
-    comingIn: "v1.6",
+    status: "shipped",
   },
   {
     id: "local-ws",
     title: "Local WS server",
     produces: "ws://127.0.0.1:7860 — local-only event stream",
-    blurb: "Stream memory events to local agents over WebSocket.",
+    blurb: "Coming v1.10 — beta tester signup welcome.",
     longBlurb:
-      "When enabled, Tangerine binds a WebSocket on localhost so locally-running agents (Ollama-backed assistants, custom scripts, Raycast extensions, etc) can subscribe to the live memory event stream without going through a sink. Localhost only — never exposed to the network.",
+      "When enabled, Tangerine binds a WebSocket on localhost so locally-running agents (Ollama-backed assistants, custom scripts, Raycast extensions, etc) can subscribe to the live memory event stream without going through a sink. The Rust side already exposes a port via `get_ws_port`; the start/stop UI on this page lands in v1.10. Localhost only — never exposed to the network.",
     icon: Radio,
     status: "coming",
-    comingIn: "v1.9",
+    comingIn: "v1.10",
   },
 ];
+// === end wave 7 ===
 
 export function findSink(id: SinkId): SinkDef {
   const s = SINKS.find((x) => x.id === id);

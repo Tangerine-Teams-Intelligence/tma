@@ -41,6 +41,29 @@ async function safeInvoke<T>(
   }
 }
 
+// === wave 6 ===
+// v1.9.3 BUG #5 fix — production-only invoke that does NOT swallow Tauri-side
+// errors into a misleading "(mock)" fallback. Use this for commands whose
+// failure must be surfaced as a real error in the UI (e.g. `co_thinker_dispatch`
+// when no LLM channel is reachable), so users don't see a fake answer that
+// claims the bridge is missing when it's actually a config problem.
+//
+// Outside Tauri (vitest / vite dev) the `mock` fallback still runs — that's the
+// cheap path that keeps the dev surface usable without a real backend. Inside
+// Tauri, any thrown error is re-thrown verbatim so the caller can render an
+// honest error card.
+async function tauriInvoke<T>(
+  cmd: string,
+  args: Record<string, unknown> | undefined,
+  mock: () => Promise<T> | T,
+): Promise<T> {
+  if (!inTauri()) return await mock();
+  // No try/catch — let the underlying error propagate. Callers MUST handle it
+  // (this is intentional: bridge-required commands have no honest fallback).
+  return await realInvoke<T>(cmd, args);
+}
+// === end wave 6 ===
+
 // ============================================================
 // Memory layer (sample seeding + root resolution)
 // ============================================================
@@ -370,14 +393,18 @@ export interface LlmResponse {
  * return a clearly-marked mock so the AI tool setup page still renders
  * something during `vite dev` / vitest.
  *
- * Throws when every channel fails (the underlying Rust returns `AppError`
- * with code `all_channels_exhausted`).
+ * === wave 6 === — uses `tauriInvoke` (not `safeInvoke`) so a Tauri-side
+ * dispatch error (no LLM channel reachable, primary tool unreachable, all
+ * channels exhausted) propagates as a thrown error. The previous behavior
+ * fell back to a "(mock) Tangerine heard ..." string that LIED to the user
+ * about why the call failed. Callers (e.g. AIToolSetupPage Test Query) must
+ * catch and render a real error block.
  */
 export async function coThinkerDispatch(
   req: LlmRequest,
   primaryToolId?: string,
 ): Promise<LlmResponse> {
-  return safeInvoke<LlmResponse>(
+  return tauriInvoke<LlmResponse>(
     "co_thinker_dispatch",
     { request: req, primaryToolId: primaryToolId ?? null },
     () => ({
@@ -1448,6 +1475,35 @@ export async function coThinkerTriggerHeartbeat(
 }
 
 /**
+ * === wave 6 === BUG #2 — Initialize the brain doc.
+ *
+ * Writes the cold-start seed template to disk first, THEN tries to fire one
+ * heartbeat. So a user who clicks "Initialize co-thinker brain" sees a real
+ * `~/.tangerine-memory/team/co-thinker.md` on disk even when no LLM channel
+ * is reachable — the empty-state confusion ("I clicked Initialize but where's
+ * the file?") goes away.
+ *
+ * Returns the heartbeat outcome; `error` is non-null when the LLM dispatch
+ * failed and the frontend should surface the friendly setup-help toast.
+ */
+export async function coThinkerInitializeBrain(
+  primaryToolId?: string,
+): Promise<HeartbeatOutcome> {
+  return safeInvoke(
+    "co_thinker_initialize_brain",
+    { primary_tool_id: primaryToolId ?? null },
+    () => ({
+      atoms_seen: 0,
+      brain_updated: true,
+      proposals_created: 0,
+      channel_used: "(mock)",
+      latency_ms: 0,
+      error: null,
+    }),
+  );
+}
+
+/**
  * Read the brain status (last/next heartbeat, doc size, today's observation
  * count). P3-B handler is `co_thinker_status`. Returns a "never-fired"
  * snapshot in the mock path so the UI can render the empty state.
@@ -1762,33 +1818,15 @@ export interface AgentActivity {
 /**
  * Read the cross-team list of currently-active personal AI agents.
  *
- * v2.0-beta.2 returns a 3-row stub. Outside Tauri (vitest, browser dev) we
- * mirror that stub so the sidebar still renders during development.
+ * === wave 6 === BUG #8 — Returns an empty list until the v3.0 capture
+ * orchestrator lands. Pre-v1.9.3 we returned 3 hardcoded rows ("Cursor /
+ * Devin / Claude Code @ daizhe / hongyu") regardless of what was actually
+ * installed; CEO running the installer on a fresh machine saw those rows
+ * even though he had no Cursor / no Devin. The empty-state ("no active
+ * agents") is honest about what's parseable.
  */
 export async function getActiveAgents(): Promise<AgentActivity[]> {
-  return safeInvoke<AgentActivity[]>("get_active_agents", undefined, () => [
-    {
-      user: "daizhe",
-      agent: "Cursor",
-      status: "running",
-      last_active: "45min",
-      task: "/api/auth refactor",
-    },
-    {
-      user: "daizhe",
-      agent: "Devin",
-      status: "running",
-      last_active: "30min",
-      task: "billing flow",
-    },
-    {
-      user: "hongyu",
-      agent: "Claude Code",
-      status: "idle",
-      last_active: "2h",
-      task: null,
-    },
-  ]);
+  return safeInvoke<AgentActivity[]>("get_active_agents", undefined, () => []);
 }
 // === end v2.0-beta.2 active agents ===
 

@@ -6,7 +6,9 @@ import { useStore } from "../src/lib/store";
 
 beforeEach(() => {
   // Reset welcomed flag so each test starts on a fresh-install footing.
-  useStore.setState((s) => ({ ui: { ...s.ui, welcomed: false } }));
+  useStore.setState((s) => ({
+    ui: { ...s.ui, welcomed: false, lastWelcomedVersion: "" },
+  }));
 });
 
 describe("WelcomeOverlay", () => {
@@ -31,10 +33,39 @@ describe("WelcomeOverlay", () => {
     expect(screen.getByText(/10 ai tools aligned/i)).toBeInTheDocument();
   });
 
-  it("does not render when welcomed is already true", () => {
-    useStore.setState((s) => ({ ui: { ...s.ui, welcomed: true } }));
+  it("does not render when welcomed is already true and on the current version", () => {
+    // === wave 6 === BUG #3 — overlay re-shows when the persisted
+    // `lastWelcomedVersion` doesn't match the running `__APP_VERSION__`,
+    // so we set both flags to mimic "user dismissed on this build".
+    useStore.setState((s) => ({
+      ui: {
+        ...s.ui,
+        welcomed: true,
+        lastWelcomedVersion: __APP_VERSION__,
+      },
+    }));
     const { container } = render(<WelcomeOverlay />);
     expect(container.querySelector('[data-testid="welcome-overlay"]')).toBeNull();
+  });
+
+  // === wave 6 === BUG #3 — version-aware re-show.
+  it("re-shows the overlay when welcomed=true but lastWelcomedVersion is older", () => {
+    useStore.setState((s) => ({
+      ui: {
+        ...s.ui,
+        welcomed: true,
+        lastWelcomedVersion: "0.0.0", // older than __APP_VERSION__
+      },
+    }));
+    render(<WelcomeOverlay />);
+    expect(screen.getByTestId("welcome-overlay")).toBeInTheDocument();
+  });
+
+  it("'Get started' stamps lastWelcomedVersion to the current build", () => {
+    render(<WelcomeOverlay />);
+    fireEvent.click(screen.getByTestId("welcome-start"));
+    expect(useStore.getState().ui.welcomed).toBe(true);
+    expect(useStore.getState().ui.lastWelcomedVersion).toBe(__APP_VERSION__);
   });
 
   it("'Get started' flips welcomed and unmounts the overlay", () => {

@@ -42,39 +42,30 @@ pub struct AgentActivity {
     pub task: Option<String>,
 }
 
-/// Hard-coded fixture used until v3.0 wires the real capture orchestrator.
-/// Lives in a function (not a `const`) so the heap-allocated strings don't
-/// have to be `&'static`.
+/// === wave 6 === BUG #8 — fixture replaced with an empty list.
+///
+/// Pre-v1.9.3 we returned 3 hardcoded rows ("daizhe — Cursor — 45min", etc.)
+/// regardless of what was actually installed on the user's machine. CEO ran
+/// the v1.9.2 installer with no Cursor / no Devin and still saw those rows
+/// — the sidebar was lying.
+///
+/// Wave 6 returns `vec![]` until the real capture orchestrator (v3.0) can
+/// read per-user agent state from disk. The Sidebar's `ActiveAgentsSection`
+/// already renders "no active agents" for an empty list, so the empty-state
+/// is what users with no installed agents now see — matching reality.
 fn stub_agents() -> Vec<AgentActivity> {
-    vec![
-        AgentActivity {
-            user: "daizhe".to_string(),
-            agent: "Cursor".to_string(),
-            status: "running".to_string(),
-            last_active: "45min".to_string(),
-            task: Some("/api/auth refactor".to_string()),
-        },
-        AgentActivity {
-            user: "daizhe".to_string(),
-            agent: "Devin".to_string(),
-            status: "running".to_string(),
-            last_active: "30min".to_string(),
-            task: Some("billing flow".to_string()),
-        },
-        AgentActivity {
-            user: "hongyu".to_string(),
-            agent: "Claude Code".to_string(),
-            status: "idle".to_string(),
-            last_active: "2h".to_string(),
-            task: None,
-        },
-    ]
+    Vec::new()
 }
 
 /// Return the current list of active personal AI agents across the team.
 ///
 /// v2.0-beta.2: returns `stub_agents()` unconditionally. v3.0 will swap in
 /// a read of the per-user capture watchers (see V2_0_SPEC.md §3.2).
+///
+/// === wave 6 === BUG #8 — `stub_agents()` now returns an empty Vec so the
+/// sidebar's empty-state ("no active agents") shows up instead of the
+/// fictitious 3-row fixture. The empty-state is honest about what's
+/// actually parseable on the user's machine; the fixture was not.
 #[tauri::command]
 pub async fn get_active_agents() -> Result<Vec<AgentActivity>, AppError> {
     Ok(stub_agents())
@@ -84,43 +75,28 @@ pub async fn get_active_agents() -> Result<Vec<AgentActivity>, AppError> {
 mod tests {
     use super::*;
 
+    // === wave 6 === BUG #8 — `stub_agents()` now returns an empty list so
+    // the sidebar matches reality on machines that haven't installed any
+    // AI agents. The pre-v1.9.3 tests asserting 3 hardcoded rows were
+    // tracking the fictitious fixture; updated below to assert the new
+    // honest behavior.
+
     #[tokio::test]
-    async fn test_get_active_agents_returns_three_stub_rows() {
+    async fn test_get_active_agents_returns_empty_until_capture_lands() {
         let rows = get_active_agents().await.expect("stub should not error");
-        assert_eq!(rows.len(), 3);
+        assert_eq!(
+            rows.len(),
+            0,
+            "v1.9.3+: empty until per-user capture watchers (v3.0) wire in"
+        );
     }
 
     #[tokio::test]
-    async fn test_stub_agents_have_expected_users_and_agents() {
-        let rows = get_active_agents().await.unwrap();
-        let users: Vec<&str> = rows.iter().map(|r| r.user.as_str()).collect();
-        assert_eq!(users, vec!["daizhe", "daizhe", "hongyu"]);
-
-        let agents: Vec<&str> = rows.iter().map(|r| r.agent.as_str()).collect();
-        assert_eq!(agents, vec!["Cursor", "Devin", "Claude Code"]);
-    }
-
-    #[tokio::test]
-    async fn test_idle_agent_has_no_task() {
-        let rows = get_active_agents().await.unwrap();
-        let hongyu = rows.iter().find(|r| r.user == "hongyu").unwrap();
-        assert_eq!(hongyu.status, "idle");
-        assert!(hongyu.task.is_none());
-    }
-
-    #[tokio::test]
-    async fn test_running_agents_have_task() {
-        let rows = get_active_agents().await.unwrap();
-        for row in rows.iter().filter(|r| r.status == "running") {
-            assert!(
-                row.task.is_some(),
-                "running agent must carry a task description"
-            );
-        }
-    }
-
-    #[tokio::test]
-    async fn test_status_values_are_known_strings() {
+    async fn test_status_values_are_known_strings_when_present() {
+        // The shape contract still holds: any row this command returns must
+        // carry a status of "running" | "idle" | "error". Currently nothing is
+        // returned, so the loop is a no-op — but the assertion guards against
+        // a future regression that returns malformed rows.
         let rows = get_active_agents().await.unwrap();
         for row in &rows {
             assert!(

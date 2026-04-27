@@ -121,10 +121,10 @@ function ComingSourcePage({ id }: { id: SourceId }) {
         </p>
       </section>
 
+      {/* === wave 7 === v1.9.3 honesty pass: replaced "Not yet shippable
+          in v1.5" hardcoded footer with status-aware copy. */}
       <div className="mt-6 flex items-center justify-between">
-        <p className="flex items-center gap-1 font-mono text-[11px] text-stone-500 dark:text-stone-400">
-          <AlertCircle size={11} /> Not yet shippable in v1.5.
-        </p>
+        <SourceStatusFooter status={def.status} comingIn={def.comingIn} />
         <Link to="/memory">
           <Button variant="outline" size="sm">
             Back to memory
@@ -134,3 +134,33 @@ function ComingSourcePage({ id }: { id: SourceId }) {
     </div>
   );
 }
+
+// === wave 7 ===
+function SourceStatusFooter({
+  status,
+  comingIn,
+}: {
+  status: "shipped" | "beta" | "coming";
+  comingIn?: string;
+}) {
+  if (status === "shipped") {
+    return (
+      <p className="flex items-center gap-1 font-mono text-[11px] text-emerald-600 dark:text-emerald-400">
+        Available now — see setup steps above.
+      </p>
+    );
+  }
+  if (status === "beta") {
+    return (
+      <p className="flex items-center gap-1 font-mono text-[11px] text-amber-600 dark:text-amber-400">
+        <AlertCircle size={11} /> Beta. Stable expected {comingIn ?? "v1.10"}.
+      </p>
+    );
+  }
+  return (
+    <p className="flex items-center gap-1 font-mono text-[11px] text-stone-500 dark:text-stone-400">
+      <AlertCircle size={11} /> Coming {comingIn ?? "in a future release"}.
+    </p>
+  );
+}
+// === end wave 7 ===

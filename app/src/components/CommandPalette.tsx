@@ -76,6 +76,15 @@ interface RouteEntry {
   label: string;
   aliases?: string[];
 }
+// === wave 7 ===
+// v1.9.3 honesty pass: every entry must lead to a real surface.
+//   - Added the missing source routes (notion / loom / zoom / email /
+//     voice-notes / external) so Cmd+K can reach them.
+//   - Replaced the bogus `/sources/calendar` (the actual route id is
+//     `cal`, not `calendar` — the old entry navigated to a 404 →
+//     redirect-to-/today).
+//   - Added /sinks/{browser,mcp,local-ws} since those are real routes
+//     with detail pages.
 const ROUTE_CATALOG: RouteEntry[] = [
   { path: "/today", label: "Today", aliases: ["daily", "home", "brief"] },
   { path: "/this-week", label: "This Week", aliases: ["weekly", "7 days"] },
@@ -92,27 +101,46 @@ const ROUTE_CATALOG: RouteEntry[] = [
   { path: "/projects/topology", label: "Project Topology", aliases: ["graph projects"] },
   { path: "/threads", label: "Threads", aliases: ["topics", "conversations"] },
   { path: "/decisions/lineage", label: "Decision Lineage", aliases: ["graph decisions"] },
+  // Sources — every id matches the SourceId catalog in lib/sources.ts.
   { path: "/sources/discord", label: "Discord Source", aliases: ["meetings", "discord"] },
   { path: "/sources/github", label: "GitHub Source", aliases: ["pr", "issues"] },
   { path: "/sources/linear", label: "Linear Source", aliases: ["tickets"] },
   { path: "/sources/slack", label: "Slack Source", aliases: ["chat"] },
-  { path: "/sources/calendar", label: "Calendar Source", aliases: ["events"] },
+  // The route id is `cal` (matching SourceId), not `calendar`.
+  { path: "/sources/cal", label: "Calendar Source", aliases: ["calendar", "events"] },
+  { path: "/sources/notion", label: "Notion Source", aliases: ["docs", "wiki"] },
+  { path: "/sources/loom", label: "Loom Source", aliases: ["video", "loom"] },
+  { path: "/sources/zoom", label: "Zoom Source", aliases: ["zoom", "calls"] },
+  { path: "/sources/email", label: "Email Source", aliases: ["imap", "mail"] },
+  { path: "/sources/voice-notes", label: "Voice notes Source", aliases: ["voice", "audio"] },
+  { path: "/sources/external", label: "External world", aliases: ["rss", "podcasts", "youtube"] },
+  // Sinks — corresponds to /sinks/:id.
+  { path: "/sinks/browser", label: "Browser extension", aliases: ["chrome", "ext"] },
+  { path: "/sinks/mcp", label: "MCP server", aliases: ["mcp"] },
+  { path: "/sinks/local-ws", label: "Local WS server", aliases: ["websocket"] },
   { path: "/billing", label: "Billing", aliases: ["subscription", "payment"] },
   { path: "/settings", label: "Settings", aliases: ["preferences", "config"] },
 ];
 
+// v1.9.3 honesty pass: only AI tool IDs that have a real config in
+// lib/ai-tools-config.ts. `devin` / `replit` / `apple-intelligence` /
+// `ms-copilot` are personal-agent parsers, NOT /ai-tools/* routes — the
+// previous palette pointed them at /ai-tools/devin which renders
+// "Unknown AI tool: devin" because the AIToolSetupPage falls back when
+// the static config is missing.
 const AI_TOOL_IDS = [
   "cursor",
   "claude-code",
   "codex",
   "windsurf",
-  "devin",
-  "replit",
-  "apple-intelligence",
-  "ms-copilot",
+  "claude-ai",
   "chatgpt",
+  "gemini",
+  "copilot",
+  "v0",
   "ollama",
 ];
+// === end wave 7 ===
 
 /**
  * Custom DOM event the /co-thinker route listens for to auto-trigger

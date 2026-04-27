@@ -1,12 +1,23 @@
 /**
  * Source registry — every place Tangerine reads team work from.
  *
- * v1.5 ships Discord only. The other rows are visible in the sidebar but
- * land on a "Coming v1.x" page.
- *
  * One source = one connector. Connectors push events into the user's memory
  * dir as markdown files (frontmatter + body). Tangerine never holds the data
  * itself — the data lives in the user's repo.
+ *
+ * === wave 7 ===
+ * v1.9.3 honesty pass: `status` is the static catalog verdict — does the
+ * connector code path ship in this build? `"shipped"` means the setup page
+ * is real (config persists, capture/writeback runs); `"beta"` means the
+ * page exists but the underlying ingestion isn't fully validated;
+ * `"coming"` means the page is a placeholder with a Coming-v1.X badge.
+ *
+ * The sidebar status chip shows "已连/Connected" ONLY when the user has
+ * actually configured the source on this machine — that's a runtime check
+ * (e.g. `notionGetConfig().token_present`) done by the sidebar, not a
+ * static field here. We removed `"active"` from this file because it was
+ * being interpreted as "connected" when it really meant "shipped." See
+ * SourceStatus and the sidebar's StatusChip for the runtime truth.
  */
 
 import {
@@ -36,7 +47,23 @@ export type SourceId =
   | "voice-notes"
   | "external";
 
-export type SourceStatus = "active" | "coming" | "disconnected";
+// === wave 7 ===
+// v1.9.3 honesty pass: split static "what ships" from runtime "is it
+// connected." Sidebar uses both: catalog status to decide which colour to
+// pre-render, runtime check to flip to green only when real config exists.
+//   "shipped"   — connector setup page is real + persists config
+//   "beta"      — surface exists but capture/writeback is unvalidated
+//   "coming"    — placeholder; renders Coming-v1.X badge
+export type SourceStatus = "shipped" | "beta" | "coming";
+
+/**
+ * Runtime connection state for the sidebar chip. Computed by the Sidebar
+ * component from per-source Tauri probes (notionGetConfig.token_present,
+ * loomGetConfig.token_present, etc). Falls back to "unknown" when no probe
+ * has run yet, which renders as a quiet grey dot rather than "Connected."
+ */
+export type SourceConnState = "connected" | "not_configured" | "unknown";
+// === end wave 7 ===
 
 export interface SourceDef {
   id: SourceId;
@@ -67,6 +94,16 @@ export interface SourceDef {
  * (Linear / Notion / Calendar), and asynchronous capture sources last
  * (Loom / Zoom / Email / Voice notes).
  */
+// === wave 7 ===
+// v1.9.3 honesty pass:
+//   - Removed all `"active"` (was misread as "connected"). Replaced with
+//     `"shipped"` (real setup page + config persistence) or `"beta"`
+//     (page exists, ingestion not fully validated end-to-end).
+//   - Updated `comingIn` markers to the v1.10/v1.11 horizon — the old
+//     v1.6/v1.7/v1.8 markers were planning tags from when v1.5 was
+//     current, and now look like "shipped in v1.6" instead of "scheduled."
+//   - The sidebar layers a runtime "connected/not configured" check on
+//     top of this catalog (see Sidebar.tsx StatusChip).
 export const SOURCES: SourceDef[] = [
   {
     id: "discord",
@@ -76,40 +113,40 @@ export const SOURCES: SourceDef[] = [
     longBlurb:
       "Tangerine's Discord bot joins your team's voice channels, captures audio, transcribes via local Whisper (or OpenAI as opt-in), and writes a memory file per meeting with decisions, action items, and per-person follow-ups. The bot reads only — it never sends a message back to the channel.",
     icon: Disc,
-    status: "active",
+    status: "shipped",
   },
   {
     id: "slack",
     title: "Slack",
     produces: "memory/threads/slack-*.md",
-    blurb: "Reads team channels, surfaces decisions and questions.",
+    blurb: "Writeback config; capture pending.",
     longBlurb:
-      "Indexes the channels you authorize. Long threads collapse into a memory file with the decision (if any) at the top and the original message links underneath. Read-only — Tangerine never posts to your Slack.",
+      "Capture (workspace OAuth + channel pick) is not yet wired in the desktop app — the v1.9.x build only ships writeback (post a pre-meeting brief, post a decision summary). To hydrate Slack threads into memory you currently need to run `tangerine-slack auth set` from the CLI. Full in-app capture lands in v1.10.",
     icon: Hash,
-    status: "coming",
-    comingIn: "v1.8",
+    status: "beta",
+    comingIn: "v1.10",
   },
   {
     id: "github",
     title: "GitHub",
     produces: "memory/threads/pr-*.md, memory/decisions/*.md",
-    blurb: "Pulls PR threads, review decisions, commit log.",
+    blurb: "Writeback; capture is CLI-only.",
     longBlurb:
-      "Watches the repos you authorize. PR threads, review comments, and merge decisions become memory. The commit message + files-changed summary feeds your AI tools so they know what shipped without you re-explaining.",
+      "v1.9.x writeback (decision atoms post back to a designated repo) is wired and persists to ~/.tmi/config.yaml. Capture (PR thread → atom) still runs out of the `sources/github/` Node package — the in-app capture page lands in v1.10. Read + writeback default OFF.",
     icon: Github,
-    status: "coming",
-    comingIn: "v1.6",
+    status: "beta",
+    comingIn: "v1.10",
   },
   {
     id: "linear",
     title: "Linear",
     produces: "memory/threads/linear-*.md, memory/decisions/*.md",
-    blurb: "Pulls issues, comments, and project state into memory.",
+    blurb: "Writeback; capture is CLI-only.",
     longBlurb:
-      "When connected, every Linear issue + comment + status change becomes part of your team's memory. Decisions in issue threads are extracted as decision records. Read-only in v1.6 — write-back (Tangerine commenting on issues) is gated behind /inbox approval in v1.7.",
+      "Same shape as GitHub: writeback (decisions → Linear comments) is wired in v1.9.x; capture runs from the `sources/linear/` Node package. Full in-app OAuth + issue selector lands in v1.10.",
     icon: GitBranch,
-    status: "coming",
-    comingIn: "v1.6",
+    status: "beta",
+    comingIn: "v1.10",
   },
   {
     id: "notion",
@@ -119,18 +156,18 @@ export const SOURCES: SourceDef[] = [
     longBlurb:
       "Walks the Notion databases you authorize each heartbeat, writes one markdown atom per page (with frontmatter for source / page id / db id / last_edited_time), and mirrors decisions back into a designated decisions database when writeback is enabled. Read + write are both off by default — toggle them in the source settings.",
     icon: FileText,
-    status: "active",
+    status: "shipped",
   },
   {
     id: "cal",
     title: "Calendar",
     produces: "memory/threads/cal-*.md",
-    blurb: "Records meetings + attendees, links to transcripts.",
+    blurb: "Writeback shipped; capture is CLI-only.",
     longBlurb:
-      "Reads your team's Google / Outlook calendars (read-only). Each event becomes a memory entry; if Discord captured the audio, the entry links to the transcript file.",
+      "Writeback (append meeting summary to the calendar event description) is wired and persists to ~/.tmi/config.yaml. Capture (event → atom) runs from `sources/calendar/`. In-app OAuth + calendar selector lands in v1.10.",
     icon: CalendarDays,
-    status: "coming",
-    comingIn: "v1.7",
+    status: "beta",
+    comingIn: "v1.10",
   },
   {
     id: "loom",
@@ -140,7 +177,7 @@ export const SOURCES: SourceDef[] = [
     longBlurb:
       "Walks the Loom workspace videos you authorize and writes one markdown atom per video with the transcript inline. Optional folder filters; manual transcript pull from any Loom share URL.",
     icon: Video,
-    status: "active",
+    status: "shipped",
   },
   {
     id: "zoom",
@@ -150,7 +187,7 @@ export const SOURCES: SourceDef[] = [
     longBlurb:
       "Replacement capture path for users without Discord. Server-to-Server OAuth pulls cloud recordings + auto-generated transcripts and writes one meeting atom per call. Configurable lookback window (default 7 days).",
     icon: MessageSquare,
-    status: "active",
+    status: "shipped",
   },
   {
     id: "email",
@@ -160,7 +197,7 @@ export const SOURCES: SourceDef[] = [
     longBlurb:
       "Connect Gmail or Outlook (or any IMAP provider) with an app password. Tangerine fetches recent threads daily, groups by subject + reply chain, and writes one digest atom per thread to memory/threads/email/. Read-only — Tangerine never sends mail.",
     icon: Mail,
-    status: "active",
+    status: "shipped",
     routePath: "/sources/email/setup",
   },
   {
@@ -171,7 +208,7 @@ export const SOURCES: SourceDef[] = [
     longBlurb:
       "Click record in the Tangerine desktop app, talk, click stop. The audio runs through the bundled Whisper model (the same one Discord meetings use) and lands as a markdown atom under memory/threads/voice/. Audio never leaves your machine.",
     icon: Mic,
-    status: "active",
+    status: "shipped",
     routePath: "/sources/voice-notes/setup",
   },
   {
@@ -180,12 +217,13 @@ export const SOURCES: SourceDef[] = [
     produces: "memory/personal/<you>/threads/external/*.md",
     blurb: "RSS, podcasts, YouTube, and articles — read once, capture forever.",
     longBlurb:
-      "v3.0 Layer 6: subscribe to RSS feeds and podcasts, paste any YouTube URL, save any article. Every capture lands as a markdown atom under personal/<you>/threads/external/. Personal vault — never synced to the team.",
+      "Subscribe to RSS feeds and podcasts, paste any YouTube URL, save any article. Every capture lands as a markdown atom under personal/<you>/threads/external/. Personal vault — never synced to the team.",
     icon: Globe,
-    status: "active",
+    status: "shipped",
     routePath: "/sources/external",
   },
 ];
+// === end wave 7 ===
 
 export function findSource(id: SourceId): SourceDef {
   const s = SOURCES.find((x) => x.id === id);

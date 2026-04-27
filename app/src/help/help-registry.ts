@@ -61,7 +61,7 @@ const REGISTRY: Record<string, HelpEntry> = {
   },
   "/co-thinker": {
     title: "Co-thinker",
-    body: "Your team's persistent AGI brain, stored as a markdown file at `~/.tangerine-memory/agi/co-thinker.md`. The brain re-reads atoms every 5 minutes via your primary AI tool (Cursor / Claude / ChatGPT). Edit the doc to steer; the AGI honours your edits on the next heartbeat. Use 'Initialize' on an empty brain to fire the first heartbeat.",
+    body: "Your team's persistent AGI brain, stored as a markdown file at `~/.tangerine-memory/team/co-thinker.md`. The brain re-reads atoms every 5 minutes via your primary AI tool (Cursor / Claude / ChatGPT). Edit the doc to steer; the AGI honours your edits on the next heartbeat. Use 'Initialize' on an empty brain to fire the first heartbeat.",
     shortcuts: [
       { keys: "Cmd/Ctrl+E", label: "Toggle edit mode" },
       { keys: "Cmd/Ctrl+S", label: "Save brain edits" },

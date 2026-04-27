@@ -40,6 +40,16 @@ import {
   type PersonalAgentCaptureResult,
 } from "@/lib/tauri";
 
+// === wave 7 ===
+// v1.9.3 honesty pass: per-parser validation status. Sourced from
+// `app/src-tauri/src/personal_agents/PARSER_STATUS.md`. Only Claude Code
+// has been validated against real session files; the other 7 are wired
+// but unvalidated. Rendered as a badge next to each row's title so
+// users know which parsers are production-confidence.
+type ParserConfidence =
+  | { kind: "validated" }
+  | { kind: "unvalidated"; reason: string };
+
 type AgentRow = {
   /** Atom dir name on disk — used as the row's react key + the source
    *  field on the summary. */
@@ -49,6 +59,8 @@ type AgentRow = {
   label: string;
   description: string;
   capture: (currentUser?: string) => Promise<PersonalAgentCaptureResult>;
+  /** v1.9.3: parser validation status — drives the per-row badge. */
+  confidence: ParserConfidence;
 };
 
 const AGENTS: AgentRow[] = [
@@ -58,6 +70,10 @@ const AGENTS: AgentRow[] = [
     label: "Cursor",
     description: "Reads ~/.cursor/conversations/*.json (or %APPDATA%/Cursor on Windows).",
     capture: personalAgentsCaptureCursor,
+    confidence: {
+      kind: "unvalidated",
+      reason: "Schema assumed — Cursor not on validation machine yet.",
+    },
   },
   {
     atomDir: "claude-code",
@@ -65,6 +81,7 @@ const AGENTS: AgentRow[] = [
     label: "Claude Code",
     description: "Reads ~/.claude/projects/<slug>/<session-uuid>.jsonl.",
     capture: personalAgentsCaptureClaudeCode,
+    confidence: { kind: "validated" },
   },
   {
     atomDir: "codex",
@@ -72,6 +89,10 @@ const AGENTS: AgentRow[] = [
     label: "Codex CLI",
     description: "Reads ~/.config/openai/sessions/* (best-effort path probe).",
     capture: personalAgentsCaptureCodex,
+    confidence: {
+      kind: "unvalidated",
+      reason: "Schema assumed — Codex not on validation machine yet.",
+    },
   },
   {
     atomDir: "windsurf",
@@ -79,6 +100,10 @@ const AGENTS: AgentRow[] = [
     label: "Windsurf",
     description: "Reads Windsurf sessions dir (Codeium fork, Cursor-like shape).",
     capture: personalAgentsCaptureWindsurf,
+    confidence: {
+      kind: "unvalidated",
+      reason: "Schema assumed — Windsurf not on validation machine yet.",
+    },
   },
   // === v3.0 wave 2 personal agents ===
   {
@@ -88,6 +113,10 @@ const AGENTS: AgentRow[] = [
     description:
       "Cognition Labs cloud agent. Webhook + REST poll fallback (token + secret in Settings).",
     capture: personalAgentsCaptureDevin,
+    confidence: {
+      kind: "unvalidated",
+      reason: "API stub — exercised only via fixture payloads.",
+    },
   },
   {
     atomDir: "replit",
@@ -95,6 +124,10 @@ const AGENTS: AgentRow[] = [
     label: "Replit Agent",
     description: "Replit cloud agent. REST poll (token in Settings, stub default).",
     capture: personalAgentsCaptureReplit,
+    confidence: {
+      kind: "unvalidated",
+      reason: "API stub — exercised only via fixture payloads.",
+    },
   },
   {
     atomDir: "apple-intelligence",
@@ -103,6 +136,10 @@ const AGENTS: AgentRow[] = [
     description:
       "macOS Shortcuts post-action hook (Writing Tools / Image Playground / Genmoji). macOS only.",
     capture: personalAgentsCaptureAppleIntelligence,
+    confidence: {
+      kind: "unvalidated",
+      reason: "Schema assumed — needs a macOS dev machine to validate.",
+    },
   },
   {
     atomDir: "ms-copilot",
@@ -111,9 +148,40 @@ const AGENTS: AgentRow[] = [
     description:
       "Microsoft Copilot via Graph API. Enterprise license required — stub mode by default.",
     capture: personalAgentsCaptureMsCopilot,
+    confidence: {
+      kind: "unvalidated",
+      reason: "API stub — needs an enterprise license + token to validate live.",
+    },
   },
   // === end v3.0 wave 2 personal agents ===
 ];
+
+/**
+ * v1.9.3 per-row badge. Renders "Confirmed ✓" for validated parsers
+ * (Claude Code) or "Beta — unvalidated" for the other 7. The tooltip
+ * surfaces the validation reason from PARSER_STATUS.md.
+ */
+function ParserBadge({ confidence }: { confidence: ParserConfidence }) {
+  if (confidence.kind === "validated") {
+    return (
+      <span
+        title="Parser validated against real session files."
+        className="rounded border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 font-mono text-[10px] text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-300"
+      >
+        Confirmed
+      </span>
+    );
+  }
+  return (
+    <span
+      title={`Beta. ${confidence.reason} Try it; report issues.`}
+      className="rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 font-mono text-[10px] text-amber-700 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-300"
+    >
+      Beta
+    </span>
+  );
+}
+// === end wave 7 ===
 
 export function PersonalAgentsSettings() {
   const { t } = useTranslation();
@@ -265,6 +333,8 @@ export function PersonalAgentsSettings() {
                       }
                     />
                     <h4 className="font-display text-base">{row.label}</h4>
+                    {/* === wave 7 === parser confidence badge */}
+                    <ParserBadge confidence={row.confidence} />
                     <span className="text-xs text-[var(--ti-ink-500)]">
                       {detected
                         ? conversationCount === 1

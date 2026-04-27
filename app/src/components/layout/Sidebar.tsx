@@ -380,6 +380,15 @@ function SinkLink({ def }: { def: SinkDef }) {
   );
 }
 
+// === wave 7 ===
+// v1.9.3 honesty pass: the chip used to render green "已连/Connected" for
+// any source whose CATALOG status was "active" — even if the user hadn't
+// configured a single thing on this machine. That was a lie. Now:
+//   - "shipped" → quiet grey "Ready" badge (the page is real, but we make
+//                 NO claim about whether it's been wired up — users can
+//                 check the source detail page to see real config status)
+//   - "beta"    → amber "Beta" badge with tooltip
+//   - "coming"  → grey "Coming v1.X" badge
 function StatusChip({
   status,
   comingIn,
@@ -387,23 +396,32 @@ function StatusChip({
   status: SourceStatus | SinkStatus;
   comingIn?: string;
 }) {
-  // === wave 4-D i18n ===
   const { t } = useTranslation();
-  if (status === "active") {
+  if (status === "shipped") {
     return (
-      <span className="ml-auto inline-flex items-center gap-1 font-mono text-[10px] text-emerald-600 dark:text-emerald-400">
-        <span className="ti-live-dot h-1.5 w-1.5" />
-        {t("sidebar.statusOn")}
+      <span
+        className="ml-auto font-mono text-[10px] text-stone-500 dark:text-stone-400"
+        title="Setup page is live — open it to wire up your account."
+      >
+        {t("sidebar.statusReady")}
       </span>
     );
   }
-  if (status === "disconnected") {
+  if (status === "beta") {
     return (
-      <span className="ml-auto font-mono text-[10px] text-rose-600 dark:text-rose-400">
-        {t("sidebar.statusOff")}
+      <span
+        className="ml-auto font-mono text-[10px] text-amber-600 dark:text-amber-400"
+        title={
+          comingIn
+            ? `Beta — full release ${comingIn}. Try it; report issues.`
+            : "Beta — try it; report issues."
+        }
+      >
+        {t("sidebar.statusBeta")}
       </span>
     );
   }
+  // status === "coming"
   return (
     <span
       className="ml-auto font-mono text-[10px] text-stone-400 dark:text-stone-500"
@@ -413,6 +431,7 @@ function StatusChip({
     </span>
   );
 }
+// === end wave 7 ===
 
 function ThemeToggle() {
   // === wave 4-D i18n ===

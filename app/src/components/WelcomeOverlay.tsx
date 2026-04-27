@@ -27,6 +27,7 @@
  */
 
 import { useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { Sparkles, FileText, Eye, ListChecks, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -35,79 +36,91 @@ import { logEvent } from "@/lib/telemetry";
 
 interface ValueCard {
   icon: typeof Sparkles;
-  title: string;
-  body: string;
+  /** i18n key under `welcome.cardN`. */
+  key: "card1" | "card2" | "card3" | "card4";
 }
 
+// === wave 6 === BUG #6 — strings are now i18n keys, not literals.
 const VALUE_CARDS: ValueCard[] = [
-  {
-    icon: Sparkles,
-    title: "No new AI subscription",
-    body: "We borrow your existing Cursor / Claude Pro / ChatGPT session. Your team's AGI runs on the AI you already pay for.",
-  },
-  {
-    icon: FileText,
-    title: "Your AGI brain is a markdown doc",
-    body: "Readable, editable, git-able. Open `co-thinker.md` to see exactly what the AGI is thinking — edit it to steer.",
-  },
-  {
-    icon: Eye,
-    title: "Cross-vendor visibility",
-    body: "We watch every AI tool your team uses (Cursor, Codex, Claude, ChatGPT, Devin, Replit, Copilot, Windsurf, Gemini, Ollama). The full picture, in one place.",
-  },
-  {
-    icon: ListChecks,
-    title: "10 AI tools aligned",
-    body: "The sidebar shows which tools we've wired in and which one is your starred ⭐ primary. Add more in seconds.",
-  },
+  { icon: Sparkles, key: "card1" },
+  { icon: FileText, key: "card2" },
+  { icon: Eye, key: "card3" },
+  { icon: ListChecks, key: "card4" },
 ];
 
 export function WelcomeOverlay() {
+  const { t } = useTranslation();
   const welcomed = useStore((s) => s.ui.welcomed);
   const setWelcomed = useStore((s) => s.ui.setWelcomed);
+  // === wave 6 === BUG #3 — version-aware tour replay.
+  const lastWelcomedVersion = useStore((s) => s.ui.lastWelcomedVersion);
+  const setLastWelcomedVersion = useStore(
+    (s) => s.ui.setLastWelcomedVersion,
+  );
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const ctaRef = useRef<HTMLButtonElement | null>(null);
+
+  // === wave 6 === BUG #3 — show the overlay if either
+  //   (a) `welcomed === false` (fresh install / explicit replay), OR
+  //   (b) the user previously dismissed but on an older app version. Catching
+  //       case (b) means upgrade users see new tour content without having to
+  //       hunt for the replay button.
+  // The Settings replay button and Cmd+K palette only flip `welcomed` to
+  // false; they don't touch `lastWelcomedVersion`. So a Settings replay still
+  // re-shows correctly because (a) takes effect.
+  const versionMismatch =
+    !!__APP_VERSION__ && lastWelcomedVersion !== __APP_VERSION__;
+  const shouldShow = !welcomed || versionMismatch;
 
   // Move focus to the CTA on mount so keyboard users can hit Enter to
   // proceed. Defer one tick so the dialog DOM is in place.
   useEffect(() => {
-    if (welcomed) return;
+    if (!shouldShow) return;
     const t = window.setTimeout(() => ctaRef.current?.focus(), 50);
     return () => window.clearTimeout(t);
-  }, [welcomed]);
+  }, [shouldShow]);
 
   // Esc → skip (same effect as the "Skip tour" link). We treat Esc as
   // a soft dismissal — telemetry-tagged separately so analytics sees
   // how many users bypass the tour entirely.
   useEffect(() => {
-    if (welcomed) return;
+    if (!shouldShow) return;
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") {
         e.preventDefault();
         void logEvent("welcome_overlay_skipped", { trigger: "esc" });
         setWelcomed(true);
+        setLastWelcomedVersion(__APP_VERSION__);
       }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [welcomed, setWelcomed]);
+  }, [shouldShow, setWelcomed, setLastWelcomedVersion]);
 
   // Telemetry once per cold-start when the overlay is shown. Useful for
   // first-run conversion analysis (shown → started) over time.
   useEffect(() => {
-    if (welcomed) return;
-    void logEvent("welcome_overlay_shown", {});
-  }, [welcomed]);
+    if (!shouldShow) return;
+    void logEvent("welcome_overlay_shown", {
+      version: __APP_VERSION__,
+      replay_after_upgrade: welcomed && versionMismatch ? 1 : 0,
+    });
+  }, [shouldShow, welcomed, versionMismatch]);
 
-  if (welcomed) return null;
+  if (!shouldShow) return null;
 
   const onStart = () => {
-    void logEvent("welcome_overlay_started", {});
+    void logEvent("welcome_overlay_started", { version: __APP_VERSION__ });
     setWelcomed(true);
+    setLastWelcomedVersion(__APP_VERSION__);
   };
   const onSkip = () => {
-    void logEvent("welcome_overlay_skipped", { trigger: "link" });
+    void logEvent("welcome_overlay_skipped", {
+      trigger: "link",
+      version: __APP_VERSION__,
+    });
     setWelcomed(true);
+    setLastWelcomedVersion(__APP_VERSION__);
   };
 
   return (
@@ -124,7 +137,7 @@ export function WelcomeOverlay() {
       >
         <button
           type="button"
-          aria-label="Close welcome tour"
+          aria-label={t("welcome.close")}
           className="absolute right-4 top-4 inline-flex h-7 w-7 items-center justify-center rounded text-stone-400 hover:bg-stone-100 hover:text-stone-700 dark:hover:bg-stone-800 dark:hover:text-stone-200"
           onClick={onSkip}
         >
@@ -132,15 +145,15 @@ export function WelcomeOverlay() {
         </button>
 
         <header className="mb-6">
-          <p className="ti-section-label">Welcome to Tangerine</p>
+          <p className="ti-section-label">{t("welcome.kicker")}</p>
           <h1
             id="welcome-overlay-title"
             className="mt-1 font-display text-3xl tracking-tight text-stone-900 dark:text-stone-100"
           >
-            Your team's AGI, in 30 seconds.
+            {t("welcome.title")}
           </h1>
           <p className="mt-2 max-w-prose text-[13px] leading-relaxed text-stone-600 dark:text-stone-400">
-            Four things to know before you start.
+            {t("welcome.subtitle")}
           </p>
         </header>
 
@@ -160,7 +173,7 @@ export function WelcomeOverlay() {
             data-testid="welcome-start"
             size="lg"
           >
-            Get started in 30 seconds
+            {t("welcome.cta")}
           </Button>
           <button
             type="button"
@@ -168,7 +181,7 @@ export function WelcomeOverlay() {
             data-testid="welcome-skip"
             className="font-mono text-[12px] text-stone-500 underline-offset-2 hover:text-stone-900 hover:underline dark:text-stone-400 dark:hover:text-stone-100"
           >
-            Skip tour
+            {t("welcome.skip")}
           </button>
         </div>
       </div>
@@ -177,6 +190,7 @@ export function WelcomeOverlay() {
 }
 
 function ValueCardView({ card, index }: { card: ValueCard; index: number }) {
+  const { t } = useTranslation();
   const Icon = card.icon;
   return (
     <div
@@ -192,10 +206,10 @@ function ValueCardView({ card, index }: { card: ValueCard; index: number }) {
         </div>
         <div className="min-w-0">
           <h3 className="text-[13px] font-semibold text-stone-900 dark:text-stone-100">
-            {card.title}
+            {t(`welcome.${card.key}.title`)}
           </h3>
           <p className="mt-1 text-[12px] leading-relaxed text-stone-600 dark:text-stone-400">
-            {card.body}
+            {t(`welcome.${card.key}.body`)}
           </p>
         </div>
       </div>

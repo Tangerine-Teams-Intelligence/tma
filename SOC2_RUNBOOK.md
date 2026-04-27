@@ -46,7 +46,7 @@ wish list. The on-call uses these as recipes, in order, before improvising.
 |-----------|--------------|------------|
 | Network offline (user-side) | None — the `ConnectionBanner` already lights up + the IPC layer queues writes. | Telemetry shows `navigate_route` events resume after reconnect. |
 | Source auth expired | Settings → Sources → reconnect. Banner instructs user. | Source status flips green within 60s. |
-| Co-thinker brain corrupt | Daemon auto-recovers via `CoThinkerEngine::recover_from_corrupt`. Quarantine lands at `~/.tangerine-memory/.tangerine/quarantine/co-thinker-{ts}.md`. | Next heartbeat writes a fresh `agi/co-thinker.md`; toast surfaces. |
+| Co-thinker brain corrupt | Daemon auto-recovers via `CoThinkerEngine::recover_from_corrupt`. Quarantine lands at `~/.tangerine-memory/.tangerine/quarantine/co-thinker-{ts}.md`. | Next heartbeat writes a fresh `team/co-thinker.md`; toast surfaces. |
 | Disk full | Banner lights up; daemon enters paused state. | User frees space; daemon resumes on next tick. |
 | Stripe webhook outage | Reconcile tick (daemon poll, per BILLING spec) heals. | `billing_status` returns to expected within 1h. |
 | DeepSeek outage | Falls through to Ollama if installed; else "AI unavailable" toast. | Heartbeat continues; `channel_used="none"` in telemetry. |

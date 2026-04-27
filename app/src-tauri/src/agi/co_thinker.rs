@@ -271,17 +271,51 @@ impl CoThinkerEngine {
     }
 
     /// Path to the brain doc.
+    ///
+    /// === wave 6 === BUG #1 — moved from `agi/co-thinker.md` to
+    /// `team/co-thinker.md` so the on-disk path matches what the README,
+    /// dogfood checklist, and welcome overlay all describe ("team brain").
+    /// `read_brain_doc` lazy-migrates from the legacy `agi/` location on
+    /// first read so existing dogfood installs upgrade cleanly.
     pub fn brain_doc_path(&self) -> PathBuf {
+        self.memory_root.join("team").join("co-thinker.md")
+    }
+
+    /// === wave 6 === BUG #1 — legacy v1.9.2-and-earlier brain doc location.
+    /// Kept so `read_brain_doc` can lazy-migrate from the old path without
+    /// the user losing brain content on upgrade.
+    fn legacy_brain_doc_path(&self) -> PathBuf {
         self.memory_root.join("agi").join("co-thinker.md")
     }
 
     /// Read the brain doc. Returns the seed when the file doesn't exist —
     /// the user-facing /co-thinker route always has something to render.
+    ///
+    /// === wave 6 === BUG #1 — lazy migration from `agi/co-thinker.md` to
+    /// `team/co-thinker.md`. If the new path is missing but the legacy path
+    /// exists, copy it into place + leave the legacy file untouched (the
+    /// next write will overwrite the new path; the legacy file stays as a
+    /// safety blanket until the user decides to delete it).
     pub fn read_brain_doc(&self) -> Result<String, AppError> {
         let p = self.brain_doc_path();
         match std::fs::read_to_string(&p) {
             Ok(s) => Ok(s),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(seed_brain_doc(Utc::now())),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                // Try the legacy path before falling back to the seed.
+                let legacy = self.legacy_brain_doc_path();
+                if let Ok(content) = std::fs::read_to_string(&legacy) {
+                    // Best-effort migrate — write the legacy content to the
+                    // new path so subsequent reads + heartbeat writes line up.
+                    // Failure is non-fatal; we still return the content the
+                    // user wrote.
+                    if let Some(parent) = p.parent() {
+                        let _ = std::fs::create_dir_all(parent);
+                    }
+                    let _ = atomic_write(&p, &content);
+                    return Ok(content);
+                }
+                Ok(seed_brain_doc(Utc::now()))
+            }
             Err(e) => Err(AppError::internal("read_brain", e.to_string())),
         }
     }
@@ -292,7 +326,7 @@ impl CoThinkerEngine {
         let p = self.brain_doc_path();
         if let Some(parent) = p.parent() {
             std::fs::create_dir_all(parent)
-                .map_err(|e| AppError::internal("mkdir_agi", e.to_string()))?;
+                .map_err(|e| AppError::internal("mkdir_team", e.to_string()))?;
         }
         atomic_write(&p, content)
     }
@@ -702,6 +736,12 @@ fn walk_dir(
             let _ = walk_dir(root, &path, cutoff_secs, out);
         } else if ft.is_file() {
             if !name_str.ends_with(".md") {
+                continue;
+            }
+            // === wave 6 === BUG #1 — the brain doc moved to
+            // `team/co-thinker.md`. Exclude it from atom scans so the
+            // heartbeat doesn't feed the brain its own previous tick output.
+            if path == root.join("team").join("co-thinker.md") {
                 continue;
             }
             let mtime = match entry.metadata().and_then(|m| m.modified()) {
@@ -1537,7 +1577,8 @@ Last heartbeat: 2026-04-26 14:23 (cadence: manual)
         let out = engine.heartbeat(HeartbeatCadence::Manual, None).await.unwrap();
         assert!(out.brain_updated, "brain should be written");
         assert_eq!(out.error, None);
-        let brain = std::fs::read_to_string(root.join("agi/co-thinker.md")).unwrap();
+        // === wave 6 === BUG #1 — brain doc moved to `team/co-thinker.md`.
+        let brain = std::fs::read_to_string(root.join("team/co-thinker.md")).unwrap();
         for h in REQUIRED_HEADINGS {
             assert!(brain.contains(h), "missing heading {}", h);
         }
@@ -1548,9 +1589,10 @@ Last heartbeat: 2026-04-26 14:23 (cadence: manual)
     async fn test_heartbeat_skips_when_no_new_atoms() {
         let root = tmp_root();
         // Pre-create the brain doc so the skip path is reachable on tick #2.
-        std::fs::create_dir_all(root.join("agi")).unwrap();
+        // === wave 6 === BUG #1 — brain doc lives under `team/` now.
+        std::fs::create_dir_all(root.join("team")).unwrap();
         std::fs::write(
-            root.join("agi/co-thinker.md"),
+            root.join("team/co-thinker.md"),
             seed_brain_doc(Utc::now()),
         )
         .unwrap();
@@ -1601,7 +1643,8 @@ Last heartbeat: 2026-04-26
         let mut engine = CoThinkerEngine::with_dispatcher(root.clone(), mock.clone());
         let out = engine.heartbeat(HeartbeatCadence::Manual, None).await.unwrap();
         assert!(out.brain_updated);
-        let brain = std::fs::read_to_string(root.join("agi/co-thinker.md")).unwrap();
+        // === wave 6 === BUG #1 — brain doc moved to `team/co-thinker.md`.
+        let brain = std::fs::read_to_string(root.join("team/co-thinker.md")).unwrap();
         assert!(brain.contains("This claim has a citation."));
         assert!(
             !brain.contains("This claim is uncited and must be dropped."),
@@ -1711,7 +1754,7 @@ Last heartbeat: 2026-04-26
     #[test]
     fn test_scan_atoms_skips_agi_subtree() {
         let root = tmp_root();
-        touch_atom(&root, "agi/co-thinker.md", "self");
+        touch_atom(&root, "agi/observations/2026-04-26.md", "self");
         touch_atom(&root, "decisions/x.md", "---\n---\nbody");
         let atoms = scan_atoms_since(&root, Utc::now() - chrono::Duration::hours(1));
         assert!(
@@ -1719,6 +1762,45 @@ Last heartbeat: 2026-04-26
             "agi/ subtree must not be self-fed"
         );
         assert!(atoms.iter().any(|a| a.rel_path == "decisions/x.md"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // === wave 6 === BUG #1 — brain doc now at team/co-thinker.md; verify
+    // it is excluded from atom scans (otherwise the heartbeat would feed
+    // its own previous tick output back into itself).
+    #[test]
+    fn test_scan_atoms_skips_team_brain_doc() {
+        let root = tmp_root();
+        touch_atom(&root, "team/co-thinker.md", "self");
+        // Other team/ atoms (decisions in team mode) must still be picked up.
+        touch_atom(&root, "team/decisions/y.md", "---\n---\nbody");
+        let atoms = scan_atoms_since(&root, Utc::now() - chrono::Duration::hours(1));
+        assert!(
+            atoms.iter().all(|a| a.rel_path != "team/co-thinker.md"),
+            "team/co-thinker.md must be excluded from self-feed"
+        );
+        assert!(atoms.iter().any(|a| a.rel_path == "team/decisions/y.md"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // === wave 6 === BUG #1 — read_brain_doc must lazy-migrate from the
+    // legacy agi/co-thinker.md to team/co-thinker.md so existing v1.9.2
+    // installs don't lose their brain on upgrade.
+    #[test]
+    fn test_read_brain_doc_lazy_migrates_from_legacy_path() {
+        let root = tmp_root();
+        let legacy = root.join("agi").join("co-thinker.md");
+        std::fs::create_dir_all(legacy.parent().unwrap()).unwrap();
+        let user_content = "# my hand-edited brain\n\n## What I'm watching\n- a [x.md]\n";
+        std::fs::write(&legacy, user_content).unwrap();
+        let engine = CoThinkerEngine::new(root.clone());
+        let read = engine.read_brain_doc().unwrap();
+        assert_eq!(read, user_content);
+        // Migration: the new path now exists with the same content.
+        let new_path = root.join("team").join("co-thinker.md");
+        assert!(new_path.exists());
+        let new_content = std::fs::read_to_string(&new_path).unwrap();
+        assert_eq!(new_content, user_content);
         let _ = std::fs::remove_dir_all(&root);
     }
 
