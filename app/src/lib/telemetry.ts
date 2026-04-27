@@ -91,7 +91,20 @@ export type TelemetryEventName =
   //                                            | "validation_failed"
   //                                            | "timeout" }
   | "suggestion_enriched"
-  | "suggestion_enrichment_failed";
+  | "suggestion_enrichment_failed"
+  // Wave 4-C — first-run welcome tour + AI tool auto-configure.
+  // Lets analytics see how many users see the overlay vs. start the tour
+  // vs. skip, and how often auto-configure beats the manual flow.
+  // Payload shapes:
+  //   - welcome_overlay_shown      : {}
+  //   - welcome_overlay_started    : {}
+  //   - welcome_overlay_skipped    : { trigger: "link" | "esc" }
+  //   - ai_tool_auto_configure     : { tool_id: string, path: string,
+  //                                     outcome: "copied" | "copy_failed" }
+  | "welcome_overlay_shown"
+  | "welcome_overlay_started"
+  | "welcome_overlay_skipped"
+  | "ai_tool_auto_configure";
 
 /** One telemetry record. Mirrors `app/src-tauri/src/agi/telemetry.rs::TelemetryEvent`. */
 export interface TelemetryEvent {

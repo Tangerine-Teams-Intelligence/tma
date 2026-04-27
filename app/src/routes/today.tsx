@@ -1,4 +1,6 @@
+// === wave 4-D i18n ===
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Calendar } from "lucide-react";
 import {
   readBrief,
@@ -44,6 +46,7 @@ import { WorkflowGraph } from "@/components/graphs/WorkflowGraph";
  *   • mark_atom_acked when "Mark read" on the brief
  */
 export default function TodayRoute() {
+  const { t } = useTranslation();
   const today = todayIso();
   const currentUser = useStore((s) => s.ui.currentUser);
   const [brief, setBrief] = useState<BriefData | null>(null);
@@ -107,7 +110,7 @@ export default function TodayRoute() {
       <header className="ti-no-select flex h-9 items-center gap-2 border-b border-stone-200 bg-stone-50 px-6 font-mono text-[11px] text-stone-500 dark:border-stone-800 dark:bg-stone-950 dark:text-stone-400">
         <span>~ /today</span>
         <span className="ml-auto">
-          Now <span className="text-stone-700 dark:text-stone-300">{now}</span>
+          {t("today.now")} <span className="text-stone-700 dark:text-stone-300">{now}</span>
         </span>
       </header>
 
@@ -117,28 +120,24 @@ export default function TodayRoute() {
         <header className="mb-6 flex items-center gap-3">
           <Calendar size={20} className="text-stone-500" />
           <div>
-            <p className="ti-section-label">Today</p>
+            <p className="ti-section-label">{t("today.title")}</p>
             <h1 className="font-display text-3xl tracking-tight text-stone-900 dark:text-stone-100">
               {prettyDate(today)}
             </h1>
           </div>
         </header>
 
-        {/* === v2.0-alpha.2 workflow graph ===
-            Two-column layout: graph (main, ~70%) + brief/activity rail
-            (secondary, ~30%). On narrow viewports the rail stacks below
-            the graph so keyboard nav stays sensible.                  */}
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[2fr_1fr]">
-          <section aria-label="Workflow">
-            <p className="ti-section-label">Workflow</p>
+          <section aria-label={t("today.workflowAria")}>
+            <p className="ti-section-label">{t("today.workflow")}</p>
             <div className="mt-3">
               <WorkflowGraph />
             </div>
           </section>
 
-          <aside className="space-y-4" aria-label="Today summary">
+          <aside className="space-y-4" aria-label={t("today.summaryAria")}>
             <div>
-              <p className="ti-section-label">Daily brief</p>
+              <p className="ti-section-label">{t("today.dailyBrief")}</p>
               <div className="mt-3">
                 <DailyBriefCard
                   date={today}
@@ -151,11 +150,11 @@ export default function TodayRoute() {
             </div>
 
             <div>
-              <p className="ti-section-label">Activity</p>
+              <p className="ti-section-label">{t("today.activity")}</p>
               {slice && slice.events.length === 0 ? (
                 <div className="mt-3 rounded-md border border-dashed border-stone-300 p-4 text-center dark:border-stone-700">
                   <p className="text-[11px] text-stone-500 dark:text-stone-400">
-                    Nothing captured yet today.
+                    {t("today.nothingToday")}
                   </p>
                 </div>
               ) : (
@@ -170,10 +169,9 @@ export default function TodayRoute() {
             </div>
           </aside>
         </div>
-        {/* === end v2.0-alpha.2 workflow graph === */}
 
         <p className="mt-12 text-center font-mono text-[10px] text-stone-400 dark:text-stone-500">
-          Sources fan out into ~/.tangerine-memory · daemon refreshes every 5 min
+          {t("today.footer")}
         </p>
       </div>
     </div>

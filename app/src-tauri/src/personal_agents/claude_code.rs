@@ -141,8 +141,22 @@ fn capture_one_session(src: &Path, target_dir: &Path) -> Result<bool, String> {
     atom.source_mtime_nanos = src_nanos;
     // Re-resolve the path in case parse_jsonl picked a different
     // sessionId out of the file (when conversations are shared across
-    // multiple jsonl files Claude Code keeps the same id).
+    // multiple jsonl files Claude Code keeps the same id, or when the
+    // filename uuid disagrees with the in-file sessionId after a session
+    // resume/fork — common on real CEO machines).
     let atom_path = target_dir.join(format!("{}.md", sanitize_id(&atom.conversation_id)));
+    // Second idempotence check against the resolved path. Without this,
+    // any session whose filename stem != in-file sessionId would re-write
+    // every heartbeat (cheap but wastes disk + invalidates downstream
+    // mtime-based caches). The provisional check above only catches files
+    // where stem == sessionId.
+    if atom_path != atom_path_provisional {
+        if let Some(prev) = read_atom_source_mtime(&atom_path) {
+            if prev >= src_nanos {
+                return Ok(false);
+            }
+        }
+    }
     let body = render_atom(&atom);
     fs::write(&atom_path, body).map_err(|e| format!("write {}: {}", atom_path.display(), e))?;
     Ok(true)

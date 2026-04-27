@@ -31,6 +31,7 @@ import {
   runGetRecentDecisions,
 } from "./tools.js";
 import { listResources, readResource } from "./resources.js";
+import { startSamplingBridge } from "./sampling-bridge.js";
 
 export interface ServerOptions {
   /** Memory root override; falls back to env / ~/.tangerine-memory. */
@@ -52,6 +53,11 @@ export function createServer(opts: ServerOptions = {}): {
       version: opts.version ?? "0.1.0",
     },
     {
+      // Note: `sampling` is a *client* capability, not a server one — we
+      // don't declare it. We just call `server.createMessage(...)` and the
+      // SDK throws if the host (Cursor / Claude Code / Codex) didn't
+      // advertise sampling support during init. Errors flow into the
+      // sampling bridge's `sample_response` with `ok=false`.
       capabilities: {
         tools: {},
         resources: {},
@@ -175,6 +181,13 @@ function errorResult(message: string) {
 
 /**
  * Start a stdio MCP server. Logs the resolved memory root to stderr at startup.
+ *
+ * v1.9 Wave 4-A: when env var `TANGERINE_SAMPLING_BRIDGE=1` is set, also
+ * opens a persistent ws connection to Tangerine's localhost server and
+ * registers ourselves as a sampler so the desktop app can reverse-call the
+ * host's LLM via `sampling/createMessage`. The bridge is non-fatal and
+ * self-reconnecting; it never blocks stdio MCP traffic.
+ *
  * Resolves only when the transport is closed.
  */
 export async function runStdioServer(opts: ServerOptions = {}): Promise<void> {
@@ -183,5 +196,11 @@ export async function runStdioServer(opts: ServerOptions = {}): Promise<void> {
     `[tangerine-mcp] starting stdio server, memory root: ${root}\n`,
   );
   const transport = new StdioServerTransport();
+  // Start the sampling bridge alongside the stdio server. It opens its own
+  // ws connection and reconnects on disconnect; if disabled (default) it's
+  // a no-op. We connect AFTER `server.connect(transport)` so the host has
+  // already negotiated capabilities — `server.createMessage()` requires
+  // the protocol handshake to be complete.
   await server.connect(transport);
+  startSamplingBridge(server);
 }

@@ -137,9 +137,10 @@ describe("Stage 1 Wave 3 routes — smoke", () => {
     expect(
       await screen.findByRole("heading", { level: 1, name: /^Co-thinker$/i }),
     ).toBeInTheDocument();
-    // Phase 3-C: empty brain doc (mock returns "") triggers the empty state.
+    // Wave 4-C: empty brain doc (mock returns "") triggers the 4-pillar
+    // explainer card whose lede is "This is your team's AGI brain."
     expect(
-      await screen.findByText(/Co-thinker hasn't started thinking yet/i),
+      await screen.findByText(/This is your team's AGI brain/i),
     ).toBeInTheDocument();
   });
 });

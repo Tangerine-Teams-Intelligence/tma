@@ -5,6 +5,11 @@ import { CommandPalette } from "@/components/CommandPalette";
 import { ActivityFeed } from "@/components/ActivityFeed";
 import { WhatsNewBanner } from "@/components/WhatsNewBanner";
 import { LicenseTransitionBanner } from "@/components/LicenseTransitionBanner";
+// Wave 4-C — first-run welcome tour. Mounted inside AppShell so it
+// covers every route the user might land on (default is /today). The
+// overlay self-hides once `ui.welcomed` flips, so re-renders after the
+// first cold launch are zero-cost.
+import { WelcomeOverlay } from "@/components/WelcomeOverlay";
 // Wave 3 — offline indicator (OBSERVABILITY_SPEC §8 edge case catalog)
 import { ConnectionBanner } from "@/components/ConnectionBanner";
 import { AmbientInputObserver } from "@/components/ambient/AmbientInputObserver";
@@ -572,6 +577,12 @@ export function AppShell() {
         {/* v1.9.0-beta.1 — modal host. Lives outside the flex column so the
             portal-rendered backdrop covers the full viewport. */}
         <ModalHost />
+
+        {/* Wave 4-C — first-run welcome tour. Sits at the top of the
+            z-stack so it covers banners + modals on a fresh install.
+            Self-hides on subsequent launches via persisted `welcomed`
+            flag, so this mount is a no-op for returning users. */}
+        <WelcomeOverlay />
       </div>
     </AmbientInputObserver>
   );

@@ -12,7 +12,9 @@
  * Spec: V2_5_SPEC §1.
  */
 
+// === wave 4-D i18n ===
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { GitPullRequest, RefreshCw, AlertCircle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -25,6 +27,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
 type Filter = "open" | "mine" | "all";
 
 export default function ReviewsRoute() {
+  const { t } = useTranslation();
   const currentUser = useStore((s) => s.ui.currentUser);
   const [filter, setFilter] = useState<Filter>("open");
   const [reviews, setReviews] = useState<ReviewState[]>([]);
@@ -78,10 +81,10 @@ export default function ReviewsRoute() {
         <div>
           <h1 className="flex items-center gap-2 text-lg font-medium text-stone-900 dark:text-stone-100">
             <GitPullRequest size={18} />
-            Reviews
+            {t("reviews.title")}
           </h1>
           <p className="text-[12px] text-stone-500 dark:text-stone-400">
-            Co-thinker proposals waiting on team vote. 2/3 approval auto-promotes.
+            {t("reviews.subtitle")}
           </p>
         </div>
         <Button
@@ -90,7 +93,7 @@ export default function ReviewsRoute() {
           onClick={() => setRefreshKey((k) => k + 1)}
         >
           <RefreshCw size={12} className="mr-1" />
-          Refresh
+          {t("reviews.refresh")}
         </Button>
       </header>
 
@@ -100,7 +103,7 @@ export default function ReviewsRoute() {
           onClick={() => setFilter("open")}
           count={reviews.filter((r) => r.status === "open").length}
         >
-          Open
+          {t("reviews.filterOpen")}
         </FilterChip>
         <FilterChip
           active={filter === "mine"}
@@ -113,14 +116,14 @@ export default function ReviewsRoute() {
             ).length
           }
         >
-          Awaiting my vote
+          {t("reviews.filterMine")}
         </FilterChip>
         <FilterChip
           active={filter === "all"}
           onClick={() => setFilter("all")}
           count={reviews.length}
         >
-          All
+          {t("reviews.filterAll")}
         </FilterChip>
       </div>
 
@@ -145,7 +148,7 @@ export default function ReviewsRoute() {
         >
           <AlertCircle size={20} className="mx-auto text-[var(--ti-danger)]" />
           <p className="mt-3 text-[12px] text-stone-700 dark:text-stone-300">
-            Couldn't load review queue.
+            {t("reviews.errorLoad")}
           </p>
           <p className="mt-1 font-mono text-[10px] text-stone-500 dark:text-stone-400">
             {error}
@@ -155,7 +158,7 @@ export default function ReviewsRoute() {
             onClick={() => setRefreshKey((k) => k + 1)}
             className="mt-3 rounded border border-stone-300 px-2 py-0.5 font-mono text-[11px] text-stone-700 hover:bg-stone-100 dark:border-stone-700 dark:text-stone-200 dark:hover:bg-stone-800"
           >
-            Retry
+            {t("buttons.retry")}
           </button>
         </div>
       ) : filtered.length === 0 ? (
@@ -211,12 +214,13 @@ function FilterChip({
 }
 
 function EmptyState({ filter }: { filter: Filter }) {
+  const { t } = useTranslation();
   const msg =
     filter === "mine"
-      ? "Nothing waiting on your vote."
+      ? t("reviews.emptyMine")
       : filter === "open"
-        ? "No open reviews. The co-thinker will propose decisions on the next heartbeat."
-        : "No reviews yet.";
+        ? t("reviews.emptyOpen")
+        : t("reviews.emptyAll");
   return (
     <div className="rounded border border-dashed border-stone-300 p-8 text-center dark:border-stone-700">
       <p className="text-sm text-stone-500 dark:text-stone-400">{msg}</p>

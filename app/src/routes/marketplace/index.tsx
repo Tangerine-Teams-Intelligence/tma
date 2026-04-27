@@ -1,4 +1,6 @@
+// === wave 4-D i18n ===
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Search, AlertCircle, Sparkles } from "lucide-react";
 import {
   marketplaceGetLaunchState,
@@ -35,6 +37,7 @@ const VERTICALS = [
  * lights up once the launch gate is met.
  */
 export default function MarketplaceRoute() {
+  const { t } = useTranslation();
   const [templates, setTemplates] = useState<Template[]>([]);
   const [launch, setLaunch] = useState<LaunchState | null>(null);
   const [loading, setLoading] = useState(true);
@@ -78,10 +81,10 @@ export default function MarketplaceRoute() {
     <div className="mx-auto w-full max-w-5xl px-6 py-8">
       <header className="mb-6 space-y-2">
         <h1 className="text-[22px] font-semibold tracking-tight text-stone-900 dark:text-stone-100">
-          Marketplace
+          {t("marketplace.title")}
         </h1>
         <p className="text-[13px] text-stone-600 dark:text-stone-400">
-          Vertical templates published by the community + self-shipped reference packs. One-click install merges co-thinker prompts, source configs, canvas templates, and suggestion rules into your team memory.
+          {t("marketplace.subtitle")}
         </p>
       </header>
 
@@ -99,7 +102,7 @@ export default function MarketplaceRoute() {
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search templates"
+            placeholder={t("marketplace.search")}
             className="w-full rounded-md border border-stone-200 bg-white py-1.5 pl-8 pr-3 text-[13px] text-stone-900 placeholder-stone-400 outline-none focus:border-[var(--ti-orange-500)] dark:border-stone-800 dark:bg-stone-950 dark:text-stone-100"
             data-testid="marketplace-search"
           />
@@ -112,7 +115,7 @@ export default function MarketplaceRoute() {
         >
           {VERTICALS.map((v) => (
             <option key={v} value={v}>
-              {v === "all" ? "All verticals" : v}
+              {v === "all" ? t("marketplace.allVerticals") : v}
             </option>
           ))}
         </select>
@@ -137,7 +140,7 @@ export default function MarketplaceRoute() {
         >
           <AlertCircle size={20} className="mx-auto text-[var(--ti-danger)]" />
           <p className="mt-3 text-[12px] text-stone-700 dark:text-stone-300">
-            Couldn't load marketplace.
+            {t("marketplace.errorLoad")}
           </p>
           <p className="mt-1 font-mono text-[10px] text-stone-500 dark:text-stone-400">
             {error}
@@ -147,17 +150,17 @@ export default function MarketplaceRoute() {
             onClick={() => setRefreshKey((k) => k + 1)}
             className="mt-3 rounded border border-stone-300 px-2 py-0.5 font-mono text-[11px] text-stone-700 hover:bg-stone-100 dark:border-stone-700 dark:text-stone-200 dark:hover:bg-stone-800"
           >
-            Retry
+            {t("buttons.retry")}
           </button>
         </div>
       ) : filtered.length === 0 ? (
         <div className="rounded-md border border-dashed border-stone-300 p-8 text-center dark:border-stone-700">
           <Sparkles size={20} className="mx-auto text-stone-400" />
           <p className="mt-3 text-[13px] text-stone-700 dark:text-stone-300">
-            No templates match your filter.
+            {t("marketplace.emptyFiltered")}
           </p>
           <p className="mt-1 text-[11px] text-stone-500 dark:text-stone-400">
-            Clear the search or pick a different vertical.
+            {t("marketplace.emptyFilteredHint")}
           </p>
         </div>
       ) : (
@@ -174,6 +177,7 @@ export default function MarketplaceRoute() {
 }
 
 function LaunchGateBanner({ state }: { state: LaunchState }) {
+  const { t } = useTranslation();
   const installPct = Math.min(
     100,
     Math.round(
@@ -187,20 +191,24 @@ function LaunchGateBanner({ state }: { state: LaunchState }) {
       data-testid="marketplace-launch-banner"
     >
       <p className="text-[13px] font-medium text-amber-900 dark:text-amber-200">
-        Coming live when CEO triggers launch gate
+        {t("marketplace.launchTitle")}
       </p>
       <p className="mt-1 text-[12px] text-amber-800 dark:text-amber-300/80">
-        Public marketplace launches when both conditions are met: 5,000 OSS installs over a rolling 30-day window AND ≥1 self-shipped vertical template internally validated for ≥30 days. Until then, the listing below is preview-only.
+        {t("marketplace.launchBody")}
       </p>
       <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
         <GateProgress
-          label="OSS installs (30d)"
+          label={t("marketplace.ossInstalls")}
           value={`${state.gate_status.installs_30d.toLocaleString()} / ${state.gate_status.installs_required.toLocaleString()}`}
           pct={installPct}
         />
         <GateProgress
-          label="Self-shipped template"
-          value={state.gate_status.self_shipped_template_validated ? "validated" : "pending"}
+          label={t("marketplace.selfShipped")}
+          value={
+            state.gate_status.self_shipped_template_validated
+              ? t("marketplace.validated")
+              : t("marketplace.pending")
+          }
           pct={state.gate_status.self_shipped_template_validated ? 100 : 50}
         />
       </div>

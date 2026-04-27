@@ -63,6 +63,7 @@ use tokio_tungstenite::tungstenite::handshake::server::{
 use tokio_tungstenite::tungstenite::http::{HeaderValue, Response as HttpResponse, StatusCode};
 use tokio_tungstenite::tungstenite::Message;
 
+use crate::agi::sampling_bridge;
 use crate::memory_search;
 
 /// First port we try. The extension defaults to this exact value
@@ -322,9 +323,13 @@ async fn handle_connection(
     let bag_for_cb = bag.clone();
 
     // The tungstenite handshake callback sees the Request before we send
-    // a Response. We use it to (a) reject any non-/memory path with 404,
-    // (b) reject non-extension Origins with 403. Returning Err from the
-    // callback aborts the upgrade with whatever HTTP response we provide.
+    // a Response. We use it to:
+    //   * `/memory`  — browser-extension protocol, requires extension Origin
+    //   * `/sampler` — v1.9 Wave 4-A MCP sampling bridge from a local Node
+    //                  process; Origin is empty (Node ws clients don't send
+    //                  one), so we allow that path through and rely on the
+    //                  loopback bind for safety.
+    //   * anything else → 404
     let mut ws = match tokio_tungstenite::accept_hdr_async(
         stream,
         |req: &Request, response: Response| -> Result<Response, ErrorResponse> {
@@ -338,6 +343,15 @@ async fn handle_connection(
                 let mut info = bag_for_cb.inner.lock();
                 info.path = path.clone();
                 info.origin = origin.clone();
+            }
+            if path == "/sampler" {
+                // The Tangerine MCP server (Node child of Cursor / Claude
+                // Code) connects here. Loopback bind already prevents LAN
+                // peers; we don't enforce Origin since Node ws clients do
+                // not send one by default. The MCP server identifies itself
+                // by sending `register_sampler` as its first frame, gated
+                // by `tool_id` env config.
+                return Ok(response);
             }
             if path != "/memory" {
                 let body = format!("not found: {}", path);
@@ -384,6 +398,12 @@ async fn handle_connection(
         origin = ?info.origin,
         "ws connection accepted"
     );
+
+    if info.path == "/sampler" {
+        // Hand off to the persistent sampling-bridge handler. Returns when
+        // the socket closes or the registration fails.
+        return handle_sampler_connection(ws, peer).await;
+    }
 
     let mut bucket = TokenBucket::new(RATE_LIMIT_BURST, RATE_LIMIT_WINDOW);
 
@@ -432,6 +452,138 @@ async fn handle_connection(
             _ => {} // Pong / Frame – ignore
         }
     }
+    Ok(())
+}
+
+/// `/sampler` connection handler. The MCP server child process opens this
+/// socket on boot, sends `register_sampler` as its first frame, and then
+/// answers `sample` requests we push into it.
+///
+/// Lifecycle:
+///   1. Read first text frame; expect `{"op":"register_sampler","tool_id":"..."}`.
+///      Anything else → close.
+///   2. Take an mpsc receiver from `sampling_bridge::global().register(tool_id)`.
+///   3. Run two tasks concurrently:
+///        a. drain receiver onto socket as text frames (this carries `sample`
+///           requests Tangerine generates internally).
+///        b. read inbound frames; each `sample_response` is forwarded to
+///           `sampling_bridge::global().deliver_response(...)` which fulfils
+///           the matching oneshot.
+///   4. On socket close or any error, deregister + return.
+async fn handle_sampler_connection<S>(
+    mut ws: tokio_tungstenite::WebSocketStream<S>,
+    peer: SocketAddr,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>>
+where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
+{
+    // 1. Read register_sampler frame (first inbound text within 5 s).
+    let registration = match tokio::time::timeout(Duration::from_secs(5), ws.next()).await {
+        Err(_) => {
+            tracing::warn!(peer = %peer, "sampler: registration timeout");
+            let _ = ws
+                .send(Message::Text(
+                    "{\"op\":\"error\",\"code\":\"timeout\",\"message\":\"registration timeout\"}".into(),
+                ))
+                .await;
+            return Ok(());
+        }
+        Ok(None) => return Ok(()),
+        Ok(Some(Err(e))) => {
+            tracing::debug!(peer = %peer, error = %e, "sampler: read err on registration");
+            return Ok(());
+        }
+        Ok(Some(Ok(Message::Text(t)))) => t,
+        Ok(Some(Ok(other))) => {
+            tracing::debug!(peer = %peer, ?other, "sampler: non-text registration frame");
+            return Ok(());
+        }
+    };
+
+    let parsed: sampling_bridge::RegisterSamplerFrame = match serde_json::from_str(&registration) {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!(peer = %peer, error = %e, "sampler: bad registration JSON");
+            let _ = ws
+                .send(Message::Text(
+                    "{\"op\":\"error\",\"code\":\"invalid_request\",\"message\":\"bad registration JSON\"}".into(),
+                ))
+                .await;
+            return Ok(());
+        }
+    };
+    let tool_id = parsed.tool_id.trim().to_string();
+    if tool_id.is_empty() {
+        let _ = ws
+            .send(Message::Text(
+                "{\"op\":\"error\",\"code\":\"invalid_request\",\"message\":\"empty tool_id\"}".into(),
+            ))
+            .await;
+        return Ok(());
+    }
+    tracing::info!(peer = %peer, tool_id = %tool_id, "sampler: registered");
+
+    // 2. Hand the sampler a fresh outbound channel.
+    let registry = sampling_bridge::global();
+    let mut outbound = registry.register(&tool_id);
+
+    // ACK so the MCP server knows it's wired up.
+    let _ = ws
+        .send(Message::Text(format!(
+            "{{\"op\":\"register_sampler.ack\",\"tool_id\":\"{}\"}}",
+            tool_id.replace('"', "\\\"")
+        )))
+        .await;
+
+    // 3. Loop on both directions in this task. We can't easily split the
+    // stream without an extra dep, so multiplex via tokio::select on
+    // outbound.recv() vs ws.next().
+    let (mut sink, mut stream) = ws.split();
+    let tool_id_for_drop = tool_id.clone();
+    let outbound_task = tokio::spawn(async move {
+        while let Some(frame) = outbound.recv().await {
+            if let Err(e) = sink.send(Message::Text(frame)).await {
+                tracing::debug!(error = %e, "sampler: outbound send err");
+                break;
+            }
+        }
+    });
+    while let Some(msg) = stream.next().await {
+        let msg = match msg {
+            Ok(m) => m,
+            Err(e) => {
+                tracing::debug!(peer = %peer, error = %e, "sampler: read err");
+                break;
+            }
+        };
+        match msg {
+            Message::Text(text) => {
+                let parsed: Result<sampling_bridge::SampleResponseFrame, _> =
+                    serde_json::from_str(&text);
+                match parsed {
+                    Ok(frame) if frame.op == "sample_response" => {
+                        registry.deliver_response(frame);
+                    }
+                    Ok(other) => {
+                        tracing::debug!(
+                            peer = %peer,
+                            op = %other.op,
+                            "sampler: ignoring unknown op",
+                        );
+                    }
+                    Err(e) => {
+                        tracing::debug!(peer = %peer, error = %e, "sampler: bad frame JSON");
+                    }
+                }
+            }
+            Message::Close(_) => break,
+            Message::Ping(_) | Message::Pong(_) => {}
+            _ => {}
+        }
+    }
+    outbound_task.abort();
+    registry.deregister(&tool_id_for_drop);
+    tracing::info!(peer = %peer, tool_id = %tool_id_for_drop, "sampler: disconnected");
     Ok(())
 }
 

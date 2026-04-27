@@ -1,4 +1,6 @@
+// === wave 4-D i18n ===
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { Loader2, AlertCircle, Github } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -24,6 +26,7 @@ import {
 type Mode = "signin" | "signup";
 
 export default function AuthRoute() {
+  const { t } = useTranslation();
   const [mode, setMode] = useState<Mode>("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -83,7 +86,7 @@ export default function AuthRoute() {
       const fn = mode === "signin" ? signIn : signUp;
       const r = await fn(email.trim(), password);
       if (!r.ok) {
-        setError(r.error ?? "Something went wrong.");
+        setError(r.error ?? t("auth.genericError"));
         return;
       }
       setLocalOnly(false);
@@ -112,26 +115,24 @@ export default function AuthRoute() {
             aria-hidden
           />
           <span className="font-display text-2xl tracking-tight text-[var(--ti-ink-900)]">
-            Tangerine AI Teams
+            {t("auth.brand")}
           </span>
         </div>
 
         <h1 className="font-display text-3xl tracking-tight text-[var(--ti-ink-900)]">
-          Align every AI tool on your team with your team's actual workflow.
+          {t("auth.tagline")}
         </h1>
         <p className="mt-2 text-sm text-[var(--ti-ink-700)]">
-          Your team uses Cursor, Claude, ChatGPT — but each AI sees a different
-          slice of what your team's actually doing. We align them all with one
-          source of team workflow, so your AIs stop giving different
-          answers.
+          {t("auth.subtagline")}
         </p>
 
         {isStubMode && (
           <Card className="mt-4 border-[var(--ti-orange-500)]/40 bg-[var(--ti-orange-50)]">
             <CardContent className="pt-4 text-xs text-[var(--ti-ink-700)]">
-              <span className="font-medium text-[var(--ti-orange-700)]">Stub mode.</span>{" "}
-              No Supabase project is configured. Any email + 6+ char password will sign
-              you in locally.
+              <span className="font-medium text-[var(--ti-orange-700)]">
+                {t("auth.stubModeTitle")}
+              </span>{" "}
+              {t("auth.stubModeBody")}
             </CardContent>
           </Card>
         )}
@@ -141,19 +142,19 @@ export default function AuthRoute() {
           className="mt-8 space-y-4"
         >
           <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
+            <Label htmlFor="email">{t("auth.email")}</Label>
             <Input
               id="email"
               type="email"
               autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@team.com"
+              placeholder={t("auth.emailPlaceholder")}
               required
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="password">Password</Label>
+            <Label htmlFor="password">{t("auth.password")}</Label>
             <Input
               id="password"
               type="password"
@@ -176,12 +177,12 @@ export default function AuthRoute() {
             {busy ? (
               <>
                 <Loader2 size={16} className="animate-spin" />{" "}
-                {mode === "signin" ? "Signing in…" : "Creating account…"}
+                {mode === "signin" ? t("auth.signingIn") : t("auth.creatingAccount")}
               </>
             ) : mode === "signin" ? (
-              "Sign in"
+              t("auth.signIn")
             ) : (
-              "Create account"
+              t("auth.signUp")
             )}
           </Button>
 
@@ -192,10 +193,10 @@ export default function AuthRoute() {
             className="w-full"
             onClick={skipToLocal}
           >
-            Skip — local only mode
+            {t("auth.skipLocal")}
           </Button>
           <p className="text-center text-[11px] text-[var(--ti-ink-500)]">
-            Memory dir lives on this machine. Nothing leaves until you wire a Sink.
+            {t("auth.localFootnote")}
           </p>
 
           {/* === v2.5 real auth === */}
@@ -211,13 +212,12 @@ export default function AuthRoute() {
                   setError(null);
                 }}
               >
-                Sign in with real account
+                {t("auth.realAuthCta")}
               </Button>
             ) : (
               <>
                 <p className="mb-2 text-center text-[11px] text-[var(--ti-ink-500)]">
-                  Real auth (Supabase). Stub-mode acceptable until CEO unblocks
-                  keys.
+                  {t("auth.realAuthHint")}
                 </p>
                 <div className="flex flex-col gap-2">
                   <Button
@@ -227,7 +227,7 @@ export default function AuthRoute() {
                     onClick={() => void oauth("github")}
                     className="w-full"
                   >
-                    <Github size={14} /> Continue with GitHub
+                    <Github size={14} /> {t("auth.continueGithub")}
                   </Button>
                   <Button
                     type="button"
@@ -236,7 +236,7 @@ export default function AuthRoute() {
                     onClick={() => void oauth("google")}
                     className="w-full"
                   >
-                    Continue with Google
+                    {t("auth.continueGoogle")}
                   </Button>
                 </div>
                 <button
@@ -247,7 +247,7 @@ export default function AuthRoute() {
                     setError(null);
                   }}
                 >
-                  Back to stub auth
+                  {t("auth.backToStub")}
                 </button>
               </>
             )}
@@ -258,7 +258,7 @@ export default function AuthRoute() {
         <div className="mt-6 text-center text-xs text-[var(--ti-ink-500)]">
           {mode === "signin" ? (
             <>
-              No account yet?{" "}
+              {t("auth.noAccountYet")}{" "}
               <button
                 type="button"
                 className="text-[var(--ti-orange-500)] underline-offset-2 hover:underline"
@@ -267,12 +267,12 @@ export default function AuthRoute() {
                   setError(null);
                 }}
               >
-                Create one
+                {t("auth.createOne")}
               </button>
             </>
           ) : (
             <>
-              Already have one?{" "}
+              {t("auth.alreadyHaveOne")}{" "}
               <button
                 type="button"
                 className="text-[var(--ti-orange-500)] underline-offset-2 hover:underline"
@@ -281,7 +281,7 @@ export default function AuthRoute() {
                   setError(null);
                 }}
               >
-                Sign in
+                {t("auth.signIn")}
               </button>
             </>
           )}

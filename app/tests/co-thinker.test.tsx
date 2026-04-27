@@ -152,12 +152,42 @@ describe("CoThinkerRoute", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText(/Co-thinker hasn't started thinking yet/i),
+        screen.getByText(/This is your team's AGI brain/i),
       ).toBeInTheDocument();
     });
     expect(
       screen.getByRole("button", { name: /Initialize co-thinker/i }),
     ).toBeInTheDocument();
+  });
+
+  // Wave 4-C — co-thinker explainer pre-init.
+  it("explainer card surfaces 4 design pillars before init", async () => {
+    vi.spyOn(tauri, "coThinkerReadBrain").mockResolvedValue("");
+    vi.spyOn(tauri, "coThinkerStatus").mockResolvedValue({
+      last_heartbeat_at: null,
+      next_heartbeat_at: null,
+      brain_doc_size: 0,
+      observations_today: 0,
+    });
+
+    render(
+      <MemoryRouter>
+        <CoThinkerRoute />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("co-thinker-explainer")).toBeInTheDocument();
+    });
+    const card = screen.getByTestId("co-thinker-explainer");
+    // 4 pillars: read / edit / git-diff / no new subscription.
+    expect(card.textContent).toMatch(/Read/i);
+    expect(card.textContent).toMatch(/Edit/i);
+    expect(card.textContent).toMatch(/git-diff/i);
+    expect(card.textContent).toMatch(/No new subscription/i);
+    // Heartbeat cadence + steering message must show up too.
+    expect(card.textContent).toMatch(/every 5 minutes/i);
+    expect(card.textContent).toMatch(/30 minutes when you're idle/i);
   });
 
   it("renders 4 sections from sample brain doc", async () => {

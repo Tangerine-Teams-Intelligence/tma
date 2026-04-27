@@ -8,7 +8,9 @@
  * v1.8 adds the "AI tools" tab — the user picks a primary external AI tool
  * (Cursor / Claude Code / etc.) for the co-thinker brain to think through.
  */
+// === wave 4-D i18n ===
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { getConfig, setConfig } from "@/lib/tauri";
 import { GeneralSettings } from "./GeneralSettings";
@@ -54,6 +56,7 @@ const DEFAULT_DRAFT: ConfigDraft = {
 };
 
 export default function Settings() {
+  const { t } = useTranslation();
   const [tab, setTab] = useState<TabId>("general");
   const [draft, setDraft] = useState<ConfigDraft>(DEFAULT_DRAFT);
   const [savedAt, setSavedAt] = useState<number | null>(null);
@@ -88,28 +91,40 @@ export default function Settings() {
   return (
     <div className="mx-auto flex h-full max-w-4xl flex-col gap-6 p-8" data-testid="st-0">
       <header>
-        <h1 className="font-display text-3xl">Settings</h1>
+        <h1 className="font-display text-3xl">{t("settings.title")}</h1>
         <p className="mt-1 text-sm text-[var(--ti-ink-500)]">
-          Lives at <code className="font-mono">~/.tmi/config.yaml</code>. Secrets in HKCU\Environment.
+          {t("settings.subtitleHint")} <code className="font-mono">~/.tmi/config.yaml</code>
+          {t("settings.subtitleHintTail")}
         </p>
       </header>
 
       <nav className="flex gap-1 border-b border-[var(--ti-border-faint)]">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            data-testid={`st-tab-${t.id}`}
-            className={
-              "border-b-2 px-3 py-2 text-sm transition-colors duration-fast " +
-              (tab === t.id
-                ? "border-[var(--ti-orange-500)] text-[var(--ti-orange-700)]"
-                : "border-transparent text-[var(--ti-ink-500)] hover:text-[var(--ti-ink-700)]")
-            }
-          >
-            {t.label}
-          </button>
-        ))}
+        {TABS.map((tab2) => {
+          const tabLabelKey: Record<TabId, string> = {
+            general: "settings.tabs.general",
+            "ai-tools": "settings.tabs.aiTools",
+            agi: "settings.tabs.agi",
+            "personal-agents": "settings.tabs.personalAgents",
+            team: "settings.tabs.team",
+            adapters: "settings.tabs.adapters",
+            advanced: "settings.tabs.advanced",
+          };
+          return (
+            <button
+              key={tab2.id}
+              onClick={() => setTab(tab2.id)}
+              data-testid={`st-tab-${tab2.id}`}
+              className={
+                "border-b-2 px-3 py-2 text-sm transition-colors duration-fast " +
+                (tab === tab2.id
+                  ? "border-[var(--ti-orange-500)] text-[var(--ti-orange-700)]"
+                  : "border-transparent text-[var(--ti-ink-500)] hover:text-[var(--ti-ink-700)]")
+              }
+            >
+              {t(tabLabelKey[tab2.id])}
+            </button>
+          );
+        })}
       </nav>
 
       <section className="flex-1 overflow-auto">
@@ -133,15 +148,15 @@ export default function Settings() {
           {error
             ? <span className="text-[var(--ti-danger)]">{error}</span>
             : savedAt
-              ? `Saved · ${new Date(savedAt).toLocaleTimeString()}`
-              : "Unsaved changes are discarded on close."}
+              ? `${t("settings.savedAt")} · ${new Date(savedAt).toLocaleTimeString()}`
+              : t("settings.unsavedHint")}
         </p>
         <button
           onClick={save}
           data-testid="st-save"
           className="rounded-md bg-[var(--ti-orange-500)] px-4 py-1.5 text-sm text-white hover:bg-[var(--ti-orange-600)]"
         >
-          Save
+          {t("settings.save")}
         </button>
       </footer>
     </div>

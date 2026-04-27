@@ -32,6 +32,10 @@
 pub mod session_borrower;
 pub mod co_thinker;
 pub mod observations;
+// v1.9 Wave 4-A: real MCP sampling bridge. Holds the registry of live
+// MCP-server child sockets that reverse-call into the editor's LLM via
+// `sampling/createMessage`. Consumed by `session_borrower::dispatch_mcp_sampling`.
+pub mod sampling_bridge;
 
 // === Phase 4-B canvas surface ===
 // Per-project ideation surface — markdown files at canvas/<project>/<topic>.md.

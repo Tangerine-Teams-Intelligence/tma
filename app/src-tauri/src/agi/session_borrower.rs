@@ -1,4 +1,4 @@
-//! v1.8 Phase 3-A — Session borrowing layer.
+//! v1.8 Phase 3-A — Session borrowing layer (real MCP sampling cut: v1.9 Wave 4-A).
 //!
 //! Tangerine borrows the user's existing AI tool sessions instead of running
 //! its own LLM. This dispatcher routes an `LlmRequest` to the right channel
@@ -8,14 +8,18 @@
 //!
 //! Three channels:
 //!   1. **MCP sampling** — for Cursor / Claude Code / Codex / Windsurf. Real
-//!      sampling reverse-calls the host via `sampling/createMessage`. Phase 3
-//!      ships a stub; Phase 4 wires the real protocol (see TODO below).
+//!      `sampling/createMessage` flow wired in Wave 4-A. The MCP server
+//!      child process opens a persistent ws back to Tangerine's localhost
+//!      server (`/sampler` path) when env var `TANGERINE_SAMPLING_BRIDGE=1`
+//!      is set, registers under its `tool_id`, and serves `sample` requests
+//!      by reverse-calling the host's LLM. See `agi::sampling_bridge` for
+//!      the registry + `mcp-server/src/sampling-bridge.ts` for the Node
+//!      side. Returns `PrimaryUnreachable` (not error) when no sampler is
+//!      registered, so the dispatcher falls through to the next channel.
 //!   2. **Browser ext hidden conv** — for Claude.ai / ChatGPT / Gemini / v0
-//!      / GitHub Copilot. Stubbed in Phase 3 (returns NotImplemented); the
-//!      actual extension protocol lands in Phase 4.
+//!      / GitHub Copilot. Still stubbed (returns NotImplemented).
 //!   3. **Ollama local fallback** — HTTP POST to `localhost:11434/api/generate`.
-//!      Real today; this is the only channel that returns truly-borrowed text
-//!      in Phase 3.
+//!      Universal safety net.
 //!
 //! The dispatcher is the single entry point. P3-B's co-thinker brain calls
 //! `dispatch()`; the Tauri command surface (`commands::co_thinker_dispatch`)
@@ -170,39 +174,83 @@ pub async fn dispatch_with_base_url(
 }
 
 // ---------------------------------------------------------------------------
-// MCP sampling channel — STUBBED for Phase 3.
+// MCP sampling channel — REAL via sampling_bridge registry.
 // ---------------------------------------------------------------------------
 
-/// Stub MCP sampling. Real sampling requires Tangerine's MCP server to send
-/// `sampling/createMessage` to the host (Cursor / Claude Code) which then
-/// runs its LLM and replies. That's a non-trivial protocol upgrade —
-/// Phase 3 ships only the dispatch contract; real sampling wires in Phase 4.
+use super::sampling_bridge::{self, SampleError};
+
+/// Per-call timeout for MCP sampling. The MCP host (Cursor / Claude Code)
+/// can take several seconds to run its LLM and reply; 10s lines up with the
+/// session-borrower's overall budget (the dispatcher's outer call site sees
+/// this directly via `co_thinker_dispatch`'s 5s p95 target — anything slower
+/// than that signals the host is overloaded and we should fall through).
+const MCP_SAMPLING_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Real MCP sampling.
 ///
-/// Stub behaviour: 200 ms simulated latency, canned text that includes the
-/// tool id so the React side can render a believable card.
-// TODO(Phase 4): real MCP sampling protocol. The MCP server (mcp-server/)
-// already implements the server side (resources, tools); we need to add
-// `sampling/createMessage` reverse-call support and wait on the host's
-// reply.
+/// Architecture: the MCP server child process spawned by the user's editor
+/// (Cursor / Claude Code) opens a persistent ws back to Tangerine's localhost
+/// server on `/sampler` and registers itself under its `tool_id` (passed via
+/// env var `TANGERINE_MCP_TOOL_ID` when Tangerine spawns it, or detected from
+/// `MCP_CLIENT` if the editor exports one). When this dispatcher fires, we
+/// look up the live socket and send a `sample` frame; the MCP server runs
+/// `server.createMessage()` against its host (the editor) and posts back a
+/// `sample_response` frame.
+///
+/// If no sampler is registered for the requested tool_id, we return
+/// `PrimaryUnreachable` so the dispatcher falls through to the next channel
+/// in the priority list (browser_ext / Ollama).
+///
+/// **Acceptance bound:** the only canned-text path that remains is the test
+/// suite. In production this returns the editor's real LLM output or an
+/// error.
 async fn dispatch_mcp_sampling(
     tool_id: &str,
     req: &LlmRequest,
 ) -> Result<LlmResponse, BorrowError> {
     let start = Instant::now();
-    tokio::time::sleep(Duration::from_millis(200)).await;
-    let text = format!(
-        "[MCP sampling stub from {tool_id}]: heard your prompt ({} chars system + {} chars user). \
-         Phase 3 ships the dispatch contract; real sampling wires in Phase 4.",
-        req.system_prompt.len(),
-        req.user_prompt.len(),
-    );
-    Ok(LlmResponse {
-        tokens_estimate: estimate_tokens(&text),
-        text,
-        channel_used: "mcp_sampling".to_string(),
-        tool_id: tool_id.to_string(),
-        latency_ms: start.elapsed().as_millis() as u64,
-    })
+    let registry = sampling_bridge::global();
+    let res = registry
+        .request(
+            tool_id,
+            req.system_prompt.clone(),
+            req.user_prompt.clone(),
+            req.max_tokens,
+            req.temperature,
+            MCP_SAMPLING_TIMEOUT,
+        )
+        .await;
+
+    match res {
+        Ok(text) => Ok(LlmResponse {
+            tokens_estimate: estimate_tokens(&text),
+            text,
+            channel_used: "mcp_sampling".to_string(),
+            tool_id: tool_id.to_string(),
+            latency_ms: start.elapsed().as_millis() as u64,
+        }),
+        Err(SampleError::NotRegistered(_)) => Err(BorrowError::PrimaryUnreachable {
+            tool_id: tool_id.to_string(),
+            reason: "MCP sampler not registered (start your editor with Tangerine MCP enabled)"
+                .to_string(),
+        }),
+        Err(SampleError::Timeout(d)) => Err(BorrowError::PrimaryUnreachable {
+            tool_id: tool_id.to_string(),
+            reason: format!("MCP sampling timed out after {d:?}"),
+        }),
+        Err(SampleError::Disconnected) => Err(BorrowError::PrimaryUnreachable {
+            tool_id: tool_id.to_string(),
+            reason: "MCP sampler disconnected mid-request".to_string(),
+        }),
+        Err(SampleError::SamplerFailed(msg)) => Err(BorrowError::PrimaryUnreachable {
+            tool_id: tool_id.to_string(),
+            reason: format!("MCP host rejected sampling: {msg}"),
+        }),
+        Err(SampleError::Internal(msg)) => Err(BorrowError::PrimaryUnreachable {
+            tool_id: tool_id.to_string(),
+            reason: format!("MCP bridge internal: {msg}"),
+        }),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -331,6 +379,14 @@ mod tests {
     use std::sync::atomic::{AtomicU16, Ordering};
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener as TokioListener;
+    use tokio::sync::Mutex as AsyncMutex;
+    use once_cell::sync::Lazy;
+
+    /// Tests in this module share the process-wide `sampling_bridge::global()`
+    /// registry, so they must not run in parallel — one test's `register()` /
+    /// `deregister()` would otherwise race against another's `request()`. We
+    /// gate every test that touches the registry on this async mutex.
+    static REGISTRY_TEST_LOCK: Lazy<AsyncMutex<()>> = Lazy::new(|| AsyncMutex::new(()));
 
     fn sample_req() -> LlmRequest {
         LlmRequest {
@@ -392,64 +448,69 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(20)).await;
     }
 
-    /// `primary=cursor` (MCP-stub channel) → must come back as
-    /// channel=mcp_sampling, tool_id=cursor.
+    /// `primary=cursor` with a live registered sampler answers via MCP.
+    ///
+    /// This is the post-Wave 4-A real-protocol test: we drive the global
+    /// SamplerRegistry directly to simulate the MCP server child process
+    /// having phoned home. Then we call dispatch and assert the answer came
+    /// back over `mcp_sampling`.
     #[tokio::test]
     async fn test_dispatch_uses_primary_tool_first() {
-        // No mock Ollama running — but we shouldn't need it because the
-        // MCP-sampling stub for Cursor returns Ok deterministically.
+        let _guard = REGISTRY_TEST_LOCK.lock().await;
+        // Register a fake sampler for "cursor" on the global registry.
+        let registry = sampling_bridge::global();
+        registry.deregister("cursor"); // wipe state from any earlier test
+        let mut rx = registry.register("cursor");
+        let registry_clone = registry.clone();
+        let bot = tokio::spawn(async move {
+            // Read the outbound `sample` frame, reply with a synthesised
+            // host response.
+            if let Some(raw) = rx.recv().await {
+                let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
+                let request_id = v["request_id"].as_str().unwrap().to_string();
+                registry_clone.deliver_response(sampling_bridge::SampleResponseFrame {
+                    op: "sample_response".into(),
+                    request_id,
+                    ok: true,
+                    text: Some("real cursor pro answer".into()),
+                    error: None,
+                });
+            }
+        });
+
         let port = pick_free_port();
         let base = format!("http://127.0.0.1:{}", port);
         let resp = dispatch_with_base_url(sample_req(), Some("cursor".into()), &base)
             .await
-            .expect("primary cursor should succeed via MCP stub");
+            .expect("primary cursor with registered sampler should succeed");
         assert_eq!(resp.tool_id, "cursor");
         assert_eq!(resp.channel_used, "mcp_sampling");
-        assert!(resp.text.contains("MCP sampling stub"));
+        assert!(resp.text.contains("real cursor pro answer"), "text was: {}", resp.text);
         assert!(resp.tokens_estimate > 0);
+        let _ = bot.await;
+        registry.deregister("cursor");
     }
 
-    /// Fall-through: primary is a browser-ext tool (always NotImplemented),
-    /// every other MCP/browser tool also fails, finally Ollama (mocked) wins.
-    /// This proves the priority walk skips through the failures.
+    /// With no MCP sampler registered, the dispatcher must walk past every
+    /// MCP tool and the (always-NotImplemented) browser_ext tools, finally
+    /// reaching the mocked Ollama.
     #[tokio::test]
     async fn test_dispatch_falls_through_priority_on_unreachable() {
-        // Wait — MCP stub *succeeds*. To force fall-through to Ollama we
-        // need to set the primary to a tool whose channel is browser_ext
-        // (always NotImplemented), and make the priority walk also hit
-        // browser-ext tools before the Ollama row. claude-ai is at index 4
-        // in the priority — but cursor (index 0, MCP-stub) would succeed
-        // first. So the cleanest fall-through scenario: skip Cursor by
-        // overriding AI_TOOL_PRIORITY isn't possible without a test-only
-        // injection. Instead we exercise the per-tool fall-through inside
-        // browser_ext (claude-ai, chatgpt, gemini, copilot, v0 all fail)
-        // by setting primary to one of them — that proves the walk
-        // continues past NotImplemented errors.
-        //
-        // We then mock Ollama; once the walk reaches `ollama`, it must
-        // succeed. Cursor is in the priority tail and would intercept
-        // before Ollama, so we pre-mock cursor away by checking only the
-        // ollama-end of the chain via an alternate primary that lands at
-        // the very end of the priority list. Simplest: primary=v0 (last
-        // browser ext before copilot/v0/ollama). Walk order:
-        //   v0 (primary, BrowserExt → NotImplemented)
-        //   cursor (MCP stub → SUCCESS)  ⟵ would intercept here
-        //
-        // So the cleanest assertion that lands on Ollama needs the MCP
-        // stub to also fail. Since MCP is hard-coded to succeed, we
-        // instead assert the WEAKER but still meaningful invariant: when
-        // primary=copilot (browser_ext, NotImplemented), the dispatcher
-        // walks through and lands on the FIRST tool that succeeds —
-        // which is cursor (MCP stub). That validates the fall-through
-        // mechanism without requiring us to disable the MCP stub.
+        let _guard = REGISTRY_TEST_LOCK.lock().await;
+        // Make sure no live samplers are registered for any MCP tool — they
+        // could leak in from sibling tests (we share the global).
+        let registry = sampling_bridge::global();
+        for id in ["cursor", "claude-code", "codex", "windsurf"] {
+            registry.deregister(id);
+        }
         let port = pick_free_port();
         let base = format!("http://127.0.0.1:{}", port);
+        spawn_mock_ollama(port, "ollama caught the fall-through").await;
         let resp = dispatch_with_base_url(sample_req(), Some("copilot".into()), &base)
             .await
-            .expect("fall-through should land on first MCP tool");
-        // copilot fails (NotImplemented), then walk hits cursor first.
-        assert_eq!(resp.tool_id, "cursor");
-        assert_eq!(resp.channel_used, "mcp_sampling");
+            .expect("fall-through should land on Ollama");
+        assert_eq!(resp.tool_id, "ollama");
+        assert_eq!(resp.channel_used, "ollama");
     }
 
     /// True end-to-end fall-through that *does* land on Ollama: the
@@ -510,20 +571,48 @@ mod tests {
         }
     }
 
-    /// All-channels-exhausted: when no tool id is valid (impossible in
-    /// practice), `dispatch` returns AllExhausted. We exercise this via a
-    /// primary id that isn't in the catalog and a dispatch chain whose MCP
-    /// stub still wins — except we need to skip MCP, so we directly assert
-    /// that an unknown primary still falls through to the first known tool
-    /// (cursor).
+    /// Unknown primary tool id: dispatcher ignores it and walks the priority
+    /// list. With no MCP samplers registered, it must land on Ollama (the
+    /// only channel that can answer without a host). Pre-arrange a mock
+    /// Ollama on the chosen port so the assertion is deterministic.
     #[tokio::test]
     async fn test_dispatch_unknown_primary_falls_through() {
+        let _guard = REGISTRY_TEST_LOCK.lock().await;
+        let registry = sampling_bridge::global();
+        for id in ["cursor", "claude-code", "codex", "windsurf"] {
+            registry.deregister(id);
+        }
         let port = pick_free_port();
         let base = format!("http://127.0.0.1:{}", port);
+        spawn_mock_ollama(port, "ollama via unknown-primary fall-through").await;
         let resp = dispatch_with_base_url(sample_req(), Some("not-a-real-tool".into()), &base)
             .await
             .expect("unknown primary should fall through to first tool that works");
-        assert_eq!(resp.tool_id, "cursor");
+        assert_eq!(resp.tool_id, "ollama");
+        assert_eq!(resp.channel_used, "ollama");
+    }
+
+    /// With no MCP sampler registered, dispatch_mcp_sampling must report
+    /// PrimaryUnreachable (the dispatcher then falls through). This is the
+    /// silent-failure mode we hit in production until the user's editor
+    /// actually opens the MCP server.
+    #[tokio::test]
+    async fn test_dispatch_mcp_sampling_unreachable_when_no_sampler() {
+        let _guard = REGISTRY_TEST_LOCK.lock().await;
+        let registry = sampling_bridge::global();
+        registry.deregister("cursor");
+        let res = dispatch_mcp_sampling("cursor", &sample_req()).await;
+        match res {
+            Err(BorrowError::PrimaryUnreachable { tool_id, reason }) => {
+                assert_eq!(tool_id, "cursor");
+                assert!(
+                    reason.to_lowercase().contains("not registered")
+                        || reason.to_lowercase().contains("not_registered"),
+                    "expected 'not registered' in reason; got: {reason}"
+                );
+            }
+            other => panic!("expected PrimaryUnreachable, got {:?}", other),
+        }
     }
 
     /// Sanity: token estimate is non-zero for non-empty input.

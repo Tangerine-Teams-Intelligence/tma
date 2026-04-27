@@ -161,41 +161,32 @@ export function Sidebar() {
       </div>
 
       {/* Scrollable middle */}
+      {/* === wave 4-D i18n === */}
       <div className="flex-1 overflow-y-auto">
         {/* VIEWS — primary nav for the Chief of Staff surface */}
-        <Section label="Views" subtitle="Today / week / people / projects">
-          {/* i18n demo — first translated label per OBSERVABILITY_SPEC §6 */}
+        <Section label={t("sidebar.views")} subtitle={t("sidebar.subtitleViews")}>
           <ViewLink to="/today" icon={Calendar} label={t("sidebar.today")} />
-          <ViewLink to="/this-week" icon={CalendarRange} label="This week" />
-          <ViewLink to="/people" icon={Users} label="People" />
-          <ViewLink to="/projects" icon={FolderKanban} label="Projects" />
-          <ViewLink to="/threads" icon={MessageCircle} label="Threads" />
-          <ViewLink to="/alignment" icon={Activity} label="Alignment" />
-          <ViewLink to="/inbox" icon={Inbox} label="Inbox" />
+          <ViewLink to="/this-week" icon={CalendarRange} label={t("sidebar.thisWeek")} />
+          <ViewLink to="/people" icon={Users} label={t("sidebar.people")} />
+          <ViewLink to="/projects" icon={FolderKanban} label={t("sidebar.projects")} />
+          <ViewLink to="/threads" icon={MessageCircle} label={t("sidebar.threads")} />
+          <ViewLink to="/alignment" icon={Activity} label={t("sidebar.alignment")} />
+          <ViewLink to="/inbox" icon={Inbox} label={t("sidebar.inbox")} />
           {/* v1.8 Phase 1 — Phase 3 / Phase 4 placeholder surfaces. */}
-          <ViewLink to="/canvas" icon={Layers} label="Canvas" />
-          <ViewLink to="/co-thinker" icon={Brain} label="Co-thinker" />
-          {/* === v2.5 review sidebar === */}
-          <ViewLink to="/reviews" icon={GitPullRequest} label="Reviews" />
-          {/* === end v2.5 review sidebar === */}
-          {/* === v3.5 marketplace sidebar === */}
-          <ViewLink to="/marketplace" icon={Store} label="Marketplace" />
-          {/* === end v3.5 marketplace sidebar === */}
-          {/* === v2.0-beta.1 graphs ===
-              Three graph surfaces hang off the existing detail views — kept
-              under a `Graphs` subhead so they don't compete with the primary
-              Views list. */}
+          <ViewLink to="/canvas" icon={Layers} label={t("sidebar.canvas")} />
+          <ViewLink to="/co-thinker" icon={Brain} label={t("sidebar.coThinker")} />
+          <ViewLink to="/reviews" icon={GitPullRequest} label={t("sidebar.reviews")} />
+          <ViewLink to="/marketplace" icon={Store} label={t("sidebar.marketplace")} />
           <p className="mb-1 mt-3 px-2 text-[10px] uppercase tracking-wide text-stone-400 dark:text-stone-500">
-            Graphs
+            {t("sidebar.graphs")}
           </p>
-          <ViewLink to="/decisions/lineage" icon={Diamond} label="Lineage" />
-          <ViewLink to="/people/social" icon={Network} label="Social" />
-          <ViewLink to="/projects/topology" icon={Workflow} label="Topology" />
-          {/* === end v2.0-beta.1 graphs === */}
+          <ViewLink to="/decisions/lineage" icon={Diamond} label={t("sidebar.lineage")} />
+          <ViewLink to="/people/social" icon={Network} label={t("sidebar.social")} />
+          <ViewLink to="/projects/topology" icon={Workflow} label={t("sidebar.topology")} />
         </Section>
 
         {/* MEMORY section */}
-        <Section label="Memory" rightHint="">
+        <Section label={t("sidebar.memory")} rightHint="">
           <NavLink
             to="/memory"
             end
@@ -221,7 +212,7 @@ export function Sidebar() {
         </Section>
 
         {/* SOURCES section */}
-        <Section label="Sources" subtitle="Where team comms come in">
+        <Section label={t("sidebar.sources")} subtitle={t("sidebar.subtitleSources")}>
           <ul>
             {SOURCES.map((s) => (
               <li key={s.id}>
@@ -231,31 +222,21 @@ export function Sidebar() {
           </ul>
         </Section>
 
-        {/* AI TOOLS section — v1.8 Phase 1. Live status from Rust
-            detect_ai_tools; the section component owns its own loader. */}
         <Section
-          label="AI tools"
-          subtitle="Where you read team memory back out"
+          label={t("sidebar.aiTools")}
+          subtitle={t("sidebar.subtitleAITools")}
         >
           <AIToolsSection />
         </Section>
 
-        {/* === v2.0-beta.2 ACTIVE AGENTS section ===
-            Cross-team visibility into each member's currently-running
-            personal AI agent sessions. The section component owns its own
-            polling loop (10s focused / 60s blurred). v2.0-beta.2 ships
-            against a Rust stub; real per-source capture lands in v3.0. */}
         <Section
-          label="Active agents"
-          subtitle="Cross-team agent visibility"
+          label={t("sidebar.activeAgents")}
+          subtitle={t("sidebar.subtitleActiveAgents")}
         >
           <ActiveAgentsSection />
         </Section>
-        {/* === end v2.0-beta.2 ACTIVE AGENTS section === */}
 
-        {/* ADVANCED section (formerly Sinks) — mechanism, demoted from the
-            user's mental model. Each row links to its sink-detail page. */}
-        <Section label="Advanced" subtitle="Underlying mechanism (read-only)">
+        <Section label={t("sidebar.advanced")} subtitle={t("sidebar.subtitleAdvanced")}>
           <ul>
             {SINKS.map((s) => (
               <li key={s.id}>
@@ -281,7 +262,7 @@ export function Sidebar() {
           }
         >
           <Settings size={12} className="shrink-0" />
-          <span>Settings</span>
+          <span>{t("sidebar.settings")}</span>
         </NavLink>
         <ThemeToggle />
         <button
@@ -290,9 +271,10 @@ export function Sidebar() {
           className="mt-0.5 flex w-full items-center gap-2 rounded px-2 py-1 text-left text-[12px] text-stone-600 hover:bg-stone-100 dark:text-stone-400 dark:hover:bg-stone-900"
         >
           <Lock size={12} className="shrink-0" />
-          <span>Sign out</span>
+          <span>{t("sidebar.signOut")}</span>
         </button>
       </div>
+      {/* === end wave 4-D i18n === */}
     </aside>
   );
 }
@@ -405,18 +387,20 @@ function StatusChip({
   status: SourceStatus | SinkStatus;
   comingIn?: string;
 }) {
+  // === wave 4-D i18n ===
+  const { t } = useTranslation();
   if (status === "active") {
     return (
       <span className="ml-auto inline-flex items-center gap-1 font-mono text-[10px] text-emerald-600 dark:text-emerald-400">
         <span className="ti-live-dot h-1.5 w-1.5" />
-        on
+        {t("sidebar.statusOn")}
       </span>
     );
   }
   if (status === "disconnected") {
     return (
       <span className="ml-auto font-mono text-[10px] text-rose-600 dark:text-rose-400">
-        off
+        {t("sidebar.statusOff")}
       </span>
     );
   }
@@ -425,16 +409,23 @@ function StatusChip({
       className="ml-auto font-mono text-[10px] text-stone-400 dark:text-stone-500"
       title={comingIn ? `Coming ${comingIn}` : "Coming soon"}
     >
-      {comingIn ?? "soon"}
+      {comingIn ?? t("sidebar.statusSoon")}
     </span>
   );
 }
 
 function ThemeToggle() {
+  // === wave 4-D i18n ===
+  const { t } = useTranslation();
   const theme = useStore((s) => s.ui.theme);
   const cycle = useStore((s) => s.ui.cycleTheme);
   const Icon = theme === "light" ? Sun : theme === "dark" ? Moon : Monitor;
-  const label = theme === "light" ? "Light" : theme === "dark" ? "Dark" : "System";
+  const label =
+    theme === "light"
+      ? t("sidebar.themeLight")
+      : theme === "dark"
+        ? t("sidebar.themeDark")
+        : t("sidebar.themeSystem");
   return (
     <button
       type="button"
@@ -443,7 +434,7 @@ function ThemeToggle() {
       title="Cycle theme: system → light → dark"
     >
       <Icon size={12} className="shrink-0" />
-      <span>Theme</span>
+      <span>{t("sidebar.theme")}</span>
       <span className="ml-auto font-mono text-[10px] text-stone-400 dark:text-stone-500">
         {label}
       </span>

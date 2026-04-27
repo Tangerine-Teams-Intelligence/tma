@@ -7,10 +7,11 @@
 //!
 //! The contract is intentionally tiny: text in, structured reaction out.
 //! Confidence is heuristic — we don't have a real model-score to read
-//! from the existing channels (MCP stub / Ollama / browser_ext stub),
+//! from any of the channels (MCP sampling / Ollama / browser_ext),
 //! so we approximate from response length + presence of the explicit
-//! "(silent)" sentinel. Phase 5 swaps this for a real
-//! sampling/createMessage logprob read once MCP sampling lands.
+//! "(silent)" sentinel. A future cut can add a real
+//! sampling/createMessage logprob read; for now MCP sampling and
+//! Ollama get the same baseline because both return real LLM output.
 //!
 //! Merge-watch: the daemon's proposal-monitor (the tray-icon piece)
 //! reads `~/.tangerine-memory/agi/proposals/`. The session_borrower
@@ -35,13 +36,13 @@ pub struct AmbientAnalyzeResult {
     pub latency_ms: u64,
 }
 
-/// Estimate confidence from the response. The MCP stub today returns a
-/// canned reply; Ollama returns whatever the local model gave. We use
-/// two cheap signals:
+/// Estimate confidence from the response. Every channel now returns real
+/// LLM output (Wave 4-A wired the real `sampling/createMessage` flow), so
+/// MCP sampling no longer carries the old "stub canned reply" penalty.
+/// We use three cheap signals:
 ///   * response begins with "(silent)" → confidence 0.0 (forces a skip).
 ///   * response is very short (< 8 chars trimmed) → 0.4 (low signal).
-///   * MCP stub channel → 0.5 (the canned reply isn't grounded yet).
-///   * Real Ollama / browser ext → 0.75 baseline.
+///   * MCP sampling / Ollama / browser ext → 0.75 baseline (real LLM).
 ///
 /// This deliberately under-promises. The React side has its own threshold
 /// slider on top — we don't want to manufacture confidence the underlying
@@ -55,7 +56,7 @@ fn estimate_confidence(text: &str, channel: &str) -> f32 {
         return 0.4;
     }
     match channel {
-        "mcp_sampling" => 0.5,
+        "mcp_sampling" => 0.75,
         "ollama" => 0.75,
         "browser_ext" => 0.75,
         _ => 0.6,
@@ -158,7 +159,10 @@ mod tests {
         let body = "I noticed you mentioned the Q3 ship date — \
                     /memory/decisions/q3-launch.md says it's pinned.";
         assert!((estimate_confidence(body, "ollama") - 0.75).abs() < 0.001);
-        assert!((estimate_confidence(body, "mcp_sampling") - 0.5).abs() < 0.001);
+        // Wave 4-A: MCP sampling now returns real LLM output, same
+        // baseline as Ollama.
+        assert!((estimate_confidence(body, "mcp_sampling") - 0.75).abs() < 0.001);
+        assert!((estimate_confidence(body, "browser_ext") - 0.75).abs() < 0.001);
         assert!((estimate_confidence(body, "unknown") - 0.6).abs() < 0.001);
     }
 

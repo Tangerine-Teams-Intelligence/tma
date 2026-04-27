@@ -3,14 +3,20 @@ import { Link, useParams } from "react-router-dom";
 import {
   ArrowLeft,
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
   Circle,
+  Copy,
   ExternalLink,
   Loader2,
   AlertCircle,
+  Wand2,
 } from "lucide-react";
 import { loadAITools, type AIToolStatus } from "@/lib/ai-tools";
 import { getAIToolConfig, type AIToolConfig } from "@/lib/ai-tools-config";
 import { coThinkerDispatch } from "@/lib/tauri";
+import { useStore } from "@/lib/store";
+import { logEvent } from "@/lib/telemetry";
 
 /**
  * /ai-tools/:id — generic per-tool setup page.
@@ -98,7 +104,9 @@ export default function AIToolSetupPage() {
           statusError={statusError}
         />
 
-        <SetupSteps config={config} />
+        <AutoConfigureCard config={config} status={status} />
+
+        <SetupSteps config={config} status={status} />
 
         <TestQuerySection config={config} />
 
@@ -258,42 +266,255 @@ function StatusBanner({
 }
 
 // ----------------------------------------------------------------------------
+// Wave 4-C — auto-configure
+// ----------------------------------------------------------------------------
+
+/**
+ * Wave 4-C — per-tool MCP config file path. Wired so the auto-configure
+ * card can show the user exactly where the snippet should land. Returns
+ * `null` for tools where auto-configuration isn't applicable (browser
+ * extensions, local-HTTP probes).
+ *
+ * The path placeholder syntax (`~/.cursor/mcp.json` etc.) is what the
+ * existing `setup_steps[1].body` already documents — we keep it
+ * consistent so the auto-configure flow reads as a one-click shortcut
+ * for the manual flow, not a separate concept.
+ */
+function mcpConfigPathFor(toolId: string): string | null {
+  switch (toolId) {
+    case "cursor":
+      return "~/.cursor/mcp.json";
+    case "claude-code":
+      return "~/.claude/mcp_servers.json";
+    case "codex":
+      return "~/.codex/mcp.json";
+    case "windsurf":
+      // Windsurf uses an in-app settings panel rather than a flat JSON
+      // file; we still surface it so the user knows where the config
+      // landed.
+      return "Settings → MCP";
+    default:
+      return null;
+  }
+}
+
+/**
+ * Auto-configure card. Only renders when:
+ *   1. The tool is on the MCP channel (others have no config file),
+ *   2. The tool is detected as `installed` on this machine, AND
+ *   3. We have a known config path for it.
+ *
+ * When all three hold we surface a one-click "Auto-configure" button
+ * that copies the Tangerine MCP snippet to the clipboard and tells the
+ * user exactly which file to paste into. Hiding the manual 3-step
+ * setup behind a collapsible details section (handled by SetupSteps)
+ * keeps the simple path simple — but the manual fallback is always
+ * one click away.
+ *
+ * Note on actual file writes: a true auto-write would need a Tauri
+ * command on the Rust side (`write_mcp_config(tool_id, snippet)`) that
+ * idempotently merges the Tangerine entry into the existing file.
+ * That's not yet wired (no fs::write helper exists in lib/tauri.ts as
+ * of Wave 4 HEAD). The clipboard-based flow is the safe, no-data-loss
+ * path that still cuts the manual flow from "open settings, navigate
+ * to MCP, edit JSON" to "click button, paste, restart".
+ */
+function AutoConfigureCard({
+  config,
+  status,
+}: {
+  config: AIToolConfig;
+  status: AIToolStatus | null;
+}) {
+  const pushToast = useStore((s) => s.ui.pushToast);
+  const [copied, setCopied] = useState(false);
+
+  // Only meaningful for MCP-channel tools that are actually installed.
+  // Browser extensions / local HTTP / IDE plugins surface the manual
+  // flow only — the steps for them already collapse to "click a button"
+  // and don't benefit from auto-configure.
+  const eligible =
+    config.channel === "mcp" &&
+    status?.status === "installed" &&
+    mcpConfigPathFor(config.id) !== null;
+
+  if (!eligible) return null;
+
+  const path = mcpConfigPathFor(config.id) ?? "";
+
+  // Pull the JSON snippet straight out of the existing setup_steps so
+  // the source of truth stays in lib/ai-tools-config.ts. We pick the
+  // first step that has a `code` block; that's the MCP server snippet
+  // for every tool currently in the catalog.
+  const snippet =
+    config.setup_steps.find((s) => s.code)?.code ?? "";
+
+  const onAutoConfigure = async () => {
+    try {
+      await navigator.clipboard.writeText(snippet);
+      setCopied(true);
+      pushToast(
+        "success",
+        `Tangerine MCP config copied. Paste it into ${path}, then restart ${config.name}.`,
+      );
+      void logEvent("ai_tool_auto_configure", {
+        tool_id: config.id,
+        path,
+        outcome: "copied",
+      });
+      // Clear the "Copied" badge after a beat so the button feels
+      // re-clickable rather than stuck.
+      window.setTimeout(() => setCopied(false), 2400);
+    } catch (e) {
+      // Clipboard API can fail in headless contexts (Tauri without the
+      // permission, sandboxed iframes). Fall back to a clear instruction
+      // so the user can still complete setup.
+      const msg = e instanceof Error ? e.message : String(e);
+      pushToast("error", `Couldn't copy: ${msg}. Use the manual steps below.`);
+      void logEvent("ai_tool_auto_configure", {
+        tool_id: config.id,
+        path,
+        outcome: "copy_failed",
+      });
+    }
+  };
+
+  return (
+    <section
+      data-testid="ai-tool-auto-configure"
+      className="mt-6 rounded-md border border-[var(--ti-orange-500)]/30 bg-[var(--ti-orange-50)]/40 p-5 dark:border-[var(--ti-orange-500)]/30 dark:bg-stone-900/40"
+    >
+      <div className="flex items-start gap-3">
+        <Wand2
+          size={16}
+          className="mt-0.5 text-[var(--ti-orange-500)]"
+          aria-hidden="true"
+        />
+        <div className="min-w-0 flex-1">
+          <h2 className="font-display text-base text-stone-900 dark:text-stone-100">
+            Auto-configure {config.name}
+          </h2>
+          <p className="mt-1 text-[12px] leading-relaxed text-stone-600 dark:text-stone-400">
+            We detected {config.name} on this machine. One click copies the
+            Tangerine MCP snippet to your clipboard — paste it into{" "}
+            <code className="rounded bg-stone-100 px-1 py-0.5 font-mono text-[11px] text-stone-800 dark:bg-stone-800 dark:text-stone-100">
+              {path}
+            </code>{" "}
+            and restart {config.name}.
+          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              data-testid="ai-tool-auto-configure-btn"
+              onClick={() => void onAutoConfigure()}
+              className="inline-flex items-center gap-2 rounded border border-[var(--ti-orange-500)] bg-[var(--ti-orange-500)] px-3 py-1.5 text-[12px] font-medium text-white hover:bg-[var(--ti-orange-600)]"
+            >
+              {copied ? (
+                <>
+                  <CheckCircle2 size={12} />
+                  Copied
+                </>
+              ) : (
+                <>
+                  <Copy size={12} />
+                  Auto-configure
+                </>
+              )}
+            </button>
+            <p className="font-mono text-[10px] text-stone-500 dark:text-stone-400">
+              Manual fallback below if you'd rather edit the file by hand.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ----------------------------------------------------------------------------
 // Setup steps
 // ----------------------------------------------------------------------------
 
-function SetupSteps({ config }: { config: AIToolConfig }) {
+function SetupSteps({
+  config,
+  status,
+}: {
+  config: AIToolConfig;
+  status: AIToolStatus | null;
+}) {
+  // Wave 4-C — when the auto-configure card is rendering (MCP tool
+  // detected as installed), collapse the manual steps into a <details>
+  // so the simple path is the obvious path. Returning users / users
+  // who prefer the manual flow open the disclosure and see the full
+  // 3-step list.
+  const collapsible =
+    config.channel === "mcp" &&
+    status?.status === "installed" &&
+    mcpConfigPathFor(config.id) !== null;
+
+  const stepsList = (
+    <ol className="mt-4 space-y-4">
+      {config.setup_steps.map((step, idx) => (
+        <li
+          key={idx}
+          className="flex gap-3 rounded-md border border-stone-200 bg-white p-4 dark:border-stone-800 dark:bg-stone-900"
+        >
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--ti-orange-500)] font-mono text-[11px] font-medium text-white">
+            {idx + 1}
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-[13px] font-medium text-stone-900 dark:text-stone-100">
+              {step.title}
+            </p>
+            {step.body && (
+              <p className="mt-1 text-[12px] leading-relaxed text-stone-700 dark:text-stone-300">
+                {step.body}
+              </p>
+            )}
+            {step.code && (
+              <pre className="mt-2 overflow-x-auto rounded border border-stone-200 bg-stone-50 p-3 font-mono text-[11px] leading-relaxed text-stone-800 dark:border-stone-700 dark:bg-stone-950 dark:text-stone-200">
+                {step.code}
+              </pre>
+            )}
+          </div>
+        </li>
+      ))}
+    </ol>
+  );
+
+  if (collapsible) {
+    return (
+      <section className="mt-10" data-testid="ai-tool-setup-steps">
+        <details className="group">
+          <summary
+            className="flex cursor-pointer items-center gap-2 text-base font-display text-stone-900 marker:hidden dark:text-stone-100"
+            data-testid="ai-tool-manual-toggle"
+          >
+            <ChevronRight
+              size={14}
+              className="text-stone-500 transition-transform group-open:hidden"
+            />
+            <ChevronDown
+              size={14}
+              className="hidden text-stone-500 group-open:block"
+            />
+            Manual setup (3 steps)
+          </summary>
+          <p className="mt-1 font-mono text-[11px] text-stone-500 dark:text-stone-400">
+            Skip this if you used Auto-configure above.
+          </p>
+          {stepsList}
+        </details>
+      </section>
+    );
+  }
+
   return (
-    <section className="mt-10">
+    <section className="mt-10" data-testid="ai-tool-setup-steps">
       <h2 className="font-display text-base text-stone-900 dark:text-stone-100">
         How to wire it up
       </h2>
-      <ol className="mt-4 space-y-4">
-        {config.setup_steps.map((step, idx) => (
-          <li
-            key={idx}
-            className="flex gap-3 rounded-md border border-stone-200 bg-white p-4 dark:border-stone-800 dark:bg-stone-900"
-          >
-            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--ti-orange-500)] font-mono text-[11px] font-medium text-white">
-              {idx + 1}
-            </span>
-            <div className="min-w-0 flex-1">
-              <p className="text-[13px] font-medium text-stone-900 dark:text-stone-100">
-                {step.title}
-              </p>
-              {step.body && (
-                <p className="mt-1 text-[12px] leading-relaxed text-stone-700 dark:text-stone-300">
-                  {step.body}
-                </p>
-              )}
-              {step.code && (
-                <pre className="mt-2 overflow-x-auto rounded border border-stone-200 bg-stone-50 p-3 font-mono text-[11px] leading-relaxed text-stone-800 dark:border-stone-700 dark:bg-stone-950 dark:text-stone-200">
-                  {step.code}
-                </pre>
-              )}
-            </div>
-          </li>
-        ))}
-      </ol>
+      {stepsList}
     </section>
   );
 }

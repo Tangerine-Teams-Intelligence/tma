@@ -31,13 +31,14 @@ export function GeneralSettings({ draft, update, onJumpToAGI }: Props) {
           it's the most-tweaked AGI knob and users shouldn't have to dig
           into the AGI sub-tab to glance at the current value. The full
           slider stays on the AGI tab — clicking "adjust" jumps there. */}
+      {/* === wave 4-D i18n === */}
       <div
         data-testid="st-general-agi-sensitivity-quick"
         className="rounded-md border border-[var(--ti-border-default)] bg-[var(--ti-paper-50)] px-3 py-2"
       >
         <div className="flex items-center gap-3">
           <span className="text-xs font-medium text-[var(--ti-ink-700)]">
-            AGI sensitivity:
+            {t("settings.general.agiSensitivity")}
           </span>
           {/* Inline preview slider. Disabled — the canonical control is
               on the AGI tab. We still render the track so the user can
@@ -62,14 +63,14 @@ export function GeneralSettings({ draft, update, onJumpToAGI }: Props) {
               data-testid="st-general-agi-sensitivity-adjust"
               className="text-xs text-[var(--ti-orange-700)] hover:underline"
             >
-              adjust →
+              {t("settings.general.adjust")}
             </button>
           )}
         </div>
       </div>
 
       <div>
-        <Label htmlFor="st-meetings-repo">Meetings repo</Label>
+        <Label htmlFor="st-meetings-repo">{t("settings.general.meetingsRepo")}</Label>
         <Input
           id="st-meetings-repo"
           value={draft.meetings_repo}
@@ -78,12 +79,12 @@ export function GeneralSettings({ draft, update, onJumpToAGI }: Props) {
           data-testid="st-meetings-repo"
         />
         <p className="mt-1 text-xs text-[var(--ti-ink-500)]">
-          Git repo where meetings/ subdirs live.
+          {t("settings.general.meetingsRepoHint")}
         </p>
       </div>
 
       <div>
-        <Label htmlFor="st-log-level">Log level</Label>
+        <Label htmlFor="st-log-level">{t("settings.general.logLevel")}</Label>
         <select
           id="st-log-level"
           value={draft.log_level}
@@ -122,10 +123,10 @@ export function GeneralSettings({ draft, update, onJumpToAGI }: Props) {
       </div>
 
       <div>
-        <Label htmlFor="st-tz">Default timezone</Label>
+        <Label htmlFor="st-tz">{t("settings.general.defaultTimezone")}</Label>
         <Input id="st-tz" value="Asia/Shanghai" disabled />
         <p className="mt-1 text-xs text-[var(--ti-ink-500)]">
-          Locked to Asia/Shanghai per project default. T6 will surface a picker if anyone asks.
+          {t("settings.general.tzHint")}
         </p>
       </div>
     </div>

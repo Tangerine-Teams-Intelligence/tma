@@ -193,6 +193,18 @@ interface UiSlice {
    *  flag and silently drops the match if it's already true. Otherwise it
    *  forwards to `pushSuggestion(...)` and flips the flag. */
   newcomerOnboardingShown: boolean;
+  /**
+   * Wave 4-C — first-run welcome overlay latch.
+   *
+   * `false` on a fresh install. Flipped to `true` after the user clicks
+   * "Get started in 30 seconds" (or "Skip tour") on the WelcomeOverlay.
+   * Persisted so the overlay only shows once per install. Independent of
+   * `newcomerOnboardingShown` (that one gates the rule-engine toast that
+   * the heartbeat fires; this one gates the visual 4-card tour mounted by
+   * AppShell).
+   */
+  welcomed: boolean;
+  setWelcomed: (v: boolean) => void;
   setAgiParticipation: (v: boolean) => void;
   setAgiVolume: (v: AgiVolume) => void;
   toggleAgiChannelMute: (channel: string) => void;
@@ -604,6 +616,10 @@ export const useStore = create<Store>()(
         // Persisted; flips to true after the first emit so the toast
         // never re-fires on subsequent heartbeats / launches.
         newcomerOnboardingShown: false,
+        // Wave 4-C — first-run welcome overlay latch. Persisted; flips
+        // once the user clicks "Get started" or "Skip tour" so the
+        // overlay never re-mounts on a future launch.
+        welcomed: false,
         // v3.0 §1 + §5 — personal-agent capture flags. ALL FALSE by default
         // — opt-in per source. Hydrated from `personal_agents_get_settings`
         // on Settings page mount; the flag map mirrors the Rust persisted
@@ -787,6 +803,9 @@ export const useStore = create<Store>()(
         // v1.9.0-beta.2 P2-C — newcomer onboarding latch.
         setNewcomerOnboardingShown: (v) =>
           set((s) => ({ ui: { ...s.ui, newcomerOnboardingShown: v } })),
+        // Wave 4-C — welcome overlay latch.
+        setWelcomed: (v) =>
+          set((s) => ({ ui: { ...s.ui, welcomed: v } })),
         // v3.0 §1 — personal-agent capture flag mirror.
         setPersonalAgentsEnabled: (next) =>
           set((s) => ({
@@ -1079,6 +1098,8 @@ export const useStore = create<Store>()(
             agiSensitivity: s.ui.agiSensitivity,
             // v1.9.0-beta.2 P2-C — newcomer onboarding latch.
             newcomerOnboardingShown: s.ui.newcomerOnboardingShown,
+            // Wave 4-C — welcome overlay latch.
+            welcomed: s.ui.welcomed,
             // v3.0 §1 — personal-agent capture flags. Persisted so the
             // Settings UI renders the user's last opt-in choices on cold
             // launch without waiting for the first
@@ -1114,6 +1135,7 @@ export const useStore = create<Store>()(
                 agiConfidenceThreshold?: number;
                 agiSensitivity?: number;
                 newcomerOnboardingShown?: boolean;
+                welcomed?: boolean;
                 personalAgentsEnabled?: {
                   cursor: boolean;
                   claude_code: boolean;
@@ -1188,6 +1210,8 @@ export const useStore = create<Store>()(
             // re-fires for the same install.
             newcomerOnboardingShown:
               p?.ui?.newcomerOnboardingShown ?? current.ui.newcomerOnboardingShown,
+            // Wave 4-C — welcome overlay latch.
+            welcomed: p?.ui?.welcomed ?? current.ui.welcomed,
             // v3.0 §1 — personal-agent capture flags. Persisted; the
             // Settings page also calls `personal_agents_get_settings`
             // on mount to reconcile with the Rust source of truth.

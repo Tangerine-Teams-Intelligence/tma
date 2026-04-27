@@ -1,4 +1,6 @@
+// === wave 4-D i18n ===
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { useLocation } from "react-router-dom";
 import { Brain, RotateCw, Pencil, Save, X, AlertCircle } from "lucide-react";
 import ReactMarkdown from "react-markdown";
@@ -44,6 +46,7 @@ import { logEvent } from "@/lib/telemetry";
  *     "Initialize co-thinker" CTA that fires the first heartbeat.
  */
 export default function CoThinkerRoute() {
+  const { t } = useTranslation();
   const primaryAITool = useStore((s) => s.ui.primaryAITool);
   const pushToast = useStore((s) => s.ui.pushToast);
   const location = useLocation();
@@ -91,9 +94,9 @@ export default function CoThinkerRoute() {
   // raw id (or "your AI tool") when the catalog doesn't know it — keeps the
   // empty-state copy useful even if the user is on a tool we haven't keyed.
   const primaryToolName = useMemo(() => {
-    if (!primaryAITool) return "your AI tool";
+    if (!primaryAITool) return t("coThinker.primaryToolFallback");
     return getAIToolConfig(primaryAITool)?.name ?? primaryAITool;
-  }, [primaryAITool]);
+  }, [primaryAITool, t]);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -103,11 +106,11 @@ export default function CoThinkerRoute() {
       setContent(doc);
       setStatus(st);
     } catch (e: unknown) {
-      setError(typeof e === "string" ? e : (e as Error)?.message ?? "Could not read co-thinker brain doc.");
+      setError(typeof e === "string" ? e : (e as Error)?.message ?? t("coThinker.errorReadFallback"));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     void refresh();
@@ -126,17 +129,17 @@ export default function CoThinkerRoute() {
       pushToast(
         outcome.error ? "error" : "success",
         outcome.error
-          ? `Heartbeat failed: ${outcome.error}`
-          : `Brain updated · ${outcome.atoms_seen} atoms · ${outcome.channel_used}`,
+          ? `${t("coThinker.heartbeatFailed")} ${outcome.error}`
+          : `${t("coThinker.brainUpdated")} · ${outcome.atoms_seen} atoms · ${outcome.channel_used}`,
       );
       await refresh();
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      pushToast("error", `Heartbeat failed: ${msg}`);
+      pushToast("error", `${t("coThinker.heartbeatFailed")} ${msg}`);
     } finally {
       setTriggerLoading(false);
     }
-  }, [primaryAITool, pushToast, refresh]);
+  }, [primaryAITool, pushToast, refresh, t]);
 
   const onEdit = useCallback(() => {
     setDraft(content);
@@ -161,17 +164,14 @@ export default function CoThinkerRoute() {
       });
       setContent(draft);
       setEditing(false);
-      pushToast(
-        "success",
-        "Brain doc saved. The AGI honors your edit on the next heartbeat.",
-      );
+      pushToast("success", t("coThinker.honorEditToast"));
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      pushToast("error", `Save failed: ${msg}`);
+      pushToast("error", `${t("coThinker.saveFailed")} ${msg}`);
     } finally {
       setSaving(false);
     }
-  }, [draft, content, pushToast]);
+  }, [draft, content, pushToast, t]);
 
   const isEmpty = !loading && content.trim().length === 0;
 
@@ -181,10 +181,7 @@ export default function CoThinkerRoute() {
         <span>~ /co-thinker</span>
         <span className="ml-auto">
           {status?.observations_today != null && (
-            <>
-              {status.observations_today} observation
-              {status.observations_today === 1 ? "" : "s"} today
-            </>
+            <>{t("coThinker.obsToday", { count: status.observations_today })}</>
           )}
         </span>
       </header>
@@ -193,13 +190,12 @@ export default function CoThinkerRoute() {
         <header className="mb-4 flex items-start gap-3">
           <Brain size={20} className="mt-1 text-stone-500" />
           <div className="flex-1">
-            <p className="ti-section-label">Co-thinker</p>
+            <p className="ti-section-label">{t("coThinker.title")}</p>
             <h1 className="font-display text-3xl tracking-tight text-stone-900 dark:text-stone-100">
-              Co-thinker
+              {t("coThinker.title")}
             </h1>
             <p className="mt-2 max-w-prose text-[12px] leading-relaxed text-stone-500 dark:text-stone-400">
-              Tangerine's persistent AGI brain. Reads new atoms every few
-              minutes and writes its observations into the doc below.
+              {t("coThinker.subtitle")}
             </p>
           </div>
         </header>
@@ -213,19 +209,19 @@ export default function CoThinkerRoute() {
                 size="sm"
                 onClick={onTrigger}
                 disabled={triggerLoading}
-                aria-label="Trigger heartbeat now"
+                aria-label={t("coThinker.trigger")}
               >
                 <RotateCw
                   size={13}
                   className={triggerLoading ? "animate-spin" : undefined}
                 />
-                {triggerLoading ? "Heartbeat…" : "Trigger heartbeat now"}
+                {triggerLoading ? t("coThinker.triggering") : t("coThinker.trigger")}
               </Button>
             )}
             {!editing && !isEmpty && (
               <Button variant="outline" size="sm" onClick={onEdit} aria-label="Edit brain doc">
                 <Pencil size={13} />
-                Edit
+                {t("coThinker.edit")}
               </Button>
             )}
           </div>
@@ -245,7 +241,7 @@ export default function CoThinkerRoute() {
           >
             <AlertCircle size={20} className="mx-auto text-[var(--ti-danger)]" />
             <p className="mt-3 text-[12px] text-stone-700 dark:text-stone-300">
-              Couldn't read the brain doc.
+              {t("coThinker.errorRead")}
             </p>
             <p className="mt-1 font-mono text-[10px] text-stone-500 dark:text-stone-400">
               {error}
@@ -255,7 +251,7 @@ export default function CoThinkerRoute() {
               onClick={() => void refresh()}
               className="mt-3 rounded border border-stone-300 px-2 py-0.5 font-mono text-[11px] text-stone-700 hover:bg-stone-100 dark:border-stone-700 dark:text-stone-200 dark:hover:bg-stone-800"
             >
-              Retry
+              {t("coThinker.retry")}
             </button>
           </div>
         ) : isEmpty ? (
@@ -320,30 +316,82 @@ function EmptyState({
   onInitialize: () => void;
   initializing: boolean;
 }) {
+  const { t } = useTranslation();
+  // Wave 4-C — first-time co-thinker explainer. Surfaced when the
+  // brain doc is empty (the standard pre-init signal — heartbeats
+  // populate the doc, so empty == never-fired). The 4 explainer
+  // bullets unpack what "co-thinker" is so a first-time user
+  // understands what "Initialize" means before they click. The
+  // existing `onInitialize` button stays the primary CTA below.
   return (
     <section
       data-testid="co-thinker-empty"
-      className="rounded-md border border-dashed border-stone-300 bg-stone-100/40 p-6 dark:border-stone-700 dark:bg-stone-900/40"
+      className="space-y-4"
     >
-      <h2 className="font-display text-xl tracking-tight text-stone-900 dark:text-stone-100">
-        Co-thinker hasn't started thinking yet.
-      </h2>
-      <p className="mt-3 max-w-prose text-sm leading-relaxed text-stone-700 dark:text-stone-300">
-        Tangerine's persistent AGI brain runs in the background — every 5
-        minutes when the app is open. It reads new captures from your sources,
-        writes its observations here, and surfaces what your team should pay
-        attention to.
-      </p>
-      <div className="mt-5">
-        <Button onClick={onInitialize} disabled={initializing}>
-          <RotateCw size={14} className={initializing ? "animate-spin" : undefined} />
-          {initializing ? "Initializing…" : "Initialize co-thinker"}
-        </Button>
+      <article
+        data-testid="co-thinker-explainer"
+        className="rounded-md border border-[var(--ti-orange-500)]/30 bg-[var(--ti-orange-50)]/40 p-6 dark:border-[var(--ti-orange-500)]/30 dark:bg-stone-900/40"
+      >
+        <h2 className="font-display text-xl tracking-tight text-stone-900 dark:text-stone-100">
+          This is your team's AGI brain.
+        </h2>
+        <p className="mt-3 max-w-prose text-sm leading-relaxed text-stone-700 dark:text-stone-300">
+          Co-thinker is Tangerine's persistent AGI brain. Every 5 minutes
+          (or 30 minutes when you're idle) it reads your team's sources and
+          writes a markdown doc right here.
+        </p>
+        <ul className="mt-4 space-y-2 text-[13px] text-stone-700 dark:text-stone-300">
+          <li className="flex gap-2">
+            <span aria-hidden className="mt-1 text-[var(--ti-orange-500)]">·</span>
+            <span>
+              <strong className="text-stone-900 dark:text-stone-100">Read</strong>{" "}
+              what it's thinking — every section is a markdown card.
+            </span>
+          </li>
+          <li className="flex gap-2">
+            <span aria-hidden className="mt-1 text-[var(--ti-orange-500)]">·</span>
+            <span>
+              <strong className="text-stone-900 dark:text-stone-100">Edit</strong>{" "}
+              the doc to steer it; the AGI honors your edit on the next
+              heartbeat.
+            </span>
+          </li>
+          <li className="flex gap-2">
+            <span aria-hidden className="mt-1 text-[var(--ti-orange-500)]">·</span>
+            <span>
+              <strong className="text-stone-900 dark:text-stone-100">git-diff</strong>{" "}
+              changes over time — it's just a file in your memory dir.
+            </span>
+          </li>
+          <li className="flex gap-2">
+            <span aria-hidden className="mt-1 text-[var(--ti-orange-500)]">·</span>
+            <span>
+              <strong className="text-stone-900 dark:text-stone-100">No new subscription</strong>{" "}
+              — runs through your existing AI tool session via session borrowing.
+            </span>
+          </li>
+        </ul>
+      </article>
+
+      <div className="rounded-md border border-dashed border-stone-300 bg-stone-100/40 p-6 dark:border-stone-700 dark:bg-stone-900/40">
+        <h2 className="font-display text-base tracking-tight text-stone-900 dark:text-stone-100">
+          Ready when you are.
+        </h2>
+        <p className="mt-2 max-w-prose text-[12px] leading-relaxed text-stone-600 dark:text-stone-400">
+          Click Initialize to fire the first heartbeat. The brain doc will
+          render below within a few seconds.
+        </p>
+        <div className="mt-4">
+          <Button onClick={onInitialize} disabled={initializing}>
+            <RotateCw size={14} className={initializing ? "animate-spin" : undefined} />
+            {initializing ? t("coThinker.initializing") : t("coThinker.initialize")}
+          </Button>
+        </div>
+        <p className="mt-3 font-mono text-[11px] text-stone-500 dark:text-stone-400">
+          {t("coThinker.primaryToolLine")}{" "}
+          <strong className="text-stone-700 dark:text-stone-200">{primaryToolName}</strong>
+        </p>
       </div>
-      <p className="mt-4 font-mono text-[11px] text-stone-500 dark:text-stone-400">
-        Uses your primary AI tool:{" "}
-        <strong className="text-stone-700 dark:text-stone-200">{primaryToolName}</strong>
-      </p>
     </section>
   );
 }
@@ -365,6 +413,7 @@ function EditPane({
   onCancel: () => void;
   saving: boolean;
 }) {
+  const { t } = useTranslation();
   return (
     <section data-testid="co-thinker-editor" className="space-y-3">
       <textarea
@@ -376,14 +425,14 @@ function EditPane({
       <div className="flex items-center gap-2">
         <Button onClick={onSave} disabled={saving}>
           <Save size={14} />
-          {saving ? "Saving…" : "Save"}
+          {saving ? t("coThinker.saving") : t("coThinker.save")}
         </Button>
         <Button variant="outline" onClick={onCancel} disabled={saving}>
           <X size={14} />
-          Cancel
+          {t("coThinker.cancel")}
         </Button>
         <p className="ml-2 font-mono text-[11px] text-stone-500 dark:text-stone-400">
-          The AGI will honor your edit on the next heartbeat.
+          {t("coThinker.honorEdit")}
         </p>
       </div>
     </section>

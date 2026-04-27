@@ -1,4 +1,6 @@
+// === wave 4-D i18n ===
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import {
   Copy,
@@ -51,6 +53,7 @@ import { logEvent } from "@/lib/telemetry";
  *     (sidebar already shows that).
  */
 export default function MemoryRoute() {
+  const { t } = useTranslation();
   const params = useParams();
   const navigate = useNavigate();
   const relPath = params["*"] ?? "";
@@ -160,9 +163,9 @@ export default function MemoryRoute() {
     const wrapped = `# Team memory for ${relPath || "Tangerine"}\n\n${md}\n\n---\n_Pasted from Tangerine memory._`;
     try {
       await navigator.clipboard.writeText(wrapped);
-      pushToast("success", "Copied to clipboard. Paste into ChatGPT / Claude.");
+      pushToast("success", t("memory.copiedToast"));
     } catch {
-      pushToast("error", "Clipboard access denied.");
+      pushToast("error", t("memory.copyDeniedToast"));
     }
   }
 
@@ -192,7 +195,7 @@ export default function MemoryRoute() {
 
       {/* Right rail */}
       <aside className="hidden w-[260px] shrink-0 border-l border-stone-200 bg-stone-50 px-4 py-6 dark:border-stone-800 dark:bg-stone-950 lg:block">
-        <p className="ti-section-label">Use this memory</p>
+        <p className="ti-section-label">{t("memory.useThisMemory")}</p>
         <div className="mt-3 space-y-2">
           <Button
             variant="default"
@@ -200,7 +203,7 @@ export default function MemoryRoute() {
             onClick={copyAsPrompt}
             className="w-full justify-start"
           >
-            <Copy size={14} /> Copy to AI prompt
+            <Copy size={14} /> {t("memory.copyToPrompt")}
           </Button>
           <Button
             variant="outline"
@@ -208,41 +211,36 @@ export default function MemoryRoute() {
             onClick={openInEditor}
             className="w-full justify-start"
           >
-            <ExternalLink size={14} /> Open in editor
+            <ExternalLink size={14} /> {t("memory.openInEditor")}
           </Button>
         </div>
 
-        {/* v1.6 placeholder — Pre-meeting brief. Only meaningful on a file
-            view; we keep it on the home view too as a teaser. */}
         <div className="mt-6 rounded-md border border-dashed border-stone-300 bg-stone-100/40 p-3 dark:border-stone-700 dark:bg-stone-900/40">
           <p className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-stone-500 dark:text-stone-400">
-            Pre-meeting brief
+            {t("memory.preMeetingBrief")}
             <span className="rounded border border-[var(--ti-orange-500)]/40 bg-[var(--ti-orange-50)] px-1.5 py-px font-mono text-[9px] tracking-normal text-[var(--ti-orange-700)] dark:bg-stone-800 dark:text-[var(--ti-orange-500)]">
               v1.6
             </span>
           </p>
           <p className="mt-2 text-[11px] leading-relaxed text-stone-500 dark:text-stone-400">
-            Tangerine will brief you 5 min before any meeting that touches this
-            decision.
+            {t("memory.preMeetingBriefBody")}
           </p>
         </div>
 
         <div className="mt-8">
-          <p className="ti-section-label">Memory dir</p>
+          <p className="ti-section-label">{t("memory.memoryDir")}</p>
           <p className="mt-2 break-all font-mono text-[11px] text-stone-500 dark:text-stone-400">
             {memoryRoot}
           </p>
         </div>
 
         <div className="mt-8">
-          <p className="ti-section-label">How this works</p>
+          <p className="ti-section-label">{t("memory.howItWorks")}</p>
           <p className="mt-2 text-[11px] leading-relaxed text-stone-500 dark:text-stone-400">
             <strong className="text-stone-700 dark:text-stone-300">
-              Tangerine is your team's Chief of Staff
+              {t("memory.howItWorksTitle")}
             </strong>{" "}
-            — captures every corner of comms, briefs the team, briefs their AI.
-            We never run an LLM ourselves; your existing Claude / ChatGPT /
-            Cursor read team memory through Sinks.
+            — {t("memory.howItWorksBody")}
           </p>
         </div>
       </aside>
@@ -276,66 +274,61 @@ function Breadcrumb({ relPath, memoryRoot }: { relPath: string; memoryRoot: stri
 }
 
 function CoverageView({ coverage }: { coverage: CoverageStats }) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const noSourcesActive = coverage.activeSources.length === 0;
 
   return (
     <div>
       <h1 className="font-display text-3xl tracking-tight text-stone-900 dark:text-stone-100">
-        Your team's memory
+        {t("memory.title")}
       </h1>
       <p className="mt-2 text-sm leading-relaxed text-stone-700 dark:text-stone-300">
-        Tangerine listens in every corner of your team's comms, structures it
-        into team memory, and keeps your team — and their AI tools — on the
-        same page.
+        {t("memory.subtitle")}
       </p>
 
-      {/* CoS placeholder cards row — same-screen rate + daily brief sit
-          alongside the count cards so the v1.6 direction is unmissable. */}
       <div className="mt-8 grid grid-cols-2 gap-3 md:grid-cols-3">
         <ComingCard
           icon={<Activity size={14} />}
-          label="Same-screen rate"
+          label={t("memory.sameScreenRate")}
           value="0%"
-          hint="Coming v1.6 — full team alignment dashboard"
+          hint={t("memory.comingV16Sameset")}
           onClick={() => navigate("/alignment")}
         />
         <ComingCard
           icon={<Calendar size={14} />}
-          label="Daily brief"
+          label={t("memory.dailyBrief")}
           value="—"
-          hint="Coming v1.6 — your team's morning brief, auto-generated from yesterday's captures"
+          hint={t("memory.comingV16Brief")}
           onClick={() => navigate("/inbox")}
         />
         <ComingCard
           icon={<Sparkles size={14} />}
-          label="Auto CoS"
+          label={t("memory.autoCoS")}
           value="—"
-          hint="Coming v1.6 — Tangerine briefs your team and their AI tools throughout the day"
+          hint={t("memory.comingV16AutoCoS")}
           onClick={() => navigate("/alignment")}
         />
       </div>
 
-      {/* Coverage strip — counts of files Tangerine has captured per folder. */}
       <div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-5">
-        <Stat n={coverage.meetings} label="meetings" />
-        <Stat n={coverage.decisions} label="decisions" />
-        <Stat n={coverage.people} label="people" />
-        <Stat n={coverage.projects} label="projects" />
-        <Stat n={coverage.threads} label="threads" />
+        <Stat n={coverage.meetings} label={t("memory.labelMeetings")} />
+        <Stat n={coverage.decisions} label={t("memory.labelDecisions")} />
+        <Stat n={coverage.people} label={t("memory.labelPeople")} />
+        <Stat n={coverage.projects} label={t("memory.labelProjects")} />
+        <Stat n={coverage.threads} label={t("memory.labelThreads")} />
       </div>
       {noSourcesActive ? (
         <p className="mt-3 font-mono text-[11px] text-stone-500 dark:text-stone-400">
-          <strong className="text-stone-700 dark:text-stone-300">
-            Same-screen rate: 0%
-          </strong>{" "}
-          — connect a Source so your team and their AI start aligning.
+          {t("memory.noSourceCta")}
         </p>
       ) : (
         <p className="mt-3 font-mono text-[11px] text-stone-500 dark:text-stone-400">
-          Your AI sees {coverage.meetings} meetings · {coverage.decisions}{" "}
-          decisions · {coverage.people} people · 0% of Slack / Linear / Notion
-          (Sources land v1.6+).
+          {t("memory.withSourceCta", {
+            meetings: coverage.meetings,
+            decisions: coverage.decisions,
+            people: coverage.people,
+          })}
         </p>
       )}
     </div>
