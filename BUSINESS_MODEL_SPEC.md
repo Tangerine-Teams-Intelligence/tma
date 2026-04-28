@@ -1,5 +1,7 @@
 # BUSINESS_MODEL_SPEC — v1.0 lock
 
+> Your team's shared AI memory. Across Cursor, Claude, ChatGPT, and the rest.
+>
 > Tangerine's monetization stack. v1.8 shipped the product (10 AI tools sidebar + 10 sources + Co-thinker brain + ambient layer). This spec locks how we charge for it. Anti-SaaS by construction. Three layers, with two more reserved for post-PMF.
 
 ## 0. North Star

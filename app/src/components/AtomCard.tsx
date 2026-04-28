@@ -48,6 +48,13 @@ export interface AtomCardProps {
   compact?: boolean;
   /** Optional data-testid for stable test selectors. */
   testId?: string;
+  // === wave 14 === — opt-in vendor color border. Default is `false`
+  // so /today and /co-thinker show plain neutral cards (vendor as text
+  // label only, no color). The /memory detail view passes
+  // `showVendorColor` so dev users still get the cross-vendor visual
+  // when they explicitly drill into one atom. Wave 9 default behavior
+  // is preserved at the call site by passing `showVendorColor`.
+  showVendorColor?: boolean;
 }
 
 export function AtomCard({
@@ -61,6 +68,7 @@ export function AtomCard({
   onClick,
   compact = false,
   testId,
+  showVendorColor = false,
 }: AtomCardProps) {
   const vc = vendorColor(vendor);
   const dataVendor = normalizeVendorId(vendor);
@@ -68,14 +76,23 @@ export function AtomCard({
   // first 5 chars of an ISO date (HH:MM if it parses; raw fallback otherwise).
   const ts = timestampLabel ?? formatTimestamp(timestamp);
 
+  // === wave 14 === — vendor is shown as a small grey text label only
+  // unless `showVendorColor` is true (e.g. /memory detail view). The
+  // border-l color and the text accent color both gate on this flag.
+  const vendorLabelClass = showVendorColor
+    ? "ti-vendor-text font-mono text-[10px] uppercase tracking-wider"
+    : "font-mono text-[10px] uppercase tracking-wider text-[var(--ti-ink-500)]";
+
   const inner = (
     <>
       <div className="flex items-baseline justify-between gap-3">
         <span
-          className="ti-vendor-text font-mono text-[10px] uppercase tracking-wider"
+          className={vendorLabelClass}
           aria-label={`Vendor: ${vc.label}`}
         >
-          {vc.label}
+          {/* === wave 14 === — show "from <Vendor>" so the relationship
+              reads as user-language not data-vendor jargon. */}
+          {showVendorColor ? vc.label : `from ${vc.label}`}
         </span>
         {ts && (
           <span className="font-mono text-[10px] tabular-nums text-[var(--ti-ink-500)]">
@@ -115,7 +132,12 @@ export function AtomCard({
   // Padding tightens for the compact variant so the sidebar mini-card
   // fits within the 240px rail without truncating the title aggressively.
   const padding = compact ? "px-2.5 py-1.5" : "px-3.5 py-2.5";
-  const className = `ti-atom-card ti-vendor-border-l block rounded-r-md border border-l-0 border-stone-200 bg-white/80 ${padding} dark:border-stone-800 dark:bg-stone-900/60`;
+  // === wave 14 === — vendor border-l only renders when opt-in. Default
+  // is a normal full border for visual containment.
+  const borderClass = showVendorColor
+    ? "ti-vendor-border-l rounded-r-md border border-l-0 border-stone-200 dark:border-stone-800"
+    : "rounded-md border border-stone-200 dark:border-stone-800";
+  const className = `ti-atom-card ${borderClass} block bg-white/80 ${padding} dark:bg-stone-900/60`;
 
   const wrapperProps = {
     "data-vendor": dataVendor,

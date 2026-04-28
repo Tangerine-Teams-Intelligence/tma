@@ -81,6 +81,12 @@ export function Sidebar() {
   // === wave 8 === — per-section collapse state from store.
   const sidebarSections = useStore((s) => s.ui.sidebarSections);
   const toggleSidebarSection = useStore((s) => s.ui.toggleSidebarSection);
+  // === wave 14 === — gates the Active Agents / Advanced / Memory tree /
+  // extra Views sections on the rail. Reuses the same flag that
+  // Settings.tsx uses (Wave 5-α) so a user who flips it on the
+  // Settings page also sees the expanded rail, and vice versa.
+  const showAdvanced = useStore((s) => s.ui.showAdvancedSettings);
+  const setShowAdvanced = useStore((s) => s.ui.setShowAdvancedSettings);
   const [tree, setTree] = useState<MemoryNode[]>([]);
   const [titles, setTitles] = useState<Record<string, string>>({});
 
@@ -191,71 +197,45 @@ export function Sidebar() {
 
       {/* Scrollable middle */}
       {/* === wave 4-D i18n === */}
+      {/* === wave 14 === — DRASTIC SIMPLIFICATION:
+          v1.10.3 had 6 sections (AI tools / Views / Memory / Sources /
+          Active Agents / Advanced) and ~30+ items overall — overwhelming
+          for new users. Wave 14 collapses the rail to 3 default
+          sections:
+            1. Brain    — /today, /co-thinker, /canvas, /memory (4 items)
+            2. Sources  — collapsed by default, count chip "Sources (11)"
+            3. AI tools — collapsed by default, count chip "AI tools (10)"
+          Active Agents + Advanced live behind the "Show advanced"
+          toggle (settings link in the footer). System actions (Settings,
+          Theme, Sign out) stay at the bottom. */}
       <div className="flex-1 overflow-y-auto">
-        {/* === wave 9 === — AI TOOLS section moves to TOP. Design moat #4
-            says AI tools are first-class; visually elevating them above
-            Sources is the literal expression of that claim. The header
-            picks up the elevated display-serif treatment via `ti-section-elevated`. */}
+        {/* === wave 14 === — BRAIN section (always-visible, primary
+            CTA). Four items only: Today / Co-thinker / Canvas / Memory.
+            All other prior view links (This week, People, Projects,
+            Threads, Alignment, Inbox, Reviews, Marketplace, Graphs)
+            now live behind the "Show advanced" toggle to keep the
+            default view scannable. */}
         <Section
-          label={t("sidebar.aiTools")}
-          subtitle={t("sidebar.subtitleAITools")}
+          label={t("sidebar.brain", { defaultValue: "Brain" })}
+          subtitle={t("sidebar.subtitleBrain", {
+            defaultValue: "Your team's AI memory",
+          })}
           collapsible
-          expanded={sidebarSections.aiTools}
-          onToggle={() => toggleSidebarSection("aiTools")}
+          expanded={sidebarSections.brain}
+          onToggle={() => toggleSidebarSection("brain")}
           headerStyle="elevated"
         >
-          <AIToolsSection />
-        </Section>
-
-        {/* VIEWS — primary nav for the Chief of Staff surface */}
-        <Section label={t("sidebar.views")} subtitle={t("sidebar.subtitleViews")}>
+          {/* === wave 14 wrap-needed === — labels reuse existing keys
+              (sidebar.today / sidebar.coThinker / sidebar.canvas /
+              sidebar.memory) which Wave 12 has already wrapped. */}
           <ViewLink to="/today" icon={Calendar} label={t("sidebar.today")} />
-          <ViewLink to="/this-week" icon={CalendarRange} label={t("sidebar.thisWeek")} />
-          <ViewLink to="/people" icon={Users} label={t("sidebar.people")} />
-          <ViewLink to="/projects" icon={FolderKanban} label={t("sidebar.projects")} />
-          <ViewLink to="/threads" icon={MessageCircle} label={t("sidebar.threads")} />
-          <ViewLink to="/alignment" icon={Activity} label={t("sidebar.alignment")} />
-          <ViewLink to="/inbox" icon={Inbox} label={t("sidebar.inbox")} />
-          {/* v1.8 Phase 1 — Phase 3 / Phase 4 placeholder surfaces. */}
-          <ViewLink to="/canvas" icon={Layers} label={t("sidebar.canvas")} />
           <ViewLink to="/co-thinker" icon={Brain} label={t("sidebar.coThinker")} />
-          <ViewLink to="/reviews" icon={GitPullRequest} label={t("sidebar.reviews")} />
-          <ViewLink to="/marketplace" icon={Store} label={t("sidebar.marketplace")} />
-          <p className="mb-1 mt-3 px-2 text-[10px] uppercase tracking-wide text-stone-400 dark:text-stone-500">
-            {t("sidebar.graphs")}
-          </p>
-          <ViewLink to="/decisions/lineage" icon={Diamond} label={t("sidebar.lineage")} />
-          <ViewLink to="/people/social" icon={Network} label={t("sidebar.social")} />
-          <ViewLink to="/projects/topology" icon={Workflow} label={t("sidebar.topology")} />
+          <ViewLink to="/canvas" icon={Layers} label={t("sidebar.canvas")} />
+          <ViewLink to="/memory" icon={FolderKanban} label={t("sidebar.memory")} />
         </Section>
 
-        {/* MEMORY section */}
-        <Section label={t("sidebar.memory")} rightHint="">
-          <NavLink
-            to="/memory"
-            end
-            className={({ isActive }) =>
-              cn(
-                "block rounded px-2 py-1 text-[11px] font-mono",
-                isActive
-                  ? "bg-[var(--ti-orange-50)] text-[var(--ti-orange-700)] dark:bg-stone-800 dark:text-[var(--ti-orange-500)]"
-                  : "text-stone-700 hover:bg-stone-100 dark:text-stone-300 dark:hover:bg-stone-900",
-              )
-            }
-          >
-            ~ /memory
-          </NavLink>
-          <div className="mt-1">
-            <MemoryTree
-              tree={tree}
-              titles={titles}
-              showNewFile
-              onNewFile={() => navigate("/memory")}
-            />
-          </div>
-        </Section>
-
-        {/* SOURCES section — === wave 8 === collapsible with count chip. */}
+        {/* SOURCES section — === wave 8 === collapsible with count chip.
+            === wave 14 === — kept as the second default section. */}
         <Section
           label={t("sidebar.sources")}
           subtitle={t("sidebar.subtitleSources")}
@@ -273,32 +253,136 @@ export function Sidebar() {
           </ul>
         </Section>
 
+        {/* === wave 14 === — AI TOOLS demoted to a count-chipped
+            collapsible (was the elevated top section in v1.10.3).
+            Wave 14's vendor-color removal in AIToolsSection means this
+            section now reads as plain neutral icons (no vendor rings). */}
         <Section
-          label={t("sidebar.activeAgents")}
-          subtitle={t("sidebar.subtitleActiveAgents")}
+          label={t("sidebar.aiTools")}
+          subtitle={t("sidebar.subtitleAITools")}
           collapsible
-          expanded={sidebarSections.activeAgents}
-          onToggle={() => toggleSidebarSection("activeAgents")}
+          expanded={sidebarSections.aiTools}
+          onToggle={() => toggleSidebarSection("aiTools")}
+          count={10}
         >
-          <ActiveAgentsSection />
+          <AIToolsSection />
         </Section>
 
-        <Section
-          label={t("sidebar.advanced")}
-          subtitle={t("sidebar.subtitleAdvanced")}
-          collapsible
-          expanded={sidebarSections.advanced}
-          onToggle={() => toggleSidebarSection("advanced")}
-          count={SINKS.length}
+        {/* === wave 14 === — MEMORY tree demoted under "Show advanced".
+            The /memory route itself is in the Brain section above; this
+            is the file-tree drill-down which power users still want. */}
+        {showAdvanced && (
+          <Section
+            label={t("sidebar.memory")}
+            rightHint=""
+            data-testid="sidebar-section-memory-advanced"
+          >
+            <NavLink
+              to="/memory"
+              end
+              className={({ isActive }) =>
+                cn(
+                  "block rounded px-2 py-1 text-[11px] font-mono",
+                  isActive
+                    ? "bg-[var(--ti-orange-50)] text-[var(--ti-orange-700)] dark:bg-stone-800 dark:text-[var(--ti-orange-500)]"
+                    : "text-stone-700 hover:bg-stone-100 dark:text-stone-300 dark:hover:bg-stone-900",
+                )
+              }
+            >
+              ~ /memory
+            </NavLink>
+            <div className="mt-1">
+              <MemoryTree
+                tree={tree}
+                titles={titles}
+                showNewFile
+                onNewFile={() => navigate("/memory")}
+              />
+            </div>
+          </Section>
+        )}
+
+        {/* === wave 14 === — Extra views (This week, People, Projects,
+            Threads, Alignment, Inbox, Reviews, Marketplace, Graphs)
+            live behind the "Show advanced" toggle — they were
+            overwhelming as a default. */}
+        {showAdvanced && (
+          <Section
+            label={t("sidebar.views")}
+            subtitle={t("sidebar.subtitleViews")}
+          >
+            <ViewLink to="/this-week" icon={CalendarRange} label={t("sidebar.thisWeek")} />
+            <ViewLink to="/people" icon={Users} label={t("sidebar.people")} />
+            <ViewLink to="/projects" icon={FolderKanban} label={t("sidebar.projects")} />
+            <ViewLink to="/threads" icon={MessageCircle} label={t("sidebar.threads")} />
+            <ViewLink to="/alignment" icon={Activity} label={t("sidebar.alignment")} />
+            <ViewLink to="/inbox" icon={Inbox} label={t("sidebar.inbox")} />
+            <ViewLink to="/reviews" icon={GitPullRequest} label={t("sidebar.reviews")} />
+            <ViewLink to="/marketplace" icon={Store} label={t("sidebar.marketplace")} />
+            <p className="mb-1 mt-3 px-2 text-[10px] uppercase tracking-wide text-stone-400 dark:text-stone-500">
+              {t("sidebar.graphs")}
+            </p>
+            <ViewLink to="/decisions/lineage" icon={Diamond} label={t("sidebar.lineage")} />
+            <ViewLink to="/people/social" icon={Network} label={t("sidebar.social")} />
+            <ViewLink to="/projects/topology" icon={Workflow} label={t("sidebar.topology")} />
+          </Section>
+        )}
+
+        {/* === wave 14 === — Active Agents hidden until real captures
+            land. Was always-visible-empty in v1.10.3. */}
+        {showAdvanced && (
+          <Section
+            label={t("sidebar.activeAgents")}
+            subtitle={t("sidebar.subtitleActiveAgents")}
+            collapsible
+            expanded={sidebarSections.activeAgents}
+            onToggle={() => toggleSidebarSection("activeAgents")}
+          >
+            <ActiveAgentsSection />
+          </Section>
+        )}
+
+        {/* === wave 14 === — Advanced (browser-ext / mcp-server /
+            local-ws) hidden behind the toggle. Mechanism, not feature. */}
+        {showAdvanced && (
+          <Section
+            label={t("sidebar.advanced")}
+            subtitle={t("sidebar.subtitleAdvanced")}
+            collapsible
+            expanded={sidebarSections.advanced}
+            onToggle={() => toggleSidebarSection("advanced")}
+            count={SINKS.length}
+          >
+            <ul>
+              {SINKS.map((s) => (
+                <li key={s.id}>
+                  <SinkLink def={s} />
+                </li>
+              ))}
+            </ul>
+          </Section>
+        )}
+
+        {/* === wave 14 === — "Show advanced" toggle. Mono 11px so it
+            reads as a power-user affordance, not a primary action. */}
+        <button
+          type="button"
+          onClick={() => setShowAdvanced(!showAdvanced)}
+          data-testid="sidebar-show-advanced"
+          className="mt-2 flex w-full items-center gap-1.5 px-3 py-1.5 text-left font-mono text-[10px] uppercase tracking-wider text-[var(--ti-ink-500)] transition-colors hover:text-[var(--ti-orange-600)]"
         >
-          <ul>
-            {SINKS.map((s) => (
-              <li key={s.id}>
-                <SinkLink def={s} />
-              </li>
-            ))}
-          </ul>
-        </Section>
+          {showAdvanced ? (
+            <ChevronDown size={11} />
+          ) : (
+            <ChevronRight size={11} />
+          )}
+          {/* === wave 14 wrap-needed === */}
+          <span>
+            {showAdvanced
+              ? t("sidebar.hideAdvanced", { defaultValue: "Hide advanced" })
+              : t("sidebar.showAdvanced", { defaultValue: "Show advanced" })}
+          </span>
+        </button>
       </div>
 
       {/* Footer — === wave 8 === subtle warm tint zone groups the

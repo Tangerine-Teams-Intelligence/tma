@@ -66,9 +66,11 @@ describe("HomeStrip", () => {
     // Strip mounts immediately and hydrates from the bridge.
     expect(screen.getByTestId("co-thinker-home-strip")).toBeInTheDocument();
     await waitFor(() => {
+      // === wave 12 === — UI copy changed "last heartbeat" → "last sync"
+      // (Wave 12 hides heartbeat jargon in user UI). Test ID kept stable.
       expect(
         screen.getByTestId("co-thinker-home-strip-heartbeat"),
-      ).toHaveTextContent(/last heartbeat 5 min ago/i);
+      ).toHaveTextContent(/last sync 5 min ago/i);
     });
     expect(
       screen.getByTestId("co-thinker-home-strip-observations"),
@@ -115,9 +117,10 @@ describe("HomeStrip", () => {
       </MemoryRouter>,
     );
     await waitFor(() => {
+      // === wave 12 === — UI copy "last heartbeat never" → "last sync never".
       expect(
         screen.getByTestId("co-thinker-home-strip-heartbeat"),
-      ).toHaveTextContent(/last heartbeat never/i);
+      ).toHaveTextContent(/last sync never/i);
     });
     expect(
       screen.getByTestId("co-thinker-home-strip"),

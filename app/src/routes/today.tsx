@@ -2,10 +2,21 @@
 // === wave 5-α ===
 // === wave 8 === Polish pass — hero header + heartbeat for /today.
 // === wave 9 === — Brain visualization hero on /today (positioning).
-import { useEffect, useMemo, useState } from "react";
+// === wave 14 === — DRASTIC UX SIMPLIFICATION:
+//   • /today landing leads with a ChatGPT-style search input (not the
+//     200px brain orb). User has zero clear next action with the brain
+//     orb hero — feels like an admin dashboard, not a work tool.
+//   • Hero is now: H1 "Ask anything about your team" + multiline
+//     textarea + orange Send button → calls coThinkerDispatch and renders
+//     the response inline as a chat bubble.
+//   • BrainVizHero is demoted to a small (compact) viz in the top-right
+//     corner — kept as aesthetic / status anchor, not the primary CTA.
+//   • Recent activity stays as AtomCards (now no vendor border-l per
+//     wave-14 vendor-color removal).
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
-import { Calendar, Inbox } from "lucide-react";
+import { Calendar, Inbox, Send, Loader2 } from "lucide-react";
 import {
   readBrief,
   readTimelineToday,
@@ -24,7 +35,7 @@ import { MEMORY_REFRESHED_EVENT } from "@/components/layout/AppShell";
 // === wave 8 === — hero needs the brain status so the heartbeat dot can
 // be live without a separate route. `coThinkerStatus()` is the same
 // command the HomeStrip uses; cheap to call once on mount + every 30s.
-import { coThinkerStatus, type CoThinkerStatus } from "@/lib/tauri";
+import { coThinkerStatus, coThinkerDispatch, type CoThinkerStatus, type LlmResponse } from "@/lib/tauri";
 // === v2.0-alpha.2 workflow graph ===
 // Per V2_0_SPEC §1.1 — the graph is the head pillar of the home dashboard.
 // `/today` swaps its chronological event list for `<WorkflowGraph />` as
@@ -33,26 +44,33 @@ import { coThinkerStatus, type CoThinkerStatus } from "@/lib/tauri";
 import { WorkflowGraph } from "@/components/graphs/WorkflowGraph";
 // === end v2.0-alpha.2 workflow graph ===
 // === wave 9 === — brain visualization hero, vendor logo row for empty
-// state, and AtomCard for recent activity. These swap in the upper half
-// of /today so the page opens with a positioning anchor (the AGI
-// brain) instead of a list of timestamps.
+// state, and AtomCard for recent activity.
+// === wave 14 === — BrainVizHero is rendered in compact mode as a
+// secondary anchor (not the main hero). VendorLogoRow stays for the
+// empty-state hint when no AI tools are wired up yet.
 import { BrainVizHero, BrainVizEmpty } from "@/components/BrainVizHero";
 import { VendorLogoRow } from "@/components/VendorLogoRow";
 import { AtomCard } from "@/components/AtomCard";
 import { loadAITools, type AIToolStatus } from "@/lib/ai-tools";
+// === wave 14 === — light markdown renderer for the chat response
+// bubble. We don't reuse MarkdownView (designed for memory files with
+// frontmatter + provenance footer); ReactMarkdown directly is simpler
+// here.
+import ReactMarkdown from "react-markdown";
 
 /**
  * /today — default landing surface for the Chief of Staff UX.
  *
- * Layout (center pane only — sidebar + activity rail come from AppShell):
+ * === wave 14 === layout (top to bottom):
  *
- *   <TangerineNotes>            (Hook 5 — Stage 1 = empty, Stage 2 fills)
- *   Today · Friday Apr 25
- *   <DailyBriefCard>            (collapsible markdown brief)
+ *   [BrainVizHero compact, top-right] [TangerineNotes]
+ *   H1 "What's on your team's mind?"
+ *   <textarea> (autoresize) + orange Send button
+ *   <chat bubble inline result> (after submit)
  *   ─────────
- *   <chronological events>      (clickable; cursor.atoms_viewed updates)
+ *   Recent team notes (AtomCards, last 3-5)
  *   ─────────
- *   Now <time>                  (clock footer)
+ *   Workflow + Brief + Activity rail (existing v2 layout, demoted)
  *
  * Reads:
  *   • read_brief(today)         → daily brief markdown
@@ -71,6 +89,7 @@ export default function TodayRoute() {
   // hero pulse. Pulled here so the hero stays consistent with HomeStrip
   // (master switch off → no green pulse, no observation count).
   const agiParticipation = useStore((s) => s.ui.agiParticipation);
+  const primaryAITool = useStore((s) => s.ui.primaryAITool);
   const [brief, setBrief] = useState<BriefData | null>(null);
   const [slice, setSlice] = useState<TimelineSlice | null>(null);
   const [notes, setNotes] = useState<TangerineNote[]>([]);
@@ -83,6 +102,16 @@ export default function TodayRoute() {
   // on mount; the sidebar's loadAITools call already polls this on
   // focus, so we don't need a second poller here.
   const [installedTools, setInstalledTools] = useState<AIToolStatus[]>([]);
+
+  // === wave 14 === — chat-style hero state. `prompt` is the textarea
+  // input, `response` is the latest LlmResponse rendered as a chat
+  // bubble below the input. `dispatchState` is "idle" | "loading" |
+  // "error" — drives the spinner and the inline error block.
+  const [prompt, setPrompt] = useState("");
+  const [response, setResponse] = useState<LlmResponse | null>(null);
+  const [dispatchState, setDispatchState] = useState<"idle" | "loading" | "error">("idle");
+  const [dispatchError, setDispatchError] = useState<string | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
     let cancel = false;
@@ -171,9 +200,6 @@ export default function TodayRoute() {
   }, [slice, brainStatus, agiParticipation]);
 
   // === wave 9 === — derive brain state for the hero composition.
-  // - empty: no atoms today and no installed tools yet (first run)
-  // - alive: heartbeat in last 10 min
-  // - idle:  has atoms but no recent heartbeat
   const brainState: "empty" | "alive" | "idle" = useMemo(() => {
     const installedCount = installedTools.filter(
       (t) => t.status === "installed",
@@ -184,10 +210,7 @@ export default function TodayRoute() {
   }, [heroNumbers, installedTools]);
 
   // === wave 9 === — vendors that are "active" today (the particles
-  // that drift inward). For now we conservatively map this to "all
-  // installed tools" since the daemon doesn't yet emit per-vendor atom
-  // counts. When v3.0 ships per-source telemetry, swap this for
-  // `brainStatus.vendors_recently_active`.
+  // that drift inward).
   const activeVendors = useMemo(
     () =>
       installedTools
@@ -196,9 +219,7 @@ export default function TodayRoute() {
     [installedTools],
   );
 
-  // === wave 9 === — the cross-vendor empty-state vendor row. Lights
-  // up logos that have at least one installed parser; greys out the
-  // rest. Same source-of-truth as activeVendors.
+  // === wave 9 === — the cross-vendor empty-state vendor row.
   const awakeVendors = activeVendors;
 
   const onAtomViewed = (atomId: string) => {
@@ -208,19 +229,51 @@ export default function TodayRoute() {
   const onMarkBriefRead = () => {
     if (briefAcked) return;
     setBriefAcked(true);
-    // The brief atom id format mirrors `Event::id` for kind=brief. We
-    // synthesize the same shape from the date so the cursor tracks acks
-    // even when the daemon hasn't tagged the file with a stable atom id
-    // yet (Stage 1 brief generator writes only the markdown).
     const briefAtomId = synthesizeBriefAtomId(today);
     void markAtomAcked(currentUser, briefAtomId);
   };
 
+  // === wave 14 === — submit the chat hero prompt.
+  const submitPrompt = async () => {
+    const text = prompt.trim();
+    if (!text || dispatchState === "loading") return;
+    setDispatchState("loading");
+    setDispatchError(null);
+    setResponse(null);
+    try {
+      const resp = await coThinkerDispatch(
+        {
+          // === wave 14 wrap-needed ===
+          system_prompt:
+            "You are Tangerine, a team-memory assistant. Answer the user's question using the team's memory dir as your primary source. Be terse and concrete.",
+          user_prompt: text,
+        },
+        primaryAITool ?? undefined,
+      );
+      setResponse(resp);
+      setDispatchState("idle");
+    } catch (e) {
+      setDispatchError(String(e));
+      setDispatchState("error");
+    }
+  };
+
+  // === wave 14 === — Enter submits, Shift+Enter inserts newline.
+  // Multi-line textarea grows on input (lib/utils not needed — manual
+  // resize via scrollHeight to stay simple).
+  const onTextareaKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      void submitPrompt();
+    }
+  };
+  const onTextareaInput = (e: React.FormEvent<HTMLTextAreaElement>) => {
+    const el = e.currentTarget;
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 240) + "px";
+  };
+
   return (
-    // === wave 8 === — `ti-hero-bg` adds a subtle warm gradient backdrop so
-    // /today no longer looks like Notion's blank canvas. The gradient is
-    // cheap enough that we apply it to the route container; it scrolls
-    // with the content and degrades gracefully when reduced-motion is on.
     <div className="ti-hero-bg">
       <header className="ti-no-select flex h-9 items-center gap-2 border-b border-stone-200 bg-stone-50/60 px-6 font-mono text-[11px] text-stone-500 backdrop-blur-sm dark:border-stone-800 dark:bg-stone-950/60 dark:text-stone-400">
         <span>~ /today</span>
@@ -232,19 +285,16 @@ export default function TodayRoute() {
       <div className="mx-auto max-w-7xl px-8 py-8">
         <TangerineNotes notes={notes} route="today" />
 
-        {/* === wave 8 === — hero header. Display serif, bigger than the
-            prior 3xl, with co-located hero numbers (atoms today + brain
-            observations) so /today opens with a real visual anchor
-            instead of a row of icons. */}
-        {/* === wave 9 === — flex layout pairs the textual hero (left)
-            with the brain visualization (right) on wide screens, stacking
-            on narrow. The brain is the dominant visual anchor; the
-            heading "Today" preserves the prior smoke-test contract. */}
+        {/* === wave 14 === — ChatGPT-style hero. Big H1 + multiline
+            textarea + orange Send button. Demoted brain viz floats at
+            top-right as a small status anchor (not the primary CTA).
+            The eyebrow "Today" + date keep the smoke-test contract
+            (`findByText(/^Today$/i)`). */}
         <header
           data-testid="today-hero"
           className="mb-10 animate-ti-rise"
         >
-          <div className="flex flex-col items-start gap-8 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-col items-start gap-6 lg:flex-row lg:items-start lg:justify-between">
             <div className="min-w-0 flex-1">
               <p className="ti-section-label flex items-center gap-2">
                 <Calendar size={14} className="text-[var(--ti-orange-500)]" />
@@ -255,35 +305,101 @@ export default function TodayRoute() {
                     <span className="font-mono text-[10px] uppercase tracking-wider">live</span>
                   </span>
                 )}
+                <span className="ml-2 font-mono text-[10px] text-[var(--ti-ink-500)]">
+                  {prettyDate(today)}
+                </span>
               </p>
-              <h1 className="mt-2 text-display-lg text-[var(--ti-ink-900)] dark:text-[var(--ti-ink-900)]">
-                {prettyDate(today)}
-              </h1>
-              <div
-                data-testid="today-hero-numbers"
-                className="mt-4 flex flex-wrap items-baseline gap-x-8 gap-y-2 font-mono text-[11px] uppercase tracking-wider text-[var(--ti-ink-500)]"
+              {/* === wave 14 === — Hero H1. */}
+              <h1
+                data-testid="today-hero-h1"
+                className="mt-3 font-display text-[44px] leading-tight tracking-tight text-[var(--ti-ink-900)] dark:text-[var(--ti-ink-900)]"
               >
-                <span className="flex items-baseline gap-2">
-                  <span className="text-display-md text-[var(--ti-orange-700)] dark:text-[var(--ti-orange-500)]">
-                    {heroNumbers.atomsToday}
-                  </span>
-                  <span>atoms today</span>
-                </span>
-                {agiParticipation && brainStatus && (
-                  <span className="flex items-baseline gap-2">
-                    <span className="text-display-md text-[var(--ti-blue-700)] dark:text-[var(--ti-blue-500)]">
-                      {heroNumbers.observations}
-                    </span>
-                    <span>watched by co-thinker</span>
-                  </span>
-                )}
-                <span className="flex items-baseline gap-2">
-                  <span className="text-display-md text-[var(--ti-ink-700)] dark:text-[var(--ti-ink-300)]">
-                    {activeVendors.length}
-                  </span>
-                  <span>AI tools active</span>
-                </span>
+                {/* === wave 14 wrap-needed === */}
+                Ask anything about your team.
+              </h1>
+              <p className="mt-2 text-[13px] text-[var(--ti-ink-500)]">
+                {/* === wave 14 wrap-needed === */}
+                Tangerine searches every meeting, decision, and thread your
+                team's AI tools have captured.
+              </p>
+
+              {/* === wave 14 === — Chat input. Submit = Enter or Send
+                  click; Shift+Enter for newline. Loading state shows
+                  the Loader2 spin + "Thinking…" label inside the
+                  button so the user gets immediate feedback. */}
+              <div
+                data-testid="today-chat-input"
+                className="mt-5 flex items-end gap-2 rounded-xl border border-stone-200 bg-white px-3 py-2 shadow-sm dark:border-stone-800 dark:bg-stone-900"
+              >
+                <textarea
+                  ref={textareaRef}
+                  data-testid="today-chat-textarea"
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  onKeyDown={onTextareaKeyDown}
+                  onInput={onTextareaInput}
+                  rows={2}
+                  /* === wave 14 wrap-needed === */
+                  placeholder="Ask your team brain… e.g. 'What did we decide about pricing last week?'"
+                  className="min-h-[52px] flex-1 resize-none bg-transparent text-[14px] leading-relaxed text-[var(--ti-ink-900)] placeholder:text-[var(--ti-ink-500)] focus:outline-none dark:text-[var(--ti-ink-900)]"
+                  aria-label="Ask your team brain"
+                />
+                <button
+                  type="button"
+                  onClick={() => void submitPrompt()}
+                  disabled={dispatchState === "loading" || prompt.trim().length === 0}
+                  data-testid="today-chat-send"
+                  className="flex shrink-0 items-center gap-1.5 rounded-md bg-[var(--ti-orange-500)] px-3 py-2 text-[13px] font-medium text-white transition-colors hover:bg-[var(--ti-orange-600)] disabled:cursor-not-allowed disabled:bg-stone-300 dark:disabled:bg-stone-700"
+                >
+                  {dispatchState === "loading" ? (
+                    <>
+                      <Loader2 size={14} className="animate-spin" />
+                      {/* === wave 14 wrap-needed === */}
+                      <span>Thinking…</span>
+                    </>
+                  ) : (
+                    <>
+                      <Send size={14} />
+                      {/* === wave 14 wrap-needed === */}
+                      <span>Send</span>
+                    </>
+                  )}
+                </button>
               </div>
+
+              {/* === wave 14 === — Inline result bubble. */}
+              {response && dispatchState !== "loading" && (
+                <div
+                  data-testid="today-chat-response"
+                  className="mt-4 rounded-xl border border-stone-200 bg-stone-50/80 px-4 py-3 dark:border-stone-800 dark:bg-stone-900/60"
+                >
+                  <div className="mb-2 flex items-center gap-2 font-mono text-[10px] uppercase tracking-wider text-[var(--ti-ink-500)]">
+                    {/* === wave 14 wrap-needed === */}
+                    <span>Tangerine answered via {response.tool_id}</span>
+                    <span className="text-[var(--ti-ink-400)]">·</span>
+                    <span>{response.latency_ms}ms</span>
+                  </div>
+                  <div className="prose prose-sm max-w-none text-[13px] leading-relaxed text-[var(--ti-ink-900)] dark:prose-invert">
+                    <ReactMarkdown>{response.text}</ReactMarkdown>
+                  </div>
+                </div>
+              )}
+              {dispatchState === "error" && dispatchError && (
+                <div
+                  data-testid="today-chat-error"
+                  className="mt-4 rounded-xl border border-rose-200 bg-rose-50/80 px-4 py-3 text-[12px] text-rose-700 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-300"
+                >
+                  {/* === wave 14 wrap-needed === */}
+                  <p className="font-medium">Couldn't reach an AI tool.</p>
+                  <p className="mt-1 font-mono text-[11px]">{dispatchError}</p>
+                  <p className="mt-2 text-[11px] text-rose-600 dark:text-rose-400">
+                    {/* === wave 14 wrap-needed === */}
+                    Connect at least one AI tool in the sidebar to enable team
+                    search.
+                  </p>
+                </div>
+              )}
+
               {brainState === "empty" && (
                 <div
                   className="mt-6"
@@ -299,10 +415,16 @@ export default function TodayRoute() {
                 </div>
               )}
             </div>
-            {/* === wave 9 === — the brain orb + particle ring. Empty
-                state renders a dim grey orb with "?" placeholders; alive
-                / idle states use the full vendor-color particle ring. */}
-            <div className="shrink-0 self-center">
+
+            {/* === wave 14 === — Demoted compact brain viz. Lives
+                top-right as a status anchor; doesn't dominate. The
+                BrainVizHero contract is unchanged (still emits the
+                wave-9 testids); only the size is reduced via the new
+                `compact` prop. */}
+            <div
+              className="hidden shrink-0 self-start lg:block"
+              data-testid="today-brain-viz-secondary"
+            >
               {brainState === "empty" ? (
                 <BrainVizEmpty />
               ) : (
@@ -310,13 +432,50 @@ export default function TodayRoute() {
                   state={brainState}
                   activeVendors={activeVendors}
                   atomsToday={heroNumbers.atomsToday}
+                  compact
                 />
               )}
             </div>
           </div>
         </header>
 
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[2fr_1fr]">
+        {/* === wave 14 === — Recent team notes (renamed from "Cross-vendor
+            activity"). User-language label per Wave 12 spec. Cards now
+            render without vendor border-l (showVendorColor=false default). */}
+        {slice && slice.events.length > 0 && (
+          <section
+            data-testid="today-recent-notes"
+            className="mt-6"
+            aria-label="Recent team notes"
+          >
+            <p className="ti-section-label">
+              {/* === wave 14 wrap-needed === */}
+              {t("today.recentNotes", {
+                defaultValue: "Recent team notes",
+              })}
+            </p>
+            <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {slice.events.slice(0, 5).map((ev) => (
+                <AtomCard
+                  key={`atom-${ev.id}`}
+                  vendor={inferVendorFromSource(ev.source, ev.actor)}
+                  title={(ev.body ?? "").split("\n")[0] || ev.kind}
+                  body={ev.body}
+                  sourcePath={ev.file ?? null}
+                  timestamp={ev.ts}
+                  linkTo={ev.file ? `/memory/${ev.file}` : null}
+                  onClick={() => onAtomViewed(ev.id)}
+                  testId={`today-atom-${ev.id}`}
+                />
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Existing v2 workflow + brief + activity rail demoted below
+            the new chat hero. Kept intact so /this-week + brief flows
+            don't regress; just no longer the first thing users see. */}
+        <div className="mt-10 grid grid-cols-1 gap-6 lg:grid-cols-[2fr_1fr]">
           <section aria-label={t("today.workflowAria")}>
             <p className="ti-section-label">{t("today.workflow")}</p>
             <div className="mt-3">
@@ -365,40 +524,6 @@ export default function TodayRoute() {
             </div>
           </aside>
         </div>
-
-        {/* === wave 9 === — Cross-vendor recent activity. Renders the
-            latest 5 atoms as AtomCards so the user can scan the "which
-            AI did what" picture in one column. Inferred vendor comes
-            from each event's `source` (legacy) or null (we colorize the
-            border anyway via the default fallback). */}
-        {slice && slice.events.length > 0 && (
-          <section
-            data-testid="today-cross-vendor"
-            className="mt-10"
-            aria-label="Cross-vendor recent activity"
-          >
-            <p className="ti-section-label">
-              {t("today.crossVendor", {
-                defaultValue: "Cross-vendor activity",
-              })}
-            </p>
-            <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {slice.events.slice(0, 6).map((ev) => (
-                <AtomCard
-                  key={`atom-${ev.id}`}
-                  vendor={inferVendorFromSource(ev.source, ev.actor)}
-                  title={(ev.body ?? "").split("\n")[0] || ev.kind}
-                  body={ev.body}
-                  sourcePath={ev.file ?? null}
-                  timestamp={ev.ts}
-                  linkTo={ev.file ? `/memory/${ev.file}` : null}
-                  onClick={() => onAtomViewed(ev.id)}
-                  testId={`today-atom-${ev.id}`}
-                />
-              ))}
-            </div>
-          </section>
-        )}
 
         <p className="mt-12 text-center font-mono text-[10px] text-stone-400 dark:text-stone-500">
           {t("today.footer")}

@@ -12,7 +12,11 @@ import { cn } from "@/lib/utils";
 // === wave 9 === — vendor color treatment per row. Each tool entry shows
 // a circular vendor-color ring around its icon so the rail reads
 // cross-vendor at a glance.
-import { vendorColor } from "@/lib/vendor-colors";
+// === wave 14 === — vendor color is a dev concept (Cursor blue / Claude
+// purple etc.) that adds cognitive load for end users. We drop the
+// vendor-color rings here and use plain neutral grey instead. The
+// import stays in case other components need it; the active "live"
+// dot below is now solid green regardless of vendor.
 
 /**
  * AI TOOLS — first-class sidebar section (v1.8 Phase 1).
@@ -94,11 +98,11 @@ function AIToolLink({
   tool: AIToolStatus;
   isPrimary: boolean;
 }) {
-  // === wave 9 === — pull the vendor color so the icon ring + dot can
-  // render in the brand color even when the tool isn't installed yet
-  // (so the rail visually announces "we have a relationship with this
-  // vendor", not "another grey row").
-  const vc = vendorColor(tool.id);
+  // === wave 14 === — vendor color rings dropped. Plain grey neutral
+  // background for the icon. The Sparkles icon stays as the cross-tool
+  // glyph; primary star stays. The data-vendor attribute is kept for
+  // the test selector (wave 9 contract) but the visual no longer
+  // announces vendor.
   return (
     <NavLink
       to={`/ai-tools/${tool.id}`}
@@ -114,23 +118,13 @@ function AIToolLink({
       data-vendor={tool.id}
       data-testid={`ai-tool-link-${tool.id}`}
     >
-      {/* === wave 9 === — circular vendor color ring around the
-          icon. Replaces the wave 8 plain Sparkles. */}
+      {/* === wave 14 === — plain neutral icon. No vendor ring, no
+          vendor-tinted Sparkles. */}
       <span
         aria-hidden
-        className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full"
-        style={{
-          boxShadow: `inset 0 0 0 1.5px ${
-            vc.hex.startsWith("linear-gradient") ? "#A855F7" : vc.hex
-          }`,
-        }}
+        className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-stone-100 dark:bg-stone-800"
       >
-        <Sparkles
-          size={11}
-          style={{
-            color: vc.hex.startsWith("linear-gradient") ? "#A855F7" : vc.hex,
-          }}
-        />
+        <Sparkles size={11} className="text-stone-500 dark:text-stone-400" />
       </span>
       <span className="min-w-0 flex-1 truncate">
         <span className="truncate">{tool.name}</span>
@@ -146,36 +140,35 @@ function AIToolLink({
           data-testid={`ai-tool-star-${tool.id}`}
         />
       )}
-      <StatusDot status={tool.status} vendorHex={vc.hex} />
+      <StatusDot status={tool.status} />
     </NavLink>
   );
 }
 
 /**
  * Status dot. Mirrors the four status verdicts from the Rust detector:
- *   installed             → vendor color dot (wave 9 — was generic green)
+ *   installed             → solid green dot (wave 14 — was vendor color)
  *   needs_setup           → amber dot (installed but not wired up)
  *   browser_ext_required  → amber dot (needs our extension first)
  *   not_installed         → grey dot
  */
 function StatusDot({
   status,
-  vendorHex,
 }: {
   status: AIToolStatus["status"];
-  vendorHex: string;
 }) {
-  // === wave 9 === — installed → vendor color so the rail telegraphs
-  // which vendors are live. Keeps the live-pulse animation but tints the
-  // halo via inline style instead of the wave-8 hard-coded green.
+  // === wave 14 === — installed dot is solid green, vendor-agnostic.
+  // The previous wave-9 vendor-color tint added cognitive load (user
+  // doesn't care that "Cursor's dot is blue and Claude's is purple").
+  // The pulse animation stays so live tools still telegraph activity.
   if (status === "installed") {
-    const color = vendorHex.startsWith("linear-gradient") ? "#A855F7" : vendorHex;
     return (
       <span
         className="ti-live-dot h-1.5 w-1.5 shrink-0"
-        style={{ background: color }}
+        style={{ background: "var(--ti-green-500, #22c55e)" }}
         title="Installed"
         aria-label="Installed"
+        data-testid="ai-tool-status-installed"
       />
     );
   }

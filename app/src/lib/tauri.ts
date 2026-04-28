@@ -115,6 +115,62 @@ export async function initMemoryWithSamples(): Promise<InitMemoryResult> {
   }));
 }
 
+// === wave 13 ===
+// v1.10.3 — populated-app demo seed. 3 commands wrapping the new Rust
+// surface in `commands::demo_seed`. Mocks return safe no-ops so vitest
+// (which runs without a Tauri host) never touches the real filesystem.
+
+export interface DemoSeedCheckResult {
+  /** True when the memory root contains at least one file with `sample: true`. */
+  is_demo: boolean;
+  /** Number of files under the memory root that carry `sample: true`. */
+  sample_count: number;
+}
+
+export interface DemoSeedInstallResult {
+  /** True when the copy attempt completed without error (even if 0 new
+   *  files were copied because the seed was already present). */
+  ok: boolean;
+  /** Number of new files written. 0 on a re-run that found everything
+   *  already present. */
+  copied_files: number;
+  /** Optional human-readable error when `ok` is false. */
+  error: string | null;
+}
+
+export interface DemoSeedClearResult {
+  /** Number of files removed. Only files carrying `sample: true` in
+   *  YAML frontmatter are removed; user content survives. */
+  removed_files: number;
+}
+
+/** Read-only check — count sample-flagged files under the memory root. */
+export async function demoSeedCheck(): Promise<DemoSeedCheckResult> {
+  return safeInvoke("demo_seed_check", undefined, () => ({
+    is_demo: false,
+    sample_count: 0,
+  }));
+}
+
+/** Idempotent install — copy bundled sample-memory tree into the memory
+ *  root. Returns `{ok, copied_files}`. Safe to re-call. */
+export async function demoSeedInstall(): Promise<DemoSeedInstallResult> {
+  return safeInvoke("demo_seed_install", undefined, () => ({
+    ok: true,
+    copied_files: 0,
+    error: null,
+  }));
+}
+
+/** Remove every file under the memory root carrying `sample: true` in
+ *  frontmatter. User content untouched. */
+export async function demoSeedClear(): Promise<DemoSeedClearResult> {
+  return safeInvoke("demo_seed_clear", undefined, () => ({
+    removed_files: 0,
+  }));
+}
+// === end wave 13 ===
+
 // ============================================================
 // System / external
 // ============================================================

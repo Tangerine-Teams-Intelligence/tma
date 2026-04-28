@@ -113,18 +113,21 @@ interface UiSlice {
   memoryRoot: string;
   sidebarCollapsed: boolean;
   // === wave 8 === — per-section collapse state for the sidebar.
-  // Default: Sources collapsed (rarely accessed), AI Tools expanded
-  // (the user's primary mental model), Advanced collapsed (mechanism,
-  // not a feature). Active Agents stays expanded so cross-team
-  // visibility reads at a glance.
+  // === wave 14 === — drastic UX simplification. The default rail
+  // collapses to 3 sections — Brain (expanded), Sources (collapsed,
+  // count chip), AI tools (collapsed, count chip). Active Agents +
+  // Advanced live behind the "Show advanced" toggle (they were
+  // overwhelming new users with 30+ items in v1.10.3). Wave 14 adds
+  // the `brain` section key.
   sidebarSections: {
+    brain: boolean;
     sources: boolean;
     aiTools: boolean;
     advanced: boolean;
     activeAgents: boolean;
   };
   toggleSidebarSection: (
-    key: "sources" | "aiTools" | "advanced" | "activeAgents",
+    key: "brain" | "sources" | "aiTools" | "advanced" | "activeAgents",
   ) => void;
   /** Cmd+K command palette visibility. */
   paletteOpen: boolean;
@@ -134,6 +137,20 @@ interface UiSlice {
   samplesSeeded: boolean;
   /** True after the user dismisses the in-content sample banner. */
   sampleBannerDismissed: boolean;
+  // === wave 13 ===
+  /** Wave 13 — populated-app demo flag. Flips `true` on truly-fresh first
+   *  launch (memory dir missing or empty) so the user lands on a populated
+   *  app instead of empty states. The DemoModeBanner reads this; "Hide"
+   *  flips it false but keeps the data on disk; "Connect your real team"
+   *  forwards the user into GitInitBanner / SetupWizard. */
+  demoMode: boolean;
+  /** Wave 13 — true once `demo_seed_install` has been attempted at least
+   *  once on this install. Persisted so we don't re-trigger the demo
+   *  install effect on every cold launch (the install itself is
+   *  idempotent, but the side-effect of flipping `demoMode = true` should
+   *  not re-fire after the user has dismissed the banner). */
+  demoSeedAttempted: boolean;
+  // === end wave 13 ===
   /** v1.6.0 team memory sync configuration. Undefined mode → first-run. */
   memoryConfig: MemoryConfig;
   /** Current user alias used by cursor / what's-new commands. Defaults to
@@ -458,6 +475,14 @@ interface UiSlice {
   setLocalOnly: (v: boolean) => void;
   setSamplesSeeded: (v: boolean) => void;
   dismissSampleBanner: () => void;
+  // === wave 13 ===
+  /** Wave 13 — flip the populated-app demo flag. True = banner shown,
+   *  false = user explicitly dismissed (or replaced sample data with real). */
+  setDemoMode: (v: boolean) => void;
+  /** Wave 13 — record that the demo seed install has been attempted on
+   *  this install (independent of success). Persisted. */
+  setDemoSeedAttempted: (v: boolean) => void;
+  // === end wave 13 ===
   setMemoryConfig: (patch: Partial<MemoryConfig>) => void;
   resetMemoryConfig: () => void;
   setCurrentUser: (u: string) => void;
@@ -686,11 +711,16 @@ export const useStore = create<Store>()(
         memoryRoot: defaultMemoryRoot(),
         sidebarCollapsed: false,
         // === wave 8 === — see slice doc above for default rationale.
+        // === wave 14 === — sidebar default is now Brain expanded,
+        // Sources + AI tools collapsed (count chips visible), Advanced
+        // hidden behind "Show advanced" toggle. Active Agents stays
+        // false until real captures land.
         sidebarSections: {
+          brain: true,
           sources: false,
-          aiTools: true,
+          aiTools: false,
           advanced: false,
-          activeAgents: true,
+          activeAgents: false,
         },
         toggleSidebarSection: (key) =>
           set((s) => ({
@@ -706,6 +736,14 @@ export const useStore = create<Store>()(
         localOnly: false,
         samplesSeeded: false,
         sampleBannerDismissed: false,
+        // === wave 13 ===
+        // Wave 13 — populated-app demo flag. Defaults false so an existing
+        // install without the migration doesn't suddenly show the banner.
+        // The AppShell first-launch effect flips this true after a
+        // successful `demo_seed_install` on a truly-fresh memory root.
+        demoMode: false,
+        demoSeedAttempted: false,
+        // === end wave 13 ===
         // v2.0-alpha.1 — personalDirEnabled defaults to true on first launch.
         // The setMemoryConfig patch flow lets the user flip it from the
         // settings UI without disturbing repo / mode / invite fields.
@@ -864,6 +902,12 @@ export const useStore = create<Store>()(
           set((s) => ({ ui: { ...s.ui, samplesSeeded: v } })),
         dismissSampleBanner: () =>
           set((s) => ({ ui: { ...s.ui, sampleBannerDismissed: true } })),
+        // === wave 13 ===
+        setDemoMode: (v) =>
+          set((s) => ({ ui: { ...s.ui, demoMode: v } })),
+        setDemoSeedAttempted: (v) =>
+          set((s) => ({ ui: { ...s.ui, demoSeedAttempted: v } })),
+        // === end wave 13 ===
         setMemoryConfig: (patch) =>
           set((s) => ({
             ui: {
@@ -1253,6 +1297,10 @@ export const useStore = create<Store>()(
             memoryRoot: s.ui.memoryRoot,
             samplesSeeded: s.ui.samplesSeeded,
             sampleBannerDismissed: s.ui.sampleBannerDismissed,
+            // === wave 13 ===
+            demoMode: s.ui.demoMode,
+            demoSeedAttempted: s.ui.demoSeedAttempted,
+            // === end wave 13 ===
             memoryConfig: s.ui.memoryConfig,
             currentUser: s.ui.currentUser,
             dismissedAtoms: s.ui.dismissedAtoms,
@@ -1327,6 +1375,10 @@ export const useStore = create<Store>()(
                 memoryRoot?: string;
                 samplesSeeded?: boolean;
                 sampleBannerDismissed?: boolean;
+                // === wave 13 ===
+                demoMode?: boolean;
+                demoSeedAttempted?: boolean;
+                // === end wave 13 ===
                 memoryConfig?: MemoryConfig;
                 currentUser?: string;
                 dismissedAtoms?: string[];
@@ -1381,6 +1433,11 @@ export const useStore = create<Store>()(
             samplesSeeded: p?.ui?.samplesSeeded ?? current.ui.samplesSeeded,
             sampleBannerDismissed:
               p?.ui?.sampleBannerDismissed ?? current.ui.sampleBannerDismissed,
+            // === wave 13 ===
+            demoMode: p?.ui?.demoMode ?? current.ui.demoMode,
+            demoSeedAttempted:
+              p?.ui?.demoSeedAttempted ?? current.ui.demoSeedAttempted,
+            // === end wave 13 ===
             memoryConfig: p?.ui?.memoryConfig ?? current.ui.memoryConfig,
             currentUser: p?.ui?.currentUser ?? current.ui.currentUser,
             dismissedAtoms: p?.ui?.dismissedAtoms ?? current.ui.dismissedAtoms,
@@ -1508,7 +1565,15 @@ export const useStore = create<Store>()(
             // === wave 8 === — sidebar collapse state. Back-fill any
             // missing keys with the current default so a v1.x install
             // (no `sidebarSections` persisted) upgrades cleanly.
+            // === wave 14 === — added `brain` key for the new top
+            // section. Defaults to current.ui.sidebarSections.brain
+            // (true) so a v1.10.3 user lands on an expanded Brain
+            // section after upgrade.
             sidebarSections: {
+              brain:
+                (p?.ui as { sidebarSections?: { brain?: boolean } } | undefined)
+                  ?.sidebarSections?.brain ??
+                current.ui.sidebarSections.brain,
               sources:
                 (p?.ui as { sidebarSections?: { sources?: boolean } } | undefined)
                   ?.sidebarSections?.sources ??

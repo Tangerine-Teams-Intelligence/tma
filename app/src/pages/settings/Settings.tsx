@@ -34,16 +34,23 @@ import { PersonalAgentsSettings } from "./PersonalAgentsSettings";
 // Tab classification:
 //   default — always visible (small, opinionated set)
 //   advanced — only visible when `ui.showAdvancedSettings` is true
+// === wave 14 === — DRASTIC SIMPLIFICATION. Default drops to 2 tabs
+// (General, AI tools). AGI + Personal Agents move behind the
+// "Show advanced" toggle alongside Team / Adapters / Advanced.
+// Rationale: a brand-new user lands on Settings and only sees the
+// two opinionated controls (general prefs + AI tool detection); the
+// dev-grade tabs (sensitivity sliders, parser configs, adapter wiring)
+// are one click away, not in their face.
 const DEFAULT_TABS = [
   { id: "general", label: "General" },
   { id: "ai-tools", label: "AI tools" },
-  { id: "agi", label: "AGI" },
-  { id: "personal-agents", label: "Personal Agents" },
 ] as const;
 
 const ADVANCED_TABS = [
-  { id: "team", label: "Team" },
+  { id: "agi", label: "AGI" },
+  { id: "personal-agents", label: "Personal Agents" },
   { id: "adapters", label: "Adapters" },
+  { id: "team", label: "Team" },
   { id: "advanced", label: "Advanced" },
 ] as const;
 

@@ -591,12 +591,17 @@ function CitedAtomsSection({
   if (citations.length === 0) return null;
 
   return (
+    // === wave 12 === — UI label "Cited atoms (grounding)" → "Source notes"
+    // (user-language; Wave 12 naming refactor). The Rust-side brain doc
+    // still emits the H2 "Cited atoms (grounding)" inside the markdown
+    // file (it's part of the on-disk format) — this section header is the
+    // React-rendered chrome above it, which we relabel for users.
     <section
       data-testid="co-thinker-grounding"
       className="mt-8"
-      aria-label="Cited atoms (grounding)"
+      aria-label="Source notes"
     >
-      <h2 className="ti-section-display mb-3">Cited atoms (grounding)</h2>
+      <h2 className="ti-section-display mb-3">Source notes</h2>
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         {citations.map((c, i) => {
           // Atom basename = last path segment without `.md`.

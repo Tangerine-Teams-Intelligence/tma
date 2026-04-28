@@ -134,13 +134,14 @@ describe("Stage 1 Wave 3 routes — smoke", () => {
 
   it("/co-thinker renders the route (empty state by default)", async () => {
     renderRoute("/co-thinker", <CoThinkerRoute />);
+    // === wave 12 === — H1 renamed "Co-thinker" → "Team brain" + explainer
+    // lede shifted from "This is your team's AGI brain" to
+    // "This is your team's shared brain" (drop AGI prefix in user UI).
     expect(
-      await screen.findByRole("heading", { level: 1, name: /^Co-thinker$/i }),
+      await screen.findByRole("heading", { level: 1, name: /^Team brain$/i }),
     ).toBeInTheDocument();
-    // Wave 4-C: empty brain doc (mock returns "") triggers the 4-pillar
-    // explainer card whose lede is "This is your team's AGI brain."
     expect(
-      await screen.findByText(/This is your team's AGI brain/i),
+      await screen.findByText(/This is your team's shared brain/i),
     ).toBeInTheDocument();
   });
 });

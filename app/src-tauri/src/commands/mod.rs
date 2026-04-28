@@ -242,6 +242,18 @@ pub mod audit;
 pub mod setup_wizard;
 // === end wave 11 ===
 
+// === wave 13 ===
+// v1.10.3 — populated-app first-launch demo seed. New surface that does
+// NOT overlap with `commands::memory::init_memory_with_samples` (that
+// older flat-layout seeder still ships its 3-file v1.x seed). Wave 13's
+// `demo_seed` writes the richer layered tree (`team/co-thinker.md` +
+// `team/decisions/<date>-<slug>.md` + `team/timeline/<date>.md` +
+// `personal/<user>/threads/<vendor>/...` + `agi/observations/<date>.md`)
+// and exposes a clear path so the user can wipe just the seeded files
+// once they replace them with real team content. See `demo_seed.rs`.
+pub mod demo_seed;
+// === end wave 13 ===
+
 mod error;
 mod paths;
 mod runner;
@@ -598,6 +610,13 @@ macro_rules! tmi_invoke_handler {
             $crate::commands::setup_wizard::setup_wizard_install_ollama_hint,
             $crate::commands::setup_wizard::setup_wizard_persist_state,
             // === end wave 11 ===
+            // === wave 13 ===
+            // v1.10.3 — populated-app demo seed. 3 commands. See
+            // `demo_seed.rs` for the doc comment + invariants.
+            $crate::commands::demo_seed::demo_seed_check,
+            $crate::commands::demo_seed::demo_seed_install,
+            $crate::commands::demo_seed::demo_seed_clear,
+            // === end wave 13 ===
         ]
     };
 }

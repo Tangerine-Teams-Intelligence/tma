@@ -70,6 +70,13 @@ import {
   type InstallHintResult,
   // === wave 11.1 ===
   type SetupWizardDiagnostic,
+  // === wave 13 ===
+  // Wave 13 — Step 5 sample query CTA. We dispatch through the same
+  // co-thinker bridge the rest of the app uses so a successful sample
+  // query proves the wizard's just-configured channel actually works.
+  coThinkerDispatch,
+  type LlmResponse,
+  // === end wave 13 ===
 } from "@/lib/tauri";
 
 type WizardStep = "welcome" | "detect" | "configure" | "test" | "done";
@@ -1227,6 +1234,70 @@ function TestStep({
 
 function DoneStep({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
+  // === wave 13 ===
+  // Wave 13 — sample query CTA. The user's channel was just verified by
+  // Step 4's TestChannel call; this step exercises the bridge end-to-end
+  // with a real co-thinker dispatch over the user's sample/team data,
+  // showing the answer inline as a chat bubble. Three canned queries
+  // are wired so the user can see what populated team data feels like
+  // before they land on /today.
+  //
+  // We render the answer inside the wizard (no nav) so the user keeps
+  // the "Take me to /today" CTA visible. State is local to this step —
+  // it resets on a fresh wizard open via the parent's reset effect.
+  //
+  // The 3 query strings live next to the JSX so Wave 12 can wrap them
+  // into `setupWizard.sampleQueries.*` keys later without re-finding
+  // the source. Marked with `// === wave 13 wrap-needed ===`.
+  const SAMPLE_QUERIES: ReadonlyArray<{ id: string; label: string }> = [
+    {
+      id: "sample-pricing",
+      // === wave 13 wrap-needed === — `setupWizard.sampleQueries.pricing`.
+      label: "What did our team decide about pricing?",
+    },
+    {
+      id: "sample-sam-claude",
+      // === wave 13 wrap-needed === — `setupWizard.sampleQueries.samClaude`.
+      label: "Show me Sam's recent work in Claude Code",
+    },
+    {
+      id: "sample-week-summary",
+      // === wave 13 wrap-needed === — `setupWizard.sampleQueries.weekSummary`.
+      label: "Summarize last week",
+    },
+  ];
+
+  const [sampleAnswer, setSampleAnswer] = useState<LlmResponse | null>(null);
+  const [sampleAnswerError, setSampleAnswerError] = useState<string | null>(
+    null,
+  );
+  const [askingFor, setAskingFor] = useState<string | null>(null);
+  const [activeQuery, setActiveQuery] = useState<string | null>(null);
+
+  async function ask(label: string, queryId: string) {
+    setAskingFor(queryId);
+    setActiveQuery(label);
+    setSampleAnswer(null);
+    setSampleAnswerError(null);
+    void logEvent("setup_wizard_sample_query_clicked", { query_id: queryId });
+    try {
+      const resp = await coThinkerDispatch({
+        system_prompt:
+          "You are Tangerine, the team's co-thinker. You have read-only access to the team's memory dir (decisions, timeline, threads). Answer in 3-4 sentences using the sample data — be specific, cite people and dates when you can.",
+        user_prompt: label,
+        max_tokens: 400,
+        temperature: 0.4,
+      });
+      setSampleAnswer(resp);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setSampleAnswerError(msg || "Co-thinker dispatch failed.");
+    } finally {
+      setAskingFor(null);
+    }
+  }
+  // === end wave 13 ===
+
   return (
     <section data-testid="setup-wizard-step-done" className="space-y-5">
       <header>
@@ -1237,6 +1308,78 @@ function DoneStep({ onClose }: { onClose: () => void }) {
           {t("setupWizard.doneBody")}
         </p>
       </header>
+
+      {/* === wave 13 === — sample query CTA. Sits ABOVE the "Take me to
+          /today" button so the user proves the wizard's value before
+          leaving the overlay. The chat-bubble result renders inline; the
+          take-me-to-today button stays visible the whole time. */}
+      <div
+        className="space-y-3 rounded-md border border-[var(--ti-orange-500)]/30 bg-[var(--ti-orange-50)]/30 p-4 dark:border-[var(--ti-orange-500)]/30 dark:bg-stone-900/40"
+        data-testid="setup-wizard-sample-query"
+      >
+        <p className="text-[12px] font-medium text-[var(--ti-ink-700)] dark:text-[var(--ti-ink-500)]">
+          {/* === wave 13 wrap-needed === — `setupWizard.sampleQueriesPrompt`. */}
+          Try asking your team brain something:
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {SAMPLE_QUERIES.map((q) => (
+            <button
+              key={q.id}
+              type="button"
+              onClick={() => void ask(q.label, q.id)}
+              disabled={askingFor !== null}
+              data-testid={`setup-wizard-sample-query-${q.id}`}
+              className="rounded border border-[var(--ti-orange-300,#FFB477)] bg-white px-3 py-1.5 text-left text-[12px] text-[var(--ti-orange-700,#A04400)] hover:bg-[var(--ti-orange-100,#FFE4CD)] disabled:cursor-not-allowed disabled:opacity-50 dark:border-stone-700 dark:bg-stone-800 dark:text-[var(--ti-orange-500,#CC5500)] dark:hover:bg-stone-700"
+            >
+              {q.label}
+            </button>
+          ))}
+        </div>
+
+        {askingFor !== null && (
+          <p
+            className="text-[11px] italic text-stone-500 dark:text-stone-400"
+            data-testid="setup-wizard-sample-query-pending"
+          >
+            {/* === wave 13 wrap-needed === — `setupWizard.sampleQueryPending`. */}
+            Asking the brain…
+          </p>
+        )}
+
+        {sampleAnswer && activeQuery && (
+          <div
+            data-testid="setup-wizard-sample-query-answer"
+            className="space-y-2 rounded border border-stone-200 bg-white p-3 dark:border-stone-700 dark:bg-stone-900"
+          >
+            <p className="text-[11px] font-mono text-stone-500 dark:text-stone-400">
+              {/* User bubble */}
+              You: <span className="text-stone-700 dark:text-stone-200">{activeQuery}</span>
+            </p>
+            <p className="whitespace-pre-wrap text-[12px] leading-relaxed text-stone-800 dark:text-stone-200">
+              <span className="mr-1" aria-hidden>
+                🍊
+              </span>
+              {sampleAnswer.text}
+            </p>
+            <p className="font-mono text-[10px] text-stone-400 dark:text-stone-500">
+              via {sampleAnswer.channel_used}/{sampleAnswer.tool_id} ·{" "}
+              {sampleAnswer.latency_ms}ms
+            </p>
+          </div>
+        )}
+
+        {sampleAnswerError && (
+          <div
+            data-testid="setup-wizard-sample-query-error"
+            className="rounded border border-rose-200 bg-rose-50 p-3 text-[11px] text-rose-700 dark:border-rose-700/50 dark:bg-rose-950/40 dark:text-rose-300"
+          >
+            {/* === wave 13 wrap-needed === — `setupWizard.sampleQueryError`. */}
+            Couldn&rsquo;t reach the brain: {sampleAnswerError}
+          </div>
+        )}
+      </div>
+      {/* === end wave 13 === */}
+
       <Button onClick={onClose} data-testid="setup-wizard-done-close">
         {t("setupWizard.takeMeToToday")}
       </Button>

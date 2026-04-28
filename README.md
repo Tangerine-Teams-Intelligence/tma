@@ -2,6 +2,8 @@
 
 > **Align every AI tool on your team with your team's actual workflow.**
 >
+> Your team's shared AI memory. Across Cursor, Claude, ChatGPT, and the rest.
+>
 > Your team uses Cursor, Claude, ChatGPT, Codex, Devin, Copilot — but each AI sees a different slice of what your team's actually doing. We align them all with one source of team workflow. Your AIs stop giving different answers.
 
 [![Latest Release](https://img.shields.io/github/v/release/Tangerine-Teams-Intelligence/tangerine-teams-app?include_prereleases)](https://github.com/Tangerine-Teams-Intelligence/tangerine-teams-app/releases/latest)
@@ -14,7 +16,7 @@
 
 ## Why Tangerine — 4 design moats, each with concrete user value
 
-### 1. Borrow your existing AI Pro subscription
+### 1. Use your existing Cursor / Claude / ChatGPT
 **No new $20/seat/month for our LLM.**
 
 You already pay Cursor Pro / Claude Pro / Codex / ChatGPT Plus. Tangerine reverse-calls into your editor through the **MCP sampling protocol** — your existing LLM does the inference, we just route the prompt. Your team pays $0 in extra LLM fees.

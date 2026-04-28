@@ -75,6 +75,17 @@ vi.mock("../src/lib/tauri", async () => {
       primary_channel: "mcp_sampling/cursor",
       skipped: false,
     }),
+    // === wave 13 === — sample query CTA on Step 5 dispatches through
+    // co-thinker. We mock a deterministic answer so the bubble assertion
+    // doesn't depend on a real LLM bridge.
+    coThinkerDispatch: vi.fn().mockResolvedValue({
+      text: "Acme Robotics raised paid pricing $20 → $24/seat on 2026-04-26 (existing accounts grandfathered through 2026-12-31).",
+      channel_used: "mcp_sampling",
+      tool_id: "cursor",
+      latency_ms: 480,
+      tokens_estimate: 120,
+    }),
+    // === end wave 13 ===
   };
 });
 
@@ -375,6 +386,54 @@ describe("SetupWizard", () => {
     rerender(<SetupWizard open={true} onClose={() => undefined} />);
     expect(screen.getByTestId("setup-wizard-step-welcome")).toBeInTheDocument();
   });
+
+  // === wave 13 ===
+  it("Step 5 (done) renders 3 sample query buttons + dispatches the chosen one", async () => {
+    // Walk through 1 → 5 quickly using the canned mock chain.
+    render(<SetupWizard open={true} onClose={() => undefined} />);
+    fireEvent.click(screen.getByTestId("setup-wizard-welcome-continue"));
+    await waitFor(() => screen.getByTestId("setup-wizard-channel-mcp-cursor"));
+    fireEvent.click(screen.getByTestId("setup-wizard-detect-continue"));
+    await waitFor(() => screen.getByTestId("setup-wizard-mcp-auto"));
+    fireEvent.click(screen.getByTestId("setup-wizard-mcp-auto"));
+    await waitFor(() => screen.getByTestId("setup-wizard-mcp-restarted"));
+    fireEvent.click(screen.getByTestId("setup-wizard-mcp-restarted"));
+    await waitFor(() => screen.getByTestId("setup-wizard-test-continue"));
+    fireEvent.click(screen.getByTestId("setup-wizard-test-continue"));
+    await waitFor(() =>
+      expect(screen.getByTestId("setup-wizard-step-done")).toBeInTheDocument(),
+    );
+
+    // Sample query block must render with all 3 canned queries + the
+    // "Take me to /today" CTA still visible.
+    expect(screen.getByTestId("setup-wizard-sample-query")).toBeInTheDocument();
+    expect(
+      screen.getByTestId("setup-wizard-sample-query-sample-pricing"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("setup-wizard-sample-query-sample-sam-claude"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("setup-wizard-sample-query-sample-week-summary"),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("setup-wizard-done-close")).toBeInTheDocument();
+
+    // Click the pricing sample query — co_thinker_dispatch resolves to
+    // the canned answer, the chat bubble renders inline.
+    fireEvent.click(
+      screen.getByTestId("setup-wizard-sample-query-sample-pricing"),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("setup-wizard-sample-query-answer"),
+      ).toBeInTheDocument(),
+    );
+    // The bubble renders the canned answer body.
+    expect(
+      screen.getByText(/Acme Robotics raised paid pricing/),
+    ).toBeInTheDocument();
+  });
+  // === end wave 13 ===
 });
 
 // Suppress useEffect cleanup chatter in some test runners.

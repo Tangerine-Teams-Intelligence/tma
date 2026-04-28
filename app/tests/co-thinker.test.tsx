@@ -151,12 +151,15 @@ describe("CoThinkerRoute", () => {
     );
 
     await waitFor(() => {
+      // === wave 12 === — explainer lede changed: "AGI brain" → "shared
+      // brain" (Wave 12 drops AGI prefix in user UI). Initialize button
+      // label tracks the new "Initialize team brain" copy.
       expect(
-        screen.getByText(/This is your team's AGI brain/i),
+        screen.getByText(/This is your team's shared brain/i),
       ).toBeInTheDocument();
     });
     expect(
-      screen.getByRole("button", { name: /Initialize co-thinker/i }),
+      screen.getByRole("button", { name: /Initialize team brain/i }),
     ).toBeInTheDocument();
   });
 
@@ -301,11 +304,14 @@ describe("CoThinkerRoute", () => {
     );
 
     await waitFor(() => {
+      // === wave 12 === — manual trigger button copy "Trigger heartbeat now"
+      // → "Sync now" (Wave 12 hides heartbeat jargon in user UI). The
+      // underlying Tauri command name stays `coThinkerTriggerHeartbeat`.
       expect(
-        screen.getByRole("button", { name: /Trigger heartbeat now/i }),
+        screen.getByRole("button", { name: /Sync now/i }),
       ).toBeInTheDocument();
     });
-    fireEvent.click(screen.getByRole("button", { name: /Trigger heartbeat now/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Sync now/i }));
 
     await waitFor(() => {
       expect(trigger).toHaveBeenCalledTimes(1);

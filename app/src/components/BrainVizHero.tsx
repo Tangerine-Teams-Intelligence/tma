@@ -33,6 +33,12 @@ export interface BrainVizHeroProps {
   /** Total atom count today — shown inside the brain orb when alive/idle.
    *  Empty state shows a "?" instead. */
   atomsToday?: number;
+  // === wave 14 === — `compact` shrinks the orb + ring radius so the
+  // viz can sit in a secondary position (e.g. top-right of /today,
+  // co-thinker route header) instead of dominating the page. The
+  // particle/orb DOM contract is unchanged — every test selector
+  // (`brain-viz-hero`, `brain-orb`, `brain-particle-*`) still resolves.
+  compact?: boolean;
 }
 
 /**
@@ -45,18 +51,35 @@ const RING_VENDORS: VendorId[] = ALL_VENDOR_IDS.slice(0, 8);
 
 /** Radius of the particle ring around the 200px brain orb. */
 const RING_RADIUS = 160;
+// === wave 14 === — compact dimensions so the orb fits in a 120px slot.
+const COMPACT_RING_RADIUS = 60;
+const COMPACT_BOX = 160;
 
 export function BrainVizHero({
   state,
   activeVendors = [],
   atomsToday = 0,
+  compact = false,
 }: BrainVizHeroProps) {
   const activeSet = new Set(activeVendors.map((v) => v.toLowerCase()));
+  // === wave 14 ===
+  const ringRadius = compact ? COMPACT_RING_RADIUS : RING_RADIUS;
+  const boxClass = compact
+    ? `relative flex items-center justify-center`
+    : "relative mx-auto flex h-[420px] w-[420px] items-center justify-center";
+  const boxStyle: React.CSSProperties | undefined = compact
+    ? { width: COMPACT_BOX, height: COMPACT_BOX }
+    : undefined;
+  const orbStyle: React.CSSProperties | undefined = compact
+    ? { width: 80, height: 80, fontSize: 24 }
+    : undefined;
 
   return (
     <div
-      className="relative mx-auto flex h-[420px] w-[420px] items-center justify-center"
+      className={boxClass}
+      style={boxStyle}
       data-testid="brain-viz-hero"
+      data-compact={compact ? "true" : "false"}
       role="img"
       aria-label={`AGI brain — ${state}, ${atomsToday} atoms today`}
     >
@@ -65,8 +88,8 @@ export function BrainVizHero({
       <div className="ti-particle-ring" aria-hidden>
         {RING_VENDORS.map((vendor, i) => {
           const angle = (i / RING_VENDORS.length) * Math.PI * 2 - Math.PI / 2;
-          const x = Math.cos(angle) * RING_RADIUS;
-          const y = Math.sin(angle) * RING_RADIUS;
+          const x = Math.cos(angle) * ringRadius;
+          const y = Math.sin(angle) * ringRadius;
           const isActive = activeSet.has(vendor);
           // For the inward-flow animation we point the particle from its
           // ring position back to the center: tx = -x, ty = -y.
@@ -74,6 +97,7 @@ export function BrainVizHero({
             transform: `translate(${x}px, ${y}px)`,
             ["--tx" as string]: `${-x}px`,
             ["--ty" as string]: `${-y}px`,
+            ...(compact ? { width: 8, height: 8, marginTop: -4, marginLeft: -4 } : {}),
           };
           return (
             <span
@@ -95,6 +119,7 @@ export function BrainVizHero({
         className="ti-brain-orb"
         data-state={state}
         data-testid="brain-orb"
+        style={orbStyle}
       >
         {state === "empty" ? "?" : atomsToday}
       </div>

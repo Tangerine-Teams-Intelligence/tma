@@ -109,7 +109,7 @@ export function HomeStrip() {
         "dark:border-stone-800 dark:bg-stone-950 dark:text-stone-400 " +
         "dark:hover:bg-stone-900"
       }
-      aria-label="Co-thinker status — click to open"
+      aria-label="Team brain status — click to open"
       title={tooltip}
     >
       {/* === wave 9 === — heartbeat dot picks up the primary AI tool's
@@ -131,17 +131,20 @@ export function HomeStrip() {
           style={{ background: primaryAITool ? dotHex : "var(--ti-orange-500)" }}
         />
       )}
-      {/* === wave 8 === — Co-thinker label uses display serif at body
-          size for editorial gravitas without breaking the strip rhythm. */}
+      {/* === wave 12 === — UI label switched from "Co-thinker" (dev jargon)
+          to "Team brain" (user language). Test ID + tooltip vendor label
+          stay so internal/test infra is unaffected. */}
       <span
         className="text-stone-700 dark:text-stone-200"
         style={{ fontFamily: "var(--ti-font-display)", fontSize: "12px", fontWeight: 500 }}
       >
-        Co-thinker
+        Team brain
       </span>
       <span aria-hidden>·</span>
+      {/* === wave 12 === — "last heartbeat" → "last sync" per Wave 12
+          naming refactor. Test ID kept for stability. */}
       <span data-testid="co-thinker-home-strip-heartbeat">
-        last heartbeat {lastHeartbeat ? relativeTime(lastHeartbeat) : "never"}
+        last sync {lastHeartbeat ? relativeTime(lastHeartbeat) : "never"}
       </span>
       {/* Observations counter is gated on a real heartbeat. Pre-init the
           strip would otherwise flash "0 things watching", which reads as

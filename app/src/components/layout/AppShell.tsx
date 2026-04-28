@@ -29,6 +29,16 @@ import { SetupWizardBanner } from "@/components/SetupWizardBanner";
 // === end wave 11 ===
 // Wave 3 — offline indicator (OBSERVABILITY_SPEC §8 edge case catalog)
 import { ConnectionBanner } from "@/components/ConnectionBanner";
+// === wave 13 ===
+// Wave 13 — populated-app demo mode banner. Renders only when
+// `ui.demoMode === true`; shown across every route between the
+// connection-state strip and the WhatsNewBanner so the user knows the
+// data they're browsing is sample content. Self-hides on dismiss; the
+// AppShell first-launch effect flips `demoMode = true` after a fresh
+// `demo_seed_install` so the banner appears the moment populated data
+// lands on disk.
+import { DemoModeBanner } from "@/components/DemoModeBanner";
+// === end wave 13 ===
 // === wave 10 === — v1.10 git-init wizard banner. Mounts in the system
 // banner stack, only renders while `gitMode === "unknown"`.
 import { GitInitBannerContainer } from "@/components/GitInitBannerContainer";
@@ -63,6 +73,9 @@ import {
   // === v2.5 trial gate ===
   billingStatus as fetchBillingStatus,
   // === end v2.5 trial gate ===
+  // === wave 13 ===
+  demoSeedInstall,
+  // === end wave 13 ===
 } from "@/lib/tauri";
 // v1.9.0-beta.1 P1-A — log every route transition so the suggestion engine
 // (P1-B + v1.9.0-beta.2) can detect navigation patterns ("you bounced
@@ -133,6 +146,14 @@ export function AppShell() {
   const setMemoryRoot = useStore((s) => s.ui.setMemoryRoot);
   const samplesSeeded = useStore((s) => s.ui.samplesSeeded);
   const setSamplesSeeded = useStore((s) => s.ui.setSamplesSeeded);
+  // === wave 13 ===
+  // Wave 13 — populated-app demo seed first-launch wiring. The trigger
+  // effect below short-circuits when `demoSeedAttempted` is already true
+  // so we never re-flip the banner for users who explicitly hid it.
+  const demoSeedAttempted = useStore((s) => s.ui.demoSeedAttempted);
+  const setDemoMode = useStore((s) => s.ui.setDemoMode);
+  const setDemoSeedAttempted = useStore((s) => s.ui.setDemoSeedAttempted);
+  // === end wave 13 ===
   const memoryConfigMode = useStore((s) => s.ui.memoryConfig.mode);
   // === wave 11 === — first-run setup-wizard auto-trigger state.
   // Read once per render so the auto-trigger effect can decide whether to
@@ -216,11 +237,55 @@ export function AppShell() {
           window.dispatchEvent(new Event(MEMORY_REFRESHED_EVENT));
         }
       }
+      // === wave 13 ===
+      // Wave 13 — populated-app demo seed. We only attempt the install
+      // ONCE per install lifetime (gated by `demoSeedAttempted`), and
+      // only when the user-facing folders were empty before this effect
+      // fired (i.e. truly-fresh first launch). The Rust command is
+      // idempotent on its own, but we don't want to re-flip `demoMode`
+      // back to true after the user has explicitly hidden the banner.
+      if (!demoSeedAttempted) {
+        try {
+          const ds = await demoSeedInstall();
+          if (cancel) return;
+          // Mark attempted regardless of outcome — a transient resource-
+          // dir failure shouldn't keep the install effect re-firing on
+          // every cold launch.
+          setDemoSeedAttempted(true);
+          if (ds.ok && ds.copied_files > 0) {
+            // Real files landed — flip the banner on so the user knows
+            // what they're looking at, and broadcast a refresh so the
+            // tree + timeline read the populated state.
+            setDemoMode(true);
+            if (typeof window !== "undefined") {
+              window.dispatchEvent(new Event(MEMORY_REFRESHED_EVENT));
+            }
+          }
+        } catch {
+          // Demo seed is best-effort. Mark attempted so we don't loop
+          // on a transient failure (e.g. resource_dir unreachable in
+          // dev). The user can still get a populated app once the next
+          // version reinstalls the bundled tree.
+          if (!cancel) setDemoSeedAttempted(true);
+        }
+      }
+      // === end wave 13 ===
     })();
     return () => {
       cancel = true;
     };
-  }, [memoryConfigMode, memoryRoot, samplesSeeded, setMemoryRoot, setSamplesSeeded]);
+  }, [
+    memoryConfigMode,
+    memoryRoot,
+    samplesSeeded,
+    setMemoryRoot,
+    setSamplesSeeded,
+    // === wave 13 ===
+    demoSeedAttempted,
+    setDemoMode,
+    setDemoSeedAttempted,
+    // === end wave 13 ===
+  ]);
 
   // === v2.5 trial gate ===
   // Poll `billing_status` on mount + every 1h. Mirrors V2_5_SPEC §2.3:
@@ -582,6 +647,15 @@ export function AppShell() {
               briefly on recovery. Above WhatsNewBanner so a network
               drop is the loudest signal in the strip stack. */}
           <ConnectionBanner />
+          {/* === wave 13 === — populated-app demo mode banner. Self-hides
+              when `ui.demoMode === false`. ErrorBoundary mirrors the
+              wave-10.1 lesson: a thrown render here can never blank
+              the shell. Sits above WhatsNewBanner so the demo signal
+              isn't buried under "what's new" copy. */}
+          <ErrorBoundary label="DemoModeBanner">
+            <DemoModeBanner />
+          </ErrorBoundary>
+          {/* === end wave 13 === */}
           {/* === wave 10 === — git-init wizard banner. Self-hides when
               `gitMode !== "unknown"` or when the memory dir is already a
               git repo. Sits below ConnectionBanner so a network drop is
