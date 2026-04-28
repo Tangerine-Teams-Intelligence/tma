@@ -704,6 +704,14 @@ fn sync_record_path(dir: &Path) -> PathBuf {
 }
 
 pub fn read_sync_record(dir: &Path) -> Option<SyncRecord> {
+    // === wave 10.1 hotfix === — every step here returns None on failure
+    // (file missing, unreadable, malformed JSON, schema mismatch). The
+    // caller treats None as "no record yet" and shows the safe defaults.
+    // No panic path exists today, but spelling it out keeps this clear:
+    // git_sync_status() reads this on every poll, so any panic here
+    // would propagate to the Tauri command boundary and fail the JS-side
+    // promise — which the frontend now catches (Fix 2), but defense in
+    // depth is cheap.
     let p = sync_record_path(dir);
     let raw = std::fs::read_to_string(p).ok()?;
     serde_json::from_str(&raw).ok()
@@ -952,5 +960,45 @@ mod tests {
         assert!(!res.ok);
         assert!(!res.conflict);
         assert_eq!(res.message, "no_remote");
+    }
+
+    // === wave 10.1 hotfix === — Lock in the contract that powers the
+    // black-screen fix: `git_sync_status` MUST return Ok in every degraded
+    // case, never Err and never panic. Without this, the JS-side promise
+    // rejects, the Container's useEffect throws, and (pre-fix) the React
+    // tree dies → black screen. Post-fix the JS try/catch swallows it
+    // anyway, but pinning the Rust contract gives us defense in depth.
+    #[tokio::test]
+    async fn git_sync_status_always_returns_ok_on_degraded_paths() {
+        // Real git_sync_status() is wired to the user's actual home dir,
+        // so we can't isolate it. But we can call it and assert the
+        // result is structurally valid — never an Err, always a status
+        // struct, state is one of the 4 known values.
+        let result = git_sync_status().await;
+        assert!(result.is_ok(), "git_sync_status must never Err");
+        let s = result.unwrap();
+        assert!(
+            ["not_initialized", "clean", "ahead", "conflict"]
+                .contains(&s.state.as_str()),
+            "state must be one of the known 4 values, got: {}",
+            s.state,
+        );
+    }
+
+    #[tokio::test]
+    async fn read_sync_record_returns_none_on_missing_file() {
+        let td = TempDir::new("rec-missing");
+        // No file written → must return None, not panic.
+        assert!(read_sync_record(td.path()).is_none());
+    }
+
+    #[tokio::test]
+    async fn read_sync_record_returns_none_on_malformed_json() {
+        let td = TempDir::new("rec-malformed");
+        let dot_t = td.path().join(".tangerine");
+        std::fs::create_dir_all(&dot_t).unwrap();
+        std::fs::write(dot_t.join("git_sync.json"), "{not valid json").unwrap();
+        // Malformed JSON → must return None, not panic.
+        assert!(read_sync_record(td.path()).is_none());
     }
 }

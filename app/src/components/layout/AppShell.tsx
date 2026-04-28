@@ -24,6 +24,13 @@ import { ConnectionBanner } from "@/components/ConnectionBanner";
 // banner stack, only renders while `gitMode === "unknown"`.
 import { GitInitBannerContainer } from "@/components/GitInitBannerContainer";
 // === end wave 10 ===
+// === wave 10.1 hotfix === — defensive boundary around the wave-10 mounts.
+// v1.10.0 went out with a black-screen regression because a render-time
+// throw inside one of the new git-sync mounts crashed the whole React
+// tree (no boundary anywhere in the app). This boundary catches + logs
+// + renders null so a busted indicator/banner never blanks the shell.
+import { ErrorBoundary } from "@/components/ErrorBoundary";
+// === end wave 10.1 hotfix ===
 import { AmbientInputObserver } from "@/components/ambient/AmbientInputObserver";
 // v1.9.0-beta.1 — banner + modal hosts. The bus pushes into bannerStack /
 // modalQueue and these hosts read the top entry. The hosts MUST live
@@ -524,7 +531,12 @@ export function AppShell() {
               `gitMode !== "unknown"` or when the memory dir is already a
               git repo. Sits below ConnectionBanner so a network drop is
               still the loudest signal. */}
-          <GitInitBannerContainer />
+          {/* === wave 10.1 hotfix === — boundary so a broken banner can
+              never blank the shell. Renders null on any throw + logs to
+              console with the [wave10] prefix for grep-ability. */}
+          <ErrorBoundary label="GitInitBanner">
+            <GitInitBannerContainer />
+          </ErrorBoundary>
           {/* === end wave 10 === */}
           <WhatsNewBanner />
           {/* === v2.0-beta.3 co-thinker home strip ===

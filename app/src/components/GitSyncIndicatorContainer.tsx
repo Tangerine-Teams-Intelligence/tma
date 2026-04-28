@@ -101,10 +101,24 @@ export function GitSyncIndicatorContainer({ onClickInit }: Props) {
 
   // Poll the Rust status. On every flip from "not init → init" persist
   // `gitMode = "init"` so the GitInitBanner stays dismissed forever.
+  // === wave 10.1 hotfix === — defensive try/catch around the Tauri
+  // call. If the bridge is missing OR the status struct doesn't
+  // deserialize OR git is not on PATH AND safeInvoke's fallback itself
+  // throws, the unhandled promise rejection used to crash the React
+  // tree. We now swallow + log + leave `rust` at its prior value (so
+  // the indicator just shows the safe `not_initialized` default until
+  // the next successful poll).
   useEffect(() => {
     let cancel = false;
     const tick = async () => {
-      const next = await gitSyncStatus();
+      let next: RustStatus;
+      try {
+        next = await gitSyncStatus();
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.error("[wave10] gitSyncStatus poll failed:", e);
+        return;
+      }
       if (cancel) return;
       setRust((prev) => {
         if (
@@ -125,12 +139,23 @@ export function GitSyncIndicatorContainer({ onClickInit }: Props) {
   }, [setGitMode]);
 
   // Pull history when the popover opens.
+  // === wave 10.1 hotfix === — same defensive try/catch as above so a
+  // failing history fetch can't reject the promise unhandled. Empty
+  // list is the natural fallback (the popover already renders "No
+  // commits yet" when history is empty).
   useEffect(() => {
     if (!popoverOpen) return;
     let cancel = false;
-    void gitSyncHistory({ limit: 8 }).then((rows) => {
-      if (!cancel) setHistory(rows);
-    });
+    void (async () => {
+      try {
+        const rows = await gitSyncHistory({ limit: 8 });
+        if (!cancel) setHistory(rows);
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.error("[wave10] gitSyncHistory fetch failed:", e);
+        if (!cancel) setHistory([]);
+      }
+    })();
     return () => {
       cancel = true;
     };
@@ -174,6 +199,12 @@ export function GitSyncIndicatorContainer({ onClickInit }: Props) {
             try {
               await gitSyncPull();
               setRust(await gitSyncStatus());
+            } catch (e) {
+              // === wave 10.1 hotfix === — surface to console + leave
+              // `rust` at its prior value rather than let the throw
+              // bubble out of the click handler.
+              // eslint-disable-next-line no-console
+              console.error("[wave10] gitSyncPull failed:", e);
             } finally {
               setWorking(null);
             }
@@ -183,6 +214,10 @@ export function GitSyncIndicatorContainer({ onClickInit }: Props) {
             try {
               await gitSyncPush();
               setRust(await gitSyncStatus());
+            } catch (e) {
+              // === wave 10.1 hotfix === — same as the pull path above.
+              // eslint-disable-next-line no-console
+              console.error("[wave10] gitSyncPush failed:", e);
             } finally {
               setWorking(null);
             }

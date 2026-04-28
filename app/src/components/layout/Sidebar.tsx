@@ -42,6 +42,12 @@ import { SyncStatusIndicator } from "@/components/SyncStatusIndicator";
 // === wave 10 === — v1.10 git auto-sync indicator (above Solo / Settings).
 import { GitSyncIndicatorContainer } from "@/components/GitSyncIndicatorContainer";
 // === end wave 10 ===
+// === wave 10.1 hotfix === — defensive boundary around the wave-10 mount.
+// See AppShell.tsx for the rationale. The sidebar footer is the more
+// dangerous wrap site: a throw here would visually wipe the rail too,
+// not just the dot itself.
+import { ErrorBoundary } from "@/components/ErrorBoundary";
+// === end wave 10.1 hotfix ===
 import { AIToolsSection } from "@/components/ai-tools/AIToolsSection";
 // === v2.0-beta.2 ACTIVE AGENTS section ===
 import { ActiveAgentsSection } from "@/components/layout/ActiveAgentsSection";
@@ -306,7 +312,11 @@ export function Sidebar() {
             on the user's `~/.tangerine-memory/` git repo. Click → opens a
             popover with branch / last commit / pull-now / push-now /
             open-shell. */}
-        <GitSyncIndicatorContainer />
+        {/* === wave 10.1 hotfix === — boundary so a broken indicator can
+            never blank the sidebar footer. */}
+        <ErrorBoundary label="GitSyncIndicator">
+          <GitSyncIndicatorContainer />
+        </ErrorBoundary>
         <SyncStatusIndicator />
         <NavLink
           to="/settings"

@@ -34,12 +34,23 @@ export function GitInitBannerContainer() {
 
   // Re-fetch the status on mount + window focus so the banner reacts fast
   // when the user runs `git init` in their shell.
+  // === wave 10.1 hotfix === — defensive try/catch around the Tauri
+  // call (matches GitSyncIndicatorContainer). On error we leave `status`
+  // at `null`, which collapses `shouldShow` to false → banner stays
+  // hidden, which is the safe default.
   useEffect(() => {
     let cancel = false;
-    const fetchOnce = () =>
-      void gitSyncStatus().then((s) => {
-        if (!cancel) setStatus(s);
-      });
+    const fetchOnce = () => {
+      void (async () => {
+        try {
+          const s = await gitSyncStatus();
+          if (!cancel) setStatus(s);
+        } catch (e) {
+          // eslint-disable-next-line no-console
+          console.error("[wave10] gitSyncStatus (banner) failed:", e);
+        }
+      })();
+    };
     fetchOnce();
     const onFocus = () => fetchOnce();
     if (typeof window !== "undefined") {
