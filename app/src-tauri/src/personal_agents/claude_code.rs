@@ -46,6 +46,16 @@ pub fn detected() -> bool {
     list_session_files(&root).is_empty().not()
 }
 
+// === v1.14.5 round-6 ===
+/// Structured detection result — distinguishes "Claude Code not
+/// installed" from "installed but ~/.claude/projects/ unreadable
+/// (perms / network drive offline / file-not-dir)". The latter is the
+/// trust-collapse case the R6 audit was scoped to surface.
+pub fn detection_status() -> super::PersonalAgentDetectionStatus {
+    super::probe_candidates(&[claude_projects_root()])
+}
+// === end v1.14.5 round-6 ===
+
 /// Probe — count session JSONL files. Used by Settings detector.
 pub fn count_conversations() -> usize {
     list_session_files(&claude_projects_root()).len()

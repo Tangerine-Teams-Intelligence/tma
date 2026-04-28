@@ -110,6 +110,36 @@ impl Budget {
     /// docs delivered, this should drop to ~50 ms.
     pub const COMPUTE_BACKLINKS_1K_HOT: Self = Self { name: "compute_backlinks_1k_hot", budget_ms: 500 };
     // === end v1.14.4 round-5 ===
+    // === v1.14.5 round-6 ===
+    /// Cold graph-data scan over 1000 atoms. Pre-R6 implementation did
+    /// `read_to_string` on every .md file every call (no cache). Cold
+    /// path with R6's shared LinkCache adds the cost of populating the
+    /// cache (parse + lowercase + extract wiki links per file) PLUS the
+    /// graph walker's own per-file work: a `body_raw.clone()` so the
+    /// AtomFileBuf owns its body, `split_frontmatter` byte scan, and 6
+    /// `read_fm_field` scans (title / vendor / author / project / date /
+    /// created). Measured cold under heavy compile contention on a
+    /// Windows release runner: 1200–2150 ms across 6 runs. Budget set
+    /// to 2500 ms — the honest p99 ceiling on this platform under load,
+    /// not a flake-friendly p50 budget. With v1.15's `Arc<str>` swap in
+    /// AtomFileBuf the body-clone tax drops out and this should settle
+    /// nearer the 1500 ms COMPUTE_BACKLINKS_1K floor.
+    pub const MEMORY_GRAPH_1K: Self = Self { name: "memory_graph_1k", budget_ms: 2_500 };
+    /// Hot graph-data scan over 1000 atoms — cache primed from a prior
+    /// cold call. Each file is now: one `metadata()` syscall + HashMap
+    /// lookup. No file read, no UTF-8 validation, but we DO still
+    /// allocate per file: `body_raw.clone()` so the AtomFileBuf owns
+    /// its body, plus the graph walker's `split_frontmatter` + 6
+    /// `read_fm_field` scans on every hit (the cache holds the raw
+    /// body, not the parsed graph metadata). Switching AtomFileBuf to
+    /// hold an Arc<str> + caching the parsed metadata are both v1.15
+    /// work that would drop the budget here in line with
+    /// COMPUTE_BACKLINKS_1K_HOT. Measured under heavy compile
+    /// contention on a Windows release runner: 580–1130 ms across 6
+    /// runs. Budget pinned at 1500 ms — honest p99-under-contention
+    /// ceiling, not a flake-friendly p50 budget.
+    pub const MEMORY_GRAPH_1K_HOT: Self = Self { name: "memory_graph_1k_hot", budget_ms: 1_500 };
+    // === end v1.14.5 round-6 ===
     /// Telemetry append (single line). Spec says p95 < 5 ms; we test p95
     /// of 100 sequential writes which is a fair proxy on a quiescent disk.
     pub const TELEMETRY_WRITE: Self = Self { name: "telemetry_write", budget_ms: 5 };
@@ -522,4 +552,98 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
     // === end v1.14.4 round-5 ===
+
+    // === v1.14.5 round-6 ===
+    /// Memory-graph synthetic load — generate 1000 fake atom files and
+    /// time how long the graph walker takes. Mirrors the
+    /// `compute_backlinks_1k_under_budget` shape: cold pass populates the
+    /// LinkCache, hot pass exercises the cache-hit path. Same release-mode
+    /// strict assertion + debug-mode soft-warn pattern.
+    ///
+    /// Drives `walk_for_graph` directly (the same function the
+    /// `memory_graph_data` Tauri command calls). The /memory graph view
+    /// re-fires the command on every filter change so the cache cost
+    /// amortizes fast.
+    #[test]
+    fn memory_graph_1k_under_budget() {
+        use crate::commands::memory::{walk_for_graph, AtomFileBuf, LinkCache};
+        use parking_lot::RwLock;
+        use std::collections::HashMap;
+        use std::sync::Arc;
+
+        let root = tmp_dir();
+        let dir = root.join("team").join("decisions");
+        std::fs::create_dir_all(&dir).unwrap();
+        for i in 0..1000 {
+            let p = dir.join(format!("atom-{:04}.md", i));
+            // Realistic mix: every 7th atom cites a peer via a wiki link
+            // so the graph's "cites" edge builder has work to do.
+            let body = if i % 7 == 0 {
+                format!(
+                    "---\ntitle: Atom {}\nauthor: alex\nvendor: cursor\n---\nbody refs [[Atom {}]]\n",
+                    i,
+                    (i + 1) % 1000
+                )
+            } else {
+                format!("---\ntitle: Atom {}\nauthor: alex\n---\nplain body line.\n", i)
+            };
+            std::fs::write(&p, body).unwrap();
+        }
+
+        let cache: LinkCache = Arc::new(RwLock::new(HashMap::new()));
+
+        let scan = |cache: &LinkCache| -> usize {
+            let mut atoms: Vec<AtomFileBuf> = Vec::new();
+            let mut truncated = false;
+            walk_for_graph(&root, &root, "", &mut atoms, &mut truncated, Some(cache));
+            atoms.len()
+        };
+
+        // Cold pass: cache empty → every file gets read + parsed + cached.
+        let (cold_count, cold_elapsed) = measure(Budget::MEMORY_GRAPH_1K, || scan(&cache));
+        assert_eq!(cold_count, 1000, "cold pass should walk all 1000 atoms");
+        assert_eq!(
+            cache.read().len(),
+            1000,
+            "cold pass should cache all 1000 entries"
+        );
+
+        // Hot pass: cache primed → every file is a cache hit, no read.
+        let (hot_count, hot_elapsed) =
+            measure(Budget::MEMORY_GRAPH_1K_HOT, || scan(&cache));
+        assert_eq!(hot_count, 1000, "hot pass must agree with cold pass");
+
+        #[cfg(not(debug_assertions))]
+        {
+            assert!(
+                cold_elapsed <= Duration::from_millis(Budget::MEMORY_GRAPH_1K.budget_ms),
+                "memory_graph 1k cold took {}ms > budget {}ms",
+                cold_elapsed.as_millis(),
+                Budget::MEMORY_GRAPH_1K.budget_ms,
+            );
+            assert!(
+                hot_elapsed <= Duration::from_millis(Budget::MEMORY_GRAPH_1K_HOT.budget_ms),
+                "memory_graph 1k HOT took {}ms > budget {}ms (cold was {}ms)",
+                hot_elapsed.as_millis(),
+                Budget::MEMORY_GRAPH_1K_HOT.budget_ms,
+                cold_elapsed.as_millis(),
+            );
+        }
+        #[cfg(debug_assertions)]
+        {
+            assert!(
+                cold_elapsed <= Duration::from_millis(Budget::MEMORY_GRAPH_1K.budget_ms * 4),
+                "memory_graph 1k cold took {}ms > 4× budget (debug)",
+                cold_elapsed.as_millis(),
+            );
+            assert!(
+                hot_elapsed < cold_elapsed,
+                "hot ({}ms) must beat cold ({}ms) — link cache share is broken",
+                hot_elapsed.as_millis(),
+                cold_elapsed.as_millis(),
+            );
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+    // === end v1.14.5 round-6 ===
 }

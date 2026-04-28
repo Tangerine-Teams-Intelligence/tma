@@ -150,6 +150,17 @@ pub fn detected(dest_root: &Path) -> bool {
     }
 }
 
+// === v1.14.5 round-6 ===
+/// Structured detection. Devin is a remote source so the clean state is
+/// `RemoteUnconfigured` (no atoms landed yet — webhook still expected).
+/// Once atoms exist we flip to `Installed`. Real I/O errors against the
+/// dest dir surface as `AccessDenied` so a misconfigured
+/// `~/.tangerine-memory/` doesn't masquerade as "no captures yet".
+pub fn detection_status(dest_root: &Path) -> super::PersonalAgentDetectionStatus {
+    super::probe_remote_dest(&devin_dir(dest_root))
+}
+// === end v1.14.5 round-6 ===
+
 /// Count atoms already on disk for the Settings UI's "N captured" line.
 pub fn count_atoms(dest_root: &Path) -> usize {
     let dir = devin_dir(dest_root);

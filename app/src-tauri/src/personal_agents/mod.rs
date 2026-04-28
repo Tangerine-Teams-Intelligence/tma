@@ -114,13 +114,163 @@ pub struct PersonalAgentAtom {
 pub struct PersonalAgentSummary {
     pub source: String,
     /// True when the source's home directory exists on this machine.
+    /// Kept for back-compat with the existing TS bindings; new UI code
+    /// should prefer the richer `status` field which distinguishes
+    /// "not installed" from "permission denied" / "platform unsupported".
     pub detected: bool,
     /// Absolute path to the source's home directory (even when missing —
     /// used by the Settings UI to render "Looking for X at <path>").
     pub home_path: String,
     /// Number of conversation source files found. 0 when not detected.
     pub conversation_count: usize,
+    // === v1.14.5 round-6 ===
+    /// Structured detection result. New in R6 — surfaces the difference
+    /// between "we never installed Cursor" (silent grey dot) and "Cursor
+    /// is installed but we can't read its conversation dir" (loud
+    /// permission warning). Defaults to a value derived from `detected`
+    /// for sources that haven't migrated yet, so legacy callers never
+    /// crash.
+    #[serde(default)]
+    pub status: PersonalAgentDetectionStatus,
+    // === end v1.14.5 round-6 ===
 }
+
+// === v1.14.5 round-6 ===
+/// Structured detection result. Replaces the bare `detected: bool`
+/// pattern that masked permission errors as "not installed". The
+/// per-source `detection_status()` returns this; the Settings UI renders
+/// each variant with a distinct icon + tooltip so the user can tell
+/// "Cursor isn't installed on this machine" from "Cursor IS installed
+/// but Tangerine can't read its conversation dir — fix the perms".
+///
+/// Serializes as a tagged union: `{"kind":"installed", ...}`. The TS
+/// side narrows on `kind` for the per-row badge.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum PersonalAgentDetectionStatus {
+    /// Source's home dir is on disk + readable. The happy path.
+    Installed,
+    /// Source's home dir doesn't exist on disk. Most common state — the
+    /// user just hasn't installed Cursor / Codex / etc on this machine.
+    /// Settings UI shows a grey dot + "Looking for X at <path>".
+    NotInstalled,
+    /// Source's home dir exists but we can't read it (permission denied,
+    /// path is a file not a dir, network drive offline, ...). The user
+    /// IS using the source but Tangerine isn't capturing — this is the
+    /// trust-collapse case the R6 audit was scoped to surface. UI
+    /// renders an amber warning + the OS error message.
+    AccessDenied { reason: String },
+    /// Source needs a platform we're not on (Apple Intelligence on
+    /// non-macOS, MS Copilot's enterprise license required, ...). UI
+    /// renders a neutral "not supported on this platform" line.
+    PlatformUnsupported { reason: String },
+    /// Source is remote-only (Devin / Replit / MS Copilot / Apple
+    /// Intelligence post-action) and depends on tokens / webhooks that
+    /// aren't configured yet. UI renders "configured but no captures
+    /// yet" — distinguishes from `NotInstalled` because the source
+    /// can't be "installed" locally in the first place.
+    RemoteUnconfigured,
+}
+
+impl Default for PersonalAgentDetectionStatus {
+    fn default() -> Self {
+        // Conservative default — pre-R6 callers that don't set this field
+        // get the "not installed" rendering, matching the old `detected:
+        // false` UI.
+        PersonalAgentDetectionStatus::NotInstalled
+    }
+}
+
+impl PersonalAgentDetectionStatus {
+    /// True for the happy path. Used by the legacy `detected` mirror so
+    /// the bool field stays in lockstep with the new tagged enum.
+    pub fn is_installed(&self) -> bool {
+        matches!(self, PersonalAgentDetectionStatus::Installed)
+    }
+}
+
+/// Probe a source's home directory and return a structured detection
+/// result. Used by every adapter's `detection_status()` helper so they
+/// share one access-denied recovery path. The probe is read-only.
+pub fn probe_local_dir(dir: &std::path::Path) -> PersonalAgentDetectionStatus {
+    match std::fs::read_dir(dir) {
+        Ok(_) => PersonalAgentDetectionStatus::Installed,
+        Err(e) => match e.kind() {
+            std::io::ErrorKind::NotFound => PersonalAgentDetectionStatus::NotInstalled,
+            std::io::ErrorKind::PermissionDenied => {
+                PersonalAgentDetectionStatus::AccessDenied {
+                    reason: format!("permission denied: {}", e),
+                }
+            }
+            // NotADirectory + every other I/O error class still means
+            // "we can't read this" — surface as access denied so the
+            // user sees the OS message instead of a silent grey dot.
+            _ => PersonalAgentDetectionStatus::AccessDenied {
+                reason: format!("{}", e),
+            },
+        },
+    }
+}
+
+/// Probe a list of candidate directories and return the most-informative
+/// status. An `Installed` short-circuits; an `AccessDenied` wins over
+/// every `NotInstalled` so the user sees the trust-collapse case (source
+/// IS installed but unreadable) instead of a silent "not installed" dot.
+/// Falls back to `NotInstalled` only when every candidate is genuinely
+/// missing.
+pub fn probe_candidates(dirs: &[std::path::PathBuf]) -> PersonalAgentDetectionStatus {
+    let mut access_denied: Option<PersonalAgentDetectionStatus> = None;
+    for dir in dirs {
+        match probe_local_dir(dir) {
+            PersonalAgentDetectionStatus::Installed => {
+                return PersonalAgentDetectionStatus::Installed;
+            }
+            PersonalAgentDetectionStatus::NotInstalled => {}
+            other => {
+                if access_denied.is_none() {
+                    access_denied = Some(other);
+                }
+            }
+        }
+    }
+    access_denied.unwrap_or(PersonalAgentDetectionStatus::NotInstalled)
+}
+
+/// Remote-source detection helper. Devin / Replit / MS Copilot have no
+/// local install path; the existence of at least one captured atom in
+/// the dest dir flips them to `Installed`, otherwise `RemoteUnconfigured`.
+/// Permission errors against the dest dir surface as `AccessDenied` —
+/// that's almost always a misconfigured `~/.tangerine-memory/` path.
+pub fn probe_remote_dest(dest_dir: &std::path::Path) -> PersonalAgentDetectionStatus {
+    match std::fs::read_dir(dest_dir) {
+        Ok(iter) => {
+            let has_md = iter
+                .filter_map(Result::ok)
+                .any(|e| {
+                    let p = e.path();
+                    p.is_file()
+                        && p.extension()
+                            .map(|ex| ex.eq_ignore_ascii_case("md"))
+                            .unwrap_or(false)
+                });
+            if has_md {
+                PersonalAgentDetectionStatus::Installed
+            } else {
+                PersonalAgentDetectionStatus::RemoteUnconfigured
+            }
+        }
+        Err(e) => match e.kind() {
+            std::io::ErrorKind::NotFound => PersonalAgentDetectionStatus::RemoteUnconfigured,
+            std::io::ErrorKind::PermissionDenied => PersonalAgentDetectionStatus::AccessDenied {
+                reason: format!("permission denied: {}", e),
+            },
+            _ => PersonalAgentDetectionStatus::AccessDenied {
+                reason: format!("{}", e),
+            },
+        },
+    }
+}
+// === end v1.14.5 round-6 ===
 
 /// Per-source capture outcome — one entry per agent run.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -373,4 +523,161 @@ mod tests {
         assert_eq!(agent_id(PersonalAgentSource::Codex), "codex");
         assert_eq!(agent_id(PersonalAgentSource::Windsurf), "windsurf");
     }
+
+    // === v1.14.5 round-6 ===
+    /// R6 audit — `probe_local_dir` MUST distinguish "missing dir"
+    /// (NotInstalled — silent grey dot) from "exists but unreadable"
+    /// (AccessDenied — loud amber warning). Pre-R6 every error class
+    /// folded into `false` so the user couldn't tell them apart. This
+    /// test asserts the structured contract that the SCAN UI relies on.
+    #[test]
+    fn probe_local_dir_distinguishes_missing_from_unreadable() {
+        // Missing: a path that definitely doesn't exist.
+        let missing = std::env::temp_dir()
+            .join(format!("tii_r6_missing_{}", uuid::Uuid::new_v4().simple()));
+        let s = probe_local_dir(&missing);
+        assert!(
+            matches!(s, PersonalAgentDetectionStatus::NotInstalled),
+            "missing path must surface as NotInstalled, got {:?}",
+            s,
+        );
+
+        // "Exists but isn't a dir" — `read_dir` returns an error, which
+        // R6 surfaces as AccessDenied so the user sees something is off
+        // instead of a silent NotInstalled. We use a temp file (not a
+        // dir) to trigger this on every OS without needing a real perm
+        // denial (which is hard to set up portably in unit tests).
+        let file_path = std::env::temp_dir()
+            .join(format!("tii_r6_file_{}.txt", uuid::Uuid::new_v4().simple()));
+        std::fs::write(&file_path, b"not a dir").unwrap();
+        let s = probe_local_dir(&file_path);
+        // On Windows + macOS this surfaces as `Other` / `NotADirectory`;
+        // on Linux 6.x it's `NotADirectory`. R6 folds every non-NotFound /
+        // non-PermissionDenied error into AccessDenied.
+        assert!(
+            matches!(s, PersonalAgentDetectionStatus::AccessDenied { .. }),
+            "non-dir path must surface as AccessDenied, got {:?}",
+            s,
+        );
+        let _ = std::fs::remove_file(&file_path);
+    }
+
+    /// `probe_candidates` MUST prefer AccessDenied over NotInstalled —
+    /// the trust-collapse case. A user with one missing candidate dir +
+    /// one perm-denied candidate dir cares about the perm denial, not
+    /// the silent grey dot. Pre-R6 the bool would have collapsed both
+    /// to "false" and the user would think Cursor wasn't installed.
+    #[test]
+    fn probe_candidates_prefers_access_denied_over_missing() {
+        let missing = std::env::temp_dir()
+            .join(format!("tii_r6_missing2_{}", uuid::Uuid::new_v4().simple()));
+        let file_path = std::env::temp_dir()
+            .join(format!("tii_r6_file2_{}.txt", uuid::Uuid::new_v4().simple()));
+        std::fs::write(&file_path, b"not a dir").unwrap();
+
+        // Order: missing first, file second. The file probe returns
+        // AccessDenied; that MUST win over the NotInstalled from the
+        // missing dir.
+        let s = probe_candidates(&[missing.clone(), file_path.clone()]);
+        assert!(
+            matches!(s, PersonalAgentDetectionStatus::AccessDenied { .. }),
+            "AccessDenied must win over NotInstalled, got {:?}",
+            s,
+        );
+
+        // Reverse order: file first, missing second. Same answer — the
+        // helper must be order-independent.
+        let s = probe_candidates(&[file_path.clone(), missing.clone()]);
+        assert!(
+            matches!(s, PersonalAgentDetectionStatus::AccessDenied { .. }),
+            "AccessDenied must win regardless of order, got {:?}",
+            s,
+        );
+
+        // All-missing: falls back to NotInstalled.
+        let missing2 = std::env::temp_dir()
+            .join(format!("tii_r6_missing3_{}", uuid::Uuid::new_v4().simple()));
+        let s = probe_candidates(&[missing.clone(), missing2.clone()]);
+        assert!(
+            matches!(s, PersonalAgentDetectionStatus::NotInstalled),
+            "all-missing must collapse to NotInstalled, got {:?}",
+            s,
+        );
+
+        // An installed dir short-circuits — Installed always wins.
+        let installed_dir = std::env::temp_dir()
+            .join(format!("tii_r6_dir_{}", uuid::Uuid::new_v4().simple()));
+        std::fs::create_dir_all(&installed_dir).unwrap();
+        let s = probe_candidates(&[file_path.clone(), installed_dir.clone()]);
+        assert!(
+            matches!(s, PersonalAgentDetectionStatus::Installed),
+            "Installed must short-circuit even with AccessDenied present, got {:?}",
+            s,
+        );
+
+        let _ = std::fs::remove_file(&file_path);
+        let _ = std::fs::remove_dir_all(&installed_dir);
+    }
+
+    /// Remote-source helper — RemoteUnconfigured when the dest dir is
+    /// missing or empty, Installed once a single .md atom lands. The
+    /// `detected: bool` mirror in PersonalAgentSummary uses this to
+    /// flip the green dot on for Devin / Replit / MS Copilot.
+    #[test]
+    fn probe_remote_dest_states() {
+        let tmp = std::env::temp_dir()
+            .join(format!("tii_r6_remote_{}", uuid::Uuid::new_v4().simple()));
+
+        // Missing dir → RemoteUnconfigured.
+        let s = probe_remote_dest(&tmp);
+        assert!(matches!(s, PersonalAgentDetectionStatus::RemoteUnconfigured));
+
+        // Empty dir → still RemoteUnconfigured.
+        std::fs::create_dir_all(&tmp).unwrap();
+        let s = probe_remote_dest(&tmp);
+        assert!(matches!(s, PersonalAgentDetectionStatus::RemoteUnconfigured));
+
+        // Dir with a non-.md file → still RemoteUnconfigured (we only
+        // count .md atoms — a stray .DS_Store / .gitignore doesn't flip
+        // the row to Installed).
+        std::fs::write(tmp.join(".DS_Store"), b"").unwrap();
+        let s = probe_remote_dest(&tmp);
+        assert!(matches!(s, PersonalAgentDetectionStatus::RemoteUnconfigured));
+
+        // Dir with a .md atom → Installed.
+        std::fs::write(tmp.join("session-1.md"), b"---\nsource: devin\n---\n").unwrap();
+        let s = probe_remote_dest(&tmp);
+        assert!(matches!(s, PersonalAgentDetectionStatus::Installed));
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    /// PersonalAgentDetectionStatus serialization stays in sync with the
+    /// TS narrowing: `{"kind": "access_denied", "reason": "..."}`.
+    /// Without this, the SCAN UI would silently fall back to the
+    /// "not_installed" branch on every Tauri response.
+    #[test]
+    fn detection_status_serializes_as_tagged_union() {
+        let s = PersonalAgentDetectionStatus::AccessDenied {
+            reason: "permission denied: Access is denied. (os error 5)".to_string(),
+        };
+        let j = serde_json::to_value(&s).unwrap();
+        assert_eq!(j.get("kind").and_then(|v| v.as_str()), Some("access_denied"));
+        assert!(j.get("reason").and_then(|v| v.as_str()).unwrap().contains("permission"));
+
+        let s = PersonalAgentDetectionStatus::PlatformUnsupported {
+            reason: "Apple Intelligence requires macOS".to_string(),
+        };
+        let j = serde_json::to_value(&s).unwrap();
+        assert_eq!(j.get("kind").and_then(|v| v.as_str()), Some("platform_unsupported"));
+
+        let s = PersonalAgentDetectionStatus::Installed;
+        let j = serde_json::to_value(&s).unwrap();
+        assert_eq!(j.get("kind").and_then(|v| v.as_str()), Some("installed"));
+
+        let s = PersonalAgentDetectionStatus::RemoteUnconfigured;
+        let j = serde_json::to_value(&s).unwrap();
+        assert_eq!(j.get("kind").and_then(|v| v.as_str()), Some("remote_unconfigured"));
+    }
+    // === end v1.14.5 round-6 ===
 }

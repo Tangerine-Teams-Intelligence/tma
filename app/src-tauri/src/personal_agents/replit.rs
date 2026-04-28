@@ -125,6 +125,15 @@ pub fn detected(dest_root: &Path) -> bool {
     }
 }
 
+// === v1.14.5 round-6 ===
+/// Structured detection. Same shape as Devin — RemoteUnconfigured until
+/// atoms land, then Installed. AccessDenied surfaces real perm errors
+/// against the dest dir.
+pub fn detection_status(dest_root: &Path) -> super::PersonalAgentDetectionStatus {
+    super::probe_remote_dest(&replit_dir(dest_root))
+}
+// === end v1.14.5 round-6 ===
+
 pub fn count_atoms(dest_root: &Path) -> usize {
     let dir = replit_dir(dest_root);
     let entries = match fs::read_dir(&dir) {

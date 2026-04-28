@@ -131,67 +131,90 @@ pub fn save_settings(user_data: &Path, settings: &PersonalAgentSettings) -> Resu
 pub async fn personal_agents_scan_all(
     state: State<'_, AppState>,
 ) -> Result<Vec<PersonalAgentSummary>, AppError> {
+    // === v1.14.5 round-6 ===
+    // R6 audit: every row now carries a structured `status` field so the
+    // Settings UI can distinguish "not installed" (silent grey dot) from
+    // "installed but unreadable" (loud amber warning). The legacy
+    // `detected: bool` field stays in lockstep with `status.is_installed()`
+    // so callers reading the old field don't break.
+    use crate::personal_agents::PersonalAgentDetectionStatus;
     let mut out = Vec::with_capacity(8);
+    let cursor_status = cursor::detection_status();
     out.push(PersonalAgentSummary {
         source: "cursor".to_string(),
-        detected: cursor::detected(),
+        detected: cursor_status.is_installed(),
         home_path: cursor::cursor_home().to_string_lossy().to_string(),
         conversation_count: cursor::count_conversations(),
+        status: cursor_status,
     });
+    let cc_status = claude_code::detection_status();
     out.push(PersonalAgentSummary {
         source: "claude-code".to_string(),
-        detected: claude_code::detected(),
+        detected: cc_status.is_installed(),
         home_path: claude_code::claude_projects_root()
             .to_string_lossy()
             .to_string(),
         conversation_count: claude_code::count_conversations(),
+        status: cc_status,
     });
+    let codex_status = codex::detection_status();
     out.push(PersonalAgentSummary {
         source: "codex".to_string(),
-        detected: codex::detected(),
+        detected: codex_status.is_installed(),
         home_path: codex::codex_home().to_string_lossy().to_string(),
         conversation_count: codex::count_conversations(),
+        status: codex_status,
     });
+    let windsurf_status = windsurf::detection_status();
     out.push(PersonalAgentSummary {
         source: "windsurf".to_string(),
-        detected: windsurf::detected(),
+        detected: windsurf_status.is_installed(),
         home_path: windsurf::windsurf_home().to_string_lossy().to_string(),
         conversation_count: windsurf::count_conversations(),
+        status: windsurf_status,
     });
-    // === v3.0 wave 2 personal agents ===
     // Wave 2 sources are remote (Devin / Replit / MS Copilot) or hook-driven
-    // (Apple Intelligence). "Detection" is keyed on whether atoms have
-    // already landed in the personal vault — there's no local config dir to
-    // probe like Cursor / Codex have. We resolve the dest-root once here so
-    // the four probes share a single allocation.
+    // (Apple Intelligence). The clean state is RemoteUnconfigured (no
+    // captures yet), flipping to Installed once the first atom lands.
     let dest = resolve_dest_root(&state, None);
+    let devin_status = devin::detection_status(&dest);
     out.push(PersonalAgentSummary {
         source: "devin".to_string(),
-        detected: devin::detected(&dest),
+        detected: devin_status.is_installed(),
         home_path: devin::devin_dir(&dest).to_string_lossy().to_string(),
         conversation_count: devin::count_atoms(&dest),
+        status: devin_status,
     });
+    let replit_status = replit::detection_status(&dest);
     out.push(PersonalAgentSummary {
         source: "replit".to_string(),
-        detected: replit::detected(&dest),
+        detected: replit_status.is_installed(),
         home_path: replit::replit_dir(&dest).to_string_lossy().to_string(),
         conversation_count: replit::count_atoms(&dest),
+        status: replit_status,
     });
+    let apple_status = apple_intelligence::detection_status(&dest);
     out.push(PersonalAgentSummary {
         source: "apple-intelligence".to_string(),
-        detected: apple_intelligence::detected(&dest),
+        // Apple Intelligence's `detected` bool predates the structured
+        // status — keep it gating on the platform check + dir scan so
+        // legacy bool readers stay accurate. New UI should read `status`.
+        detected: matches!(apple_status, PersonalAgentDetectionStatus::Installed),
         home_path: apple_intelligence::apple_intelligence_dir(&dest)
             .to_string_lossy()
             .to_string(),
         conversation_count: apple_intelligence::count_atoms(&dest),
+        status: apple_status,
     });
+    let msc_status = ms_copilot::detection_status(&dest);
     out.push(PersonalAgentSummary {
         source: "ms-copilot".to_string(),
-        detected: ms_copilot::detected(&dest),
+        detected: msc_status.is_installed(),
         home_path: ms_copilot::ms_copilot_dir(&dest).to_string_lossy().to_string(),
         conversation_count: ms_copilot::count_atoms(&dest),
+        status: msc_status,
     });
-    // === end v3.0 wave 2 personal agents ===
+    // === end v1.14.5 round-6 ===
     Ok(out)
 }
 

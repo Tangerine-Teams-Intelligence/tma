@@ -38,6 +38,9 @@ import {
   // === end v3.0 wave 2 personal agents ===
   type PersonalAgentSummary,
   type PersonalAgentCaptureResult,
+  // === v1.14.5 round-6 ===
+  type PersonalAgentDetectionStatus,
+  // === end v1.14.5 round-6 ===
 } from "@/lib/tauri";
 
 // === wave 7 ===
@@ -155,6 +158,86 @@ const AGENTS: AgentRow[] = [
   },
   // === end v3.0 wave 2 personal agents ===
 ];
+
+// === v1.14.5 round-6 ===
+/**
+ * R6 status badge. Renders the structured detection status from
+ * `personal_agents_scan_all` so users can tell "not installed" (silent
+ * grey dot) from "installed but unreadable" (loud amber warning). The
+ * trust-collapse case the R6 audit was scoped to surface: a user who
+ * sees "I'm using Cursor every day but Tangerine has nothing from
+ * Cursor" needs to know the problem is a perms denial, not a missing
+ * install.
+ */
+function StatusBadge({
+  status,
+  fallbackDetected,
+  conversationCount,
+}: {
+  status: PersonalAgentDetectionStatus | undefined;
+  fallbackDetected: boolean;
+  conversationCount: number;
+}) {
+  // Pre-R6 backend: derive a status from the legacy bool so the UI
+  // doesn't blank out when called against an older Tauri build.
+  const effective: PersonalAgentDetectionStatus = status ?? {
+    kind: fallbackDetected ? "installed" : "not_installed",
+  };
+  switch (effective.kind) {
+    case "installed":
+      return (
+        <span
+          data-testid="st-personal-agent-status-installed"
+          className="rounded border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 font-mono text-[10px] text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-300"
+          title={`Captured ${conversationCount} conversation${conversationCount === 1 ? "" : "s"}.`}
+        >
+          captured {conversationCount}
+        </span>
+      );
+    case "access_denied":
+      return (
+        <span
+          data-testid="st-personal-agent-status-access-denied"
+          className="rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 font-mono text-[10px] text-amber-800 dark:border-amber-800/50 dark:bg-amber-950/30 dark:text-amber-300"
+          title={`Permission denied — Tangerine can read the path but not its contents. ${effective.reason}`}
+        >
+          access denied
+        </span>
+      );
+    case "platform_unsupported":
+      return (
+        <span
+          data-testid="st-personal-agent-status-platform-unsupported"
+          className="rounded border border-[var(--ti-border-default)] bg-[var(--ti-paper-100,#f3eee6)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--ti-ink-500)]"
+          title={effective.reason}
+        >
+          platform unsupported
+        </span>
+      );
+    case "remote_unconfigured":
+      return (
+        <span
+          data-testid="st-personal-agent-status-remote-unconfigured"
+          className="rounded border border-[var(--ti-border-default)] bg-[var(--ti-paper-50)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--ti-ink-500)]"
+          title="Remote source — no captures yet. Configure a token / webhook to start."
+        >
+          awaiting first capture
+        </span>
+      );
+    case "not_installed":
+    default:
+      return (
+        <span
+          data-testid="st-personal-agent-status-not-installed"
+          className="rounded border border-[var(--ti-border-default)] bg-[var(--ti-paper-50)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--ti-ink-400)]"
+          title="Source not installed on this machine."
+        >
+          not installed
+        </span>
+      );
+  }
+}
+// === end v1.14.5 round-6 ===
 
 /**
  * v1.9.3 per-row badge. Renders "Confirmed ✓" for validated parsers
@@ -322,19 +405,34 @@ export function PersonalAgentsSettings() {
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {/* === v1.14.5 round-6 === — dot color now reflects
+                        the structured status: green = installed, amber =
+                        access denied (the trust-collapse case the R6
+                        audit was scoped to surface), grey = not
+                        installed / awaiting first remote capture. */}
                     <span
                       aria-hidden
                       className={
                         "inline-block h-2 w-2 rounded-full " +
-                        (detected
-                          ? "bg-[var(--ti-success-500,#3a8c5a)]"
-                          : "bg-[var(--ti-ink-400,#8c8c93)]")
+                        (summary?.status?.kind === "access_denied"
+                          ? "bg-amber-500"
+                          : detected
+                            ? "bg-[var(--ti-success-500,#3a8c5a)]"
+                            : "bg-[var(--ti-ink-400,#8c8c93)]")
                       }
                     />
+                    {/* === end v1.14.5 round-6 === */}
                     <h4 className="font-display text-base">{row.label}</h4>
                     {/* === wave 7 === parser confidence badge */}
                     <ParserBadge confidence={row.confidence} />
+                    {/* === v1.14.5 round-6 === structured status badge */}
+                    <StatusBadge
+                      status={summary?.status}
+                      fallbackDetected={detected}
+                      conversationCount={conversationCount}
+                    />
+                    {/* === end v1.14.5 round-6 === */}
                     <span className="text-xs text-[var(--ti-ink-500)]">
                       {detected
                         ? conversationCount === 1

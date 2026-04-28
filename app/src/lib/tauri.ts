@@ -2181,18 +2181,40 @@ export async function billingWebhook(
 // reads `personal_agents_get_settings` on mount and writes back via
 // `personal_agents_set_watcher` per row.
 
+// === v1.14.5 round-6 ===
+/** Structured detection result. Mirror of
+ *  `crate::personal_agents::PersonalAgentDetectionStatus`. R6 audit:
+ *  surfaces the difference between "Cursor isn't installed" (silent) and
+ *  "Cursor is installed but Tangerine can't read its conversation dir"
+ *  (loud — the trust-collapse case). The Settings UI narrows on `kind`
+ *  for the per-row badge. */
+export type PersonalAgentDetectionStatus =
+  | { kind: "installed" }
+  | { kind: "not_installed" }
+  | { kind: "access_denied"; reason: string }
+  | { kind: "platform_unsupported"; reason: string }
+  | { kind: "remote_unconfigured" };
+// === end v1.14.5 round-6 ===
+
 /** Mirror of `crate::personal_agents::PersonalAgentSummary`. One per
  *  source; populated by `personal_agents_scan_all`. */
 export interface PersonalAgentSummary {
   /** "cursor" | "claude-code" | "codex" | "windsurf" */
   source: string;
-  /** True when the source's home dir exists on this machine. */
+  /** True when the source's home dir exists on this machine. Kept for
+   *  back-compat — new code should read `status.kind === "installed"`. */
   detected: boolean;
   /** Absolute path of the source's home dir (rendered as "looking for
    *  X at <path>" when `detected === false`). */
   home_path: string;
   /** Number of conversation source files found. 0 when not detected. */
   conversation_count: number;
+  // === v1.14.5 round-6 ===
+  /** Structured detection result. Optional for back-compat with the
+   *  pre-R6 mock fallback; new UI code should branch on `status.kind`
+   *  for the per-row badge. */
+  status?: PersonalAgentDetectionStatus;
+  // === end v1.14.5 round-6 ===
 }
 
 /** Mirror of `crate::personal_agents::PersonalAgentCaptureResult`. */
@@ -2226,26 +2248,31 @@ export interface PersonalAgentSettings {
 
 /** Read-only sweep — never writes anything. Returns one row per agent
  *  with detection status + conversation count. Mock returns "all not
- *  found" so browser dev / vitest renders the empty state. */
+ *  found" so browser dev / vitest renders the empty state.
+ *  === v1.14.5 round-6 === Mock now sets `status.kind = "not_installed"`
+ *  for the local sources and `"remote_unconfigured"` for Wave 2 remote
+ *  sources, matching what the real Rust scan returns on a fresh machine.
+ */
 export async function personalAgentsScanAll(): Promise<PersonalAgentSummary[]> {
   return safeInvoke<PersonalAgentSummary[]>(
     "personal_agents_scan_all",
     undefined,
     () => [
-      { source: "cursor", detected: false, home_path: "(mock)", conversation_count: 0 },
-      { source: "claude-code", detected: false, home_path: "(mock)", conversation_count: 0 },
-      { source: "codex", detected: false, home_path: "(mock)", conversation_count: 0 },
-      { source: "windsurf", detected: false, home_path: "(mock)", conversation_count: 0 },
+      { source: "cursor", detected: false, home_path: "(mock)", conversation_count: 0, status: { kind: "not_installed" } },
+      { source: "claude-code", detected: false, home_path: "(mock)", conversation_count: 0, status: { kind: "not_installed" } },
+      { source: "codex", detected: false, home_path: "(mock)", conversation_count: 0, status: { kind: "not_installed" } },
+      { source: "windsurf", detected: false, home_path: "(mock)", conversation_count: 0, status: { kind: "not_installed" } },
       // === v3.0 wave 2 personal agents ===
-      { source: "devin", detected: false, home_path: "(mock)", conversation_count: 0 },
-      { source: "replit", detected: false, home_path: "(mock)", conversation_count: 0 },
+      { source: "devin", detected: false, home_path: "(mock)", conversation_count: 0, status: { kind: "remote_unconfigured" } },
+      { source: "replit", detected: false, home_path: "(mock)", conversation_count: 0, status: { kind: "remote_unconfigured" } },
       {
         source: "apple-intelligence",
         detected: false,
         home_path: "(mock)",
         conversation_count: 0,
+        status: { kind: "remote_unconfigured" },
       },
-      { source: "ms-copilot", detected: false, home_path: "(mock)", conversation_count: 0 },
+      { source: "ms-copilot", detected: false, home_path: "(mock)", conversation_count: 0, status: { kind: "remote_unconfigured" } },
       // === end v3.0 wave 2 personal agents ===
     ],
   );

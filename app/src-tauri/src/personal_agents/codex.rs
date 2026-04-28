@@ -57,6 +57,16 @@ pub fn detected() -> bool {
     candidate_dirs().iter().any(|p| p.is_dir())
 }
 
+// === v1.14.5 round-6 ===
+/// Structured detection — see `cursor::detection_status` for the
+/// trust-collapse rationale. AccessDenied wins over NotInstalled so a
+/// perms problem on `~/.config/openai/sessions/` doesn't masquerade as
+/// "Codex not installed".
+pub fn detection_status() -> super::PersonalAgentDetectionStatus {
+    super::probe_candidates(&candidate_dirs())
+}
+// === end v1.14.5 round-6 ===
+
 pub fn count_conversations() -> usize {
     let mut total = 0usize;
     for dir in candidate_dirs() {

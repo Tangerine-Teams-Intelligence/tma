@@ -123,6 +123,23 @@ pub fn detected(dest_root: &Path) -> bool {
     }
 }
 
+// === v1.14.5 round-6 ===
+/// Structured detection. Apple Intelligence is macOS-only — non-macOS
+/// hosts get `PlatformUnsupported` so the SCAN UI shows a neutral
+/// "macOS only" line instead of the same grey dot a missing install
+/// gets on macOS. On macOS the source is hook-driven (no local install
+/// path), so RemoteUnconfigured is the clean state until the first
+/// Shortcut payload writes an atom.
+pub fn detection_status(dest_root: &Path) -> super::PersonalAgentDetectionStatus {
+    if !platform_supported() {
+        return super::PersonalAgentDetectionStatus::PlatformUnsupported {
+            reason: "Apple Intelligence requires macOS".to_string(),
+        };
+    }
+    super::probe_remote_dest(&apple_intelligence_dir(dest_root))
+}
+// === end v1.14.5 round-6 ===
+
 pub fn count_atoms(dest_root: &Path) -> usize {
     if !platform_supported() {
         return 0;

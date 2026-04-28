@@ -124,6 +124,15 @@ pub fn detected(dest_root: &Path) -> bool {
     }
 }
 
+// === v1.14.5 round-6 ===
+/// Structured detection. MS Copilot is enterprise-license-gated; until a
+/// license + token land + the first activity is captured the clean state
+/// is `RemoteUnconfigured`. Once atoms exist we flip to Installed.
+pub fn detection_status(dest_root: &Path) -> super::PersonalAgentDetectionStatus {
+    super::probe_remote_dest(&ms_copilot_dir(dest_root))
+}
+// === end v1.14.5 round-6 ===
+
 pub fn count_atoms(dest_root: &Path) -> usize {
     let dir = ms_copilot_dir(dest_root);
     let entries = match fs::read_dir(&dir) {

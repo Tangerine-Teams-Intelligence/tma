@@ -98,6 +98,18 @@ pub fn detected() -> bool {
     candidate_dirs().iter().any(|p| p.is_dir())
 }
 
+// === v1.14.5 round-6 ===
+/// Structured detection result — distinguishes "not installed" from
+/// "installed but unreadable" so the SCAN UI can render a permission-
+/// denied warning instead of the same grey-dot icon a missing install
+/// gets. Trust-collapse fix: a user with Cursor installed who sees no
+/// captures used to see "not detected" with no signal that the
+/// problem was a perm denial. R6 surfaces it.
+pub fn detection_status() -> super::PersonalAgentDetectionStatus {
+    super::probe_candidates(&candidate_dirs())
+}
+// === end v1.14.5 round-6 ===
+
 /// Run one capture pass. Walks every candidate dir, parses each JSON, and
 /// writes / refreshes the atom under
 /// `<dest_root>/cursor/{conversation-id}.md`.

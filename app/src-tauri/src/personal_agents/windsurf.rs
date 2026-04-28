@@ -66,6 +66,13 @@ pub fn detected() -> bool {
     candidate_dirs().iter().any(|p| p.is_dir())
 }
 
+// === v1.14.5 round-6 ===
+/// Structured detection — see `cursor::detection_status` for rationale.
+pub fn detection_status() -> super::PersonalAgentDetectionStatus {
+    super::probe_candidates(&candidate_dirs())
+}
+// === end v1.14.5 round-6 ===
+
 pub fn count_conversations() -> usize {
     candidate_dirs()
         .iter()

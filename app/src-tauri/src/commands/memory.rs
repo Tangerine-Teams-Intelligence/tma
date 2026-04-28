@@ -1296,8 +1296,20 @@ pub struct AtomGraphData {
 /// graph. Edges are deduplicated by `(min(src,tgt), max(src,tgt), kind)`
 /// so a citation pair that also shares author/vendor doesn't surface 3
 /// duplicate edges of the same kind.
+///
+/// === v1.14.5 round-6 ===
+/// R6 perf: takes `State<'_, AppState>` so we can thread the in-process
+/// `link_cache` into the walker. Same pattern R5 applied to
+/// `compute_backlinks`. The graph view (`/memory` graph tab) re-fires this
+/// command on every filter change (vendor / kind / search), and each call
+/// previously did `read_to_string` on every .md file. R6 wires it through
+/// the LinkCache so warm calls hit the cache and skip disk.
+/// === end v1.14.5 round-6 ===
 #[tauri::command(rename_all = "snake_case")]
 pub async fn memory_graph_data(
+    // === v1.14.5 round-6 ===
+    state: State<'_, AppState>,
+    // === end v1.14.5 round-6 ===
     args: Option<MemoryGraphArgs>,
 ) -> Result<AtomGraphData, AppError> {
     let args = args.unwrap_or_default();
@@ -1306,7 +1318,16 @@ pub async fn memory_graph_data(
     // 1. Walk + read every .md file, parsing frontmatter as we go.
     let mut atoms: Vec<AtomFileBuf> = Vec::new();
     let mut truncated = false;
-    walk_for_graph(&root, &root, "", &mut atoms, &mut truncated);
+    walk_for_graph(
+        &root,
+        &root,
+        "",
+        &mut atoms,
+        &mut truncated,
+        // === v1.14.5 round-6 ===
+        Some(&state.link_cache),
+        // === end v1.14.5 round-6 ===
+    );
 
     // 2. Apply optional filters BEFORE building edges so we don't link to
     //    atoms that have been filtered out.
@@ -1371,24 +1392,42 @@ pub async fn memory_graph_data(
 
 /// Buffered atom info used during the graph build — keeps the body around
 /// long enough to scan for `[[wiki-link]]` citations.
-struct AtomFileBuf {
-    path: String,
-    label: String,
-    vendor: Option<String>,
-    author: Option<String>,
-    kind: String,
-    project: Option<String>,
-    timestamp: Option<String>,
-    body: String,
+// === v1.14.5 round-6 ===
+// `pub(crate)` so the perf test in `crate::perf` can construct + walk a
+// synthetic 1k corpus without needing a Tauri AppState. Fields stay
+// private — the perf test only counts the buffer length.
+pub(crate) struct AtomFileBuf {
+    pub(crate) path: String,
+    pub(crate) label: String,
+    pub(crate) vendor: Option<String>,
+    pub(crate) author: Option<String>,
+    pub(crate) kind: String,
+    pub(crate) project: Option<String>,
+    pub(crate) timestamp: Option<String>,
+    pub(crate) body: String,
 }
+// === end v1.14.5 round-6 ===
 
-fn walk_for_graph(
+// === v1.14.5 round-6 ===
+// R6 perf: takes an optional `link_cache`. Production caller
+// (`memory_graph_data`) passes `Some`; tests pass `None` to exercise the
+// uncached path directly. On cache hit we use the cached `body_raw` (which
+// already round-trips frontmatter parsing in the link cache layer) and
+// skip the per-file `read_to_string`. On miss we fall back to the original
+// read path AND populate the cache so subsequent calls are free — the
+// /memory graph view re-fires this command on every vendor / kind /
+// search filter change.
+//
+// `pub(crate)` so the perf test in `crate::perf` can drive it directly.
+pub(crate) fn walk_for_graph(
     memory_root: &Path,
     abs_dir: &Path,
     rel_prefix: &str,
     out: &mut Vec<AtomFileBuf>,
     truncated: &mut bool,
+    cache: Option<&LinkCache>,
 ) {
+    // === end v1.14.5 round-6 ===
     if out.len() >= GRAPH_MAX_NODES {
         *truncated = true;
         return;
@@ -1416,18 +1455,45 @@ fn walk_for_graph(
             format!("{}/{}", rel_prefix, name)
         };
         if path.is_dir() {
-            walk_for_graph(memory_root, &path, &rel, out, truncated);
+            walk_for_graph(
+                memory_root,
+                &path,
+                &rel,
+                out,
+                truncated,
+                // === v1.14.5 round-6 ===
+                cache,
+                // === end v1.14.5 round-6 ===
+            );
             continue;
         }
         let lower = name.to_lowercase();
         if !(lower.ends_with(".md") || lower.ends_with(".markdown") || lower.ends_with(".mdx")) {
             continue;
         }
-        let raw = match std::fs::read_to_string(&path) {
-            Ok(s) => s,
-            Err(_) => continue,
+        // === v1.14.5 round-6 ===
+        // Cache hit → use cached `body_raw`, skip the read. Cache miss →
+        // do the same single read_to_string we used to do; the
+        // `read_cached_links` call also populates the cache for the next
+        // call. Files over `LINK_CACHE_MAX_FILE_BYTES` skip the cache
+        // entirely (read_cached_links returns None) so we fall through to
+        // the uncached read for those.
+        let raw_owned: String;
+        let raw: &str = match read_cached_links(&path, cache) {
+            Some(c) => {
+                raw_owned = c.body_raw.clone();
+                &raw_owned
+            }
+            None => match std::fs::read_to_string(&path) {
+                Ok(s) => {
+                    raw_owned = s;
+                    &raw_owned
+                }
+                Err(_) => continue,
+            },
         };
-        let (frontmatter, body) = split_frontmatter(&raw);
+        // === end v1.14.5 round-6 ===
+        let (frontmatter, body) = split_frontmatter(raw);
         let title = read_fm_field(frontmatter, "title")
             .unwrap_or_else(|| derive_title_from_path(&rel));
         let vendor = read_fm_field(frontmatter, "vendor").or_else(|| infer_vendor(&rel));
@@ -1981,7 +2047,9 @@ mod tests {
 
         let mut atoms: Vec<AtomFileBuf> = Vec::new();
         let mut truncated = false;
-        walk_for_graph(&root, &root, "", &mut atoms, &mut truncated);
+        // === v1.14.5 round-6 ===
+        walk_for_graph(&root, &root, "", &mut atoms, &mut truncated, None);
+        // === end v1.14.5 round-6 ===
         assert_eq!(atoms.len(), 2, "got {} atoms", atoms.len());
         let alpha = atoms.iter().find(|a| a.label == "Alpha").unwrap();
         assert_eq!(alpha.author.as_deref(), Some("alex"));
@@ -2067,7 +2135,9 @@ mod tests {
         let root = fresh_root();
         let mut atoms: Vec<AtomFileBuf> = Vec::new();
         let mut truncated = false;
-        walk_for_graph(&root, &root, "", &mut atoms, &mut truncated);
+        // === v1.14.5 round-6 ===
+        walk_for_graph(&root, &root, "", &mut atoms, &mut truncated, None);
+        // === end v1.14.5 round-6 ===
         assert!(atoms.is_empty());
         assert!(!truncated);
         let edges = build_graph_edges(&atoms);
@@ -2088,7 +2158,9 @@ mod tests {
         }
         let mut atoms: Vec<AtomFileBuf> = Vec::new();
         let mut truncated = false;
-        walk_for_graph(&root, &root, "", &mut atoms, &mut truncated);
+        // === v1.14.5 round-6 ===
+        walk_for_graph(&root, &root, "", &mut atoms, &mut truncated, None);
+        // === end v1.14.5 round-6 ===
         assert_eq!(atoms.len(), 5);
         assert!(!truncated, "5 atoms should not trip the {} cap", GRAPH_MAX_NODES);
         let _ = std::fs::remove_dir_all(&root);
