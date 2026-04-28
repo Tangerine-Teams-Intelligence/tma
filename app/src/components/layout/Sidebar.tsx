@@ -43,11 +43,21 @@ import {
   FolderKanban,
   Brain,
   Layers,
+  // === wave 1.13-A === — Inbox is the 6th sidebar nav item.
+  Inbox as InboxIcon,
+  // === end wave 1.13-A ===
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { signOut } from "@/lib/auth";
 import { useStore } from "@/lib/store";
 import { SyncStatusIndicator } from "@/components/SyncStatusIndicator";
+// === wave 1.13-A ===
+// Wave 1.13-A — drives the orange unread badge next to the Inbox label.
+// Hook polls once on mount and listens for `inbox:event_created` so a
+// fresh @mention bumps the count immediately. Listener is a no-op
+// outside Tauri — the count stays at 0 in browser dev / vitest.
+import { useInboxUnreadCount } from "@/lib/identity";
+// === end wave 1.13-A ===
 // === wave 10 === — v1.10 git auto-sync indicator (above Settings).
 import { GitSyncIndicatorContainer } from "@/components/GitSyncIndicatorContainer";
 // === end wave 10 ===
@@ -58,6 +68,12 @@ import { GitSyncIndicatorContainer } from "@/components/GitSyncIndicatorContaine
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 // === end wave 10.1 hotfix ===
 import { kbdShortcut } from "@/lib/platform";
+// === wave 1.13-D ===
+// v1.13 — small avatar dots inline with each primary nav item showing
+// which teammates are currently viewing that route. Self-hides per item
+// when no teammates match.
+import { SidebarPresenceDots } from "@/components/presence/SidebarPresenceDots";
+// === end wave 1.13-D ===
 
 /**
  * Always-visible left rail (~240px).
@@ -75,6 +91,9 @@ export function Sidebar() {
   const navigate = useNavigate();
   const { t } = useTranslation();
   const togglePalette = useStore((s) => s.ui.togglePalette);
+  // === wave 1.13-A === — drives the unread badge on the Inbox nav item.
+  const inboxUnread = useInboxUnreadCount();
+  // === end wave 1.13-A ===
 
   async function handleLock() {
     await signOut();
@@ -149,12 +168,29 @@ export function Sidebar() {
           icon={Calendar}
           label={t("sidebar.today")}
           testId="sidebar-nav-today"
+          presenceRoute="/today"
         />
+        {/* === wave 1.13-A === — Inbox is the 6th sidebar nav item.
+            Sits between Today and Memory because the collab loop inbox
+            is a higher-frequency surface than the file tree (you check
+            mentions every time you open the app; you browse the tree
+            once a session). Wave 19's "5 items max" rule is intentionally
+            relaxed here — collab needs a visible inbox; relegating to a
+            dropdown buries it. CEO can revisit if too cluttered. */}
+        <ViewLink
+          to="/inbox"
+          icon={InboxIcon}
+          label={t("sidebar.inbox", { defaultValue: "Inbox" })}
+          testId="sidebar-nav-inbox"
+          badge={inboxUnread > 0 ? inboxUnread : undefined}
+        />
+        {/* === end wave 1.13-A === */}
         <ViewLink
           to="/memory"
           icon={FolderKanban}
           label={t("sidebar.memory")}
           testId="sidebar-nav-memory"
+          presenceRoute="/memory"
         />
         {/* /brain is a wave-19 alias to the existing /co-thinker route.
             Both render the same component; bookmarks to /co-thinker still
@@ -166,12 +202,14 @@ export function Sidebar() {
           label={t("sidebar.brain", { defaultValue: "Brain" })}
           testId="sidebar-nav-brain"
           activeMatchPaths={["/brain", "/co-thinker"]}
+          presenceRoute="/brain"
         />
         <ViewLink
           to="/canvas"
           icon={Layers}
           label={t("sidebar.canvas")}
           testId="sidebar-nav-canvas"
+          presenceRoute="/canvas"
         />
       </nav>
 
@@ -240,12 +278,23 @@ function ViewLink({
   label,
   testId,
   activeMatchPaths,
+  // === wave 1.13-D === — opt-in route key for SidebarPresenceDots. When
+  // omitted (e.g. footer items, Settings) no presence indicator renders.
+  presenceRoute,
+  // === end wave 1.13-D ===
+  // === wave 1.13-A === — opt-in unread badge (orange chip with count).
+  // Currently consumed by the Inbox nav item; future surfaces may reuse
+  // for review queue / suppressed suggestions count.
+  badge,
+  // === end wave 1.13-A ===
 }: {
   to: string;
   icon: React.ComponentType<{ size?: number; className?: string }>;
   label: string;
   testId?: string;
   activeMatchPaths?: string[];
+  presenceRoute?: string;
+  badge?: number;
 }) {
   return (
     <NavLink
@@ -275,6 +324,23 @@ function ViewLink({
     >
       <Icon size={14} className="shrink-0" />
       <span className="truncate">{label}</span>
+      {/* === wave 1.13-A === — orange unread chip. Mirrors the system
+          design (mono font, 10px) used by GitSyncIndicator + the Inbox
+          tab badges so the rail reads as one cohesive system. */}
+      {badge !== undefined && badge > 0 && (
+        <span
+          data-testid={testId ? `${testId}-badge` : undefined}
+          className="ml-auto rounded-full bg-[var(--ti-orange-500)] px-1.5 py-0.5 font-mono text-[10px] leading-none text-white"
+        >
+          {badge > 99 ? "99+" : badge}
+        </span>
+      )}
+      {/* === end wave 1.13-A === */}
+      {/* === wave 1.13-D === — teammate avatars inline with the route
+          when one or more teammates are viewing it. Self-hides when
+          empty so solo users see the rail unchanged. */}
+      {presenceRoute && <SidebarPresenceDots route={presenceRoute} />}
+      {/* === end wave 1.13-D === */}
     </NavLink>
   );
 }

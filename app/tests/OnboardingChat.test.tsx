@@ -35,6 +35,9 @@ vi.mock("../src/lib/tauri", async () => {
 beforeEach(() => {
   // Reset all wave-18 + wave-11 store flags so each test starts in
   // fresh-install state.
+  // === wave 1.13-A === — default `onboardingScope` to "team" so the
+  // existing wave-18 tests still hit the original setup primer + chat
+  // input; the new scope-picker tests below override back to `null`.
   useStore.setState((s) => ({
     ui: {
       ...s.ui,
@@ -42,6 +45,7 @@ beforeEach(() => {
       setupWizardOpen: false,
       onboardingMode: "chat",
       onboardingChatStarted: false,
+      onboardingScope: "team",
     },
   }));
   // Reset the mock between tests so per-test resolutions don't leak.
@@ -188,5 +192,52 @@ describe("OnboardingChat", () => {
       container.querySelector('[data-testid="onboarding-chat-complete"]'),
     ).toBeNull();
   });
+
+  // === wave 1.13-A === — Solo/Team scope picker.
+  describe("scope picker (wave 1.13-A)", () => {
+    it("shows the picker buttons when onboardingScope is null", () => {
+      useStore.setState((s) => ({ ui: { ...s.ui, onboardingScope: null } }));
+      render(<OnboardingChat />);
+      expect(
+        screen.getByTestId("onboarding-chat-scope-picker"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByTestId("onboarding-chat-scope-solo"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByTestId("onboarding-chat-scope-team"),
+      ).toBeInTheDocument();
+    });
+
+    it("clicking the solo button persists the scope and adds an ack message", () => {
+      useStore.setState((s) => ({ ui: { ...s.ui, onboardingScope: null } }));
+      render(<OnboardingChat />);
+      fireEvent.click(screen.getByTestId("onboarding-chat-scope-solo"));
+      expect(useStore.getState().ui.onboardingScope).toBe("solo");
+      // Picker disappears; ack assistant message appears.
+      expect(
+        screen.queryByTestId("onboarding-chat-scope-picker"),
+      ).toBeNull();
+      expect(
+        screen.getAllByTestId("onboarding-chat-assistant").length,
+      ).toBeGreaterThan(0);
+    });
+
+    it("clicking the team button persists the scope = team", () => {
+      useStore.setState((s) => ({ ui: { ...s.ui, onboardingScope: null } }));
+      render(<OnboardingChat />);
+      fireEvent.click(screen.getByTestId("onboarding-chat-scope-team"));
+      expect(useStore.getState().ui.onboardingScope).toBe("team");
+    });
+
+    it("hides the picker once a scope has been chosen previously (cold launch)", () => {
+      useStore.setState((s) => ({ ui: { ...s.ui, onboardingScope: "solo" } }));
+      render(<OnboardingChat />);
+      expect(
+        screen.queryByTestId("onboarding-chat-scope-picker"),
+      ).toBeNull();
+    });
+  });
+  // === end wave 1.13-A ===
 });
 // === end wave 18 ===

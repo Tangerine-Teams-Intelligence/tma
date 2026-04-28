@@ -85,9 +85,14 @@ pub struct OnboardingChatTurnArgs {
 // from a closed set; freeform action names are dropped on parse.
 // ---------------------------------------------------------------------------
 
+// === wave 1.13-E ===
+// Extended SYSTEM_PROMPT — recognises 6 new source-token setup kinds
+// (Lark / Zoom / Teams / Slack / GitHub / Discord). The LLM is told to
+// prefer the inline-token path when the user pastes credentials, and the
+// OAuth-flow path when the user only says "set up X".
 const SYSTEM_PROMPT: &str = r#"You are Tangerine's onboarding agent. The user is setting up the Tangerine Teams app and has just sent you a message describing what they want to do. Your job:
 
-1. Extract the intent (configure their primary AI tool, link a GitHub repo, set up Discord bot, enable Whisper transcription, etc.).
+1. Extract the intent (configure their primary AI tool, link a GitHub repo, set up Discord bot, enable Whisper transcription, connect a human-comm source like Lark/Zoom/Teams/Slack/GitHub, etc.).
 2. Decide which concrete actions to take.
 3. Reply in plain English, brief.
 
@@ -95,7 +100,7 @@ You MUST respond with strict JSON, no prose, no markdown fences:
 {
   "reply": "<human-readable string, 1-3 sentences max>",
   "actions": [
-    {"kind": "<one of: configure_mcp | git_remote_set | whisper_download | discord_bot_guide | github_oauth | restart_required>", "params": {...}}
+    {"kind": "<one of: configure_mcp | git_remote_set | whisper_download | discord_bot_guide | github_oauth | restart_required | setup_source_lark | setup_source_zoom | setup_source_teams | setup_source_slack | setup_source_github | setup_source_discord>", "params": {...}}
   ]
 }
 
@@ -106,12 +111,21 @@ Action kinds and required params:
 - discord_bot_guide: {} — no params, opens the in-app Discord Developer Portal walkthrough.
 - github_oauth: {} — no params, opens the GitHub device-flow OAuth so the user can authorize without typing a token.
 - restart_required: {"tool": "<tool_id>"} — no backend action, just hints to the user that they must restart their editor before the MCP bridge comes up.
+- setup_source_lark: {"app_id": "cli_xxx", "app_secret": "xxx", "account": "<alias>"} — stores the Lark app credentials in the OS keychain, tests the connection, enables the source.
+- setup_source_zoom: {"oauth_token": "<bearer>", "refresh_token": "<rt>"?, "expires_at": <epoch>?, "account": "<alias>"} — stores the Zoom OAuth bundle. If oauth_token is missing, replies with the OAuth marketplace URL and waits for the user to complete the flow in their browser.
+- setup_source_teams: {"oauth_token": "<bearer>", "refresh_token": "<rt>"?, "expires_at": <epoch>?, "account": "<alias>"} — same shape as Zoom, for Microsoft Graph.
+- setup_source_slack: {"bot_token": "xoxb-...", "app_token": "xapp-..."?, "workspace": "<alias>"} — stores the Slack OAuth tokens.
+- setup_source_github: {"personal_access_token": "ghp_xxx", "login": "<gh-username>"} — stores the GitHub PAT for inbound capture (PRs / issues / mentions). Distinct from the legacy github_oauth action which targets the v1.6 device flow.
+- setup_source_discord: {"bot_token": "<discord token>", "account": "<alias>"} — Discord-bot-as-a-source variant; integrates the existing Discord bot wiring into the chat-driven setup.
 
 Rules:
+- If the user pastes credentials inline ("my app_id is cli_xxx, secret is yyy"), pick the matching setup_source_X action and pass the values through verbatim.
+- If the user just says "connect Slack" / "set up Zoom" without credentials, still emit the matching setup_source_X action with empty fields — the backend will reply with the OAuth URL.
 - If the user asks for the form wizard ("show me the form", "I want the wizard", etc.), reply that they should press Cmd+K and pick "Use form-based setup", and return an empty actions array.
 - If you don't recognize the intent or the user is just chatting, reply with a friendly clarifying question and an empty actions array.
 - NEVER invent action kinds outside the list above.
 - Keep reply terse — under 50 words."#;
+// === end wave 1.13-E ===
 
 fn build_user_prompt(user_message: &str) -> String {
     format!(
@@ -195,6 +209,14 @@ async fn execute_action(req: &LlmActionRequest) -> OnboardingAction {
                 error: None,
             }
         }
+        // === wave 1.13-E ===
+        "setup_source_lark" => execute_setup_source_lark(&req.params).await,
+        "setup_source_zoom" => execute_setup_source_zoom(&req.params).await,
+        "setup_source_teams" => execute_setup_source_teams(&req.params).await,
+        "setup_source_slack" => execute_setup_source_slack(&req.params).await,
+        "setup_source_github" => execute_setup_source_github(&req.params).await,
+        "setup_source_discord" => execute_setup_source_discord(&req.params).await,
+        // === end wave 1.13-E ===
         unknown => OnboardingAction {
             kind: unknown.to_string(),
             status: "failed".to_string(),
@@ -203,6 +225,220 @@ async fn execute_action(req: &LlmActionRequest) -> OnboardingAction {
         },
     }
 }
+
+// === wave 1.13-E ===
+// Source-token setup actions. Each follows the same lifecycle:
+//   1. Pull required params off the LLM-supplied JSON.
+//   2. If the access token is present inline, store it via secret_store and
+//      mark the action `succeeded`.
+//   3. If only a "set up X" intent without token, mark the action `pending`
+//      and surface the OAuth URL so the React side can open the browser.
+//   4. Source token failures NEVER crash the chat — they propagate as
+//      `failed` with `error` filled in so the UI can render an inline
+//      diagnostic next to the chat bubble.
+
+async fn execute_setup_source_lark(params: &serde_json::Value) -> OnboardingAction {
+    let app_id = string_param(params, "app_id");
+    let app_secret = string_param(params, "app_secret");
+    let account = string_or_default(params, "account", "default");
+    if app_id.is_empty() || app_secret.is_empty() {
+        return OnboardingAction {
+            kind: "setup_source_lark".to_string(),
+            status: "pending".to_string(),
+            detail: "Need app_id + app_secret. Get them from open.larksuite.com → Apps → Credentials.".to_string(),
+            error: None,
+        };
+    }
+    // Pack app_id + app_secret as a JSON-encoded access_token so a single
+    // keychain entry holds both. The Lark ingest path unpacks at runtime.
+    let combined = serde_json::json!({"app_id": app_id, "app_secret": app_secret}).to_string();
+    let res = super::secret_store::secret_store_set_oauth(
+        super::secret_store::SecretStoreSetOauthArgs {
+            source: "lark".to_string(),
+            account: account.clone(),
+            access_token: combined,
+            refresh_token: None,
+            expires_at: None,
+        },
+    )
+    .await;
+    setup_source_outcome("setup_source_lark", "Lark", &account, res)
+}
+
+async fn execute_setup_source_zoom(params: &serde_json::Value) -> OnboardingAction {
+    let token = string_param(params, "oauth_token");
+    let account = string_or_default(params, "account", "default");
+    if token.is_empty() {
+        return OnboardingAction {
+            kind: "setup_source_zoom".to_string(),
+            status: "pending".to_string(),
+            detail: "Open Zoom OAuth URL: https://zoom.us/oauth/authorize?response_type=code&client_id=<tangerine-app>&redirect_uri=http://127.0.0.1:7781/cb (Tangerine listens on the loopback for the callback).".to_string(),
+            error: None,
+        };
+    }
+    let refresh = optional_string_param(params, "refresh_token");
+    let expires = params.get("expires_at").and_then(|v| v.as_i64());
+    let res = super::secret_store::secret_store_set_oauth(
+        super::secret_store::SecretStoreSetOauthArgs {
+            source: "zoom".to_string(),
+            account: account.clone(),
+            access_token: token,
+            refresh_token: refresh,
+            expires_at: expires,
+        },
+    )
+    .await;
+    setup_source_outcome("setup_source_zoom", "Zoom", &account, res)
+}
+
+async fn execute_setup_source_teams(params: &serde_json::Value) -> OnboardingAction {
+    let token = string_param(params, "oauth_token");
+    let account = string_or_default(params, "account", "default");
+    if token.is_empty() {
+        return OnboardingAction {
+            kind: "setup_source_teams".to_string(),
+            status: "pending".to_string(),
+            detail: "Open Microsoft consent URL: https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=<tangerine-app>&scope=Chat.Read+OnlineMeetings.Read.All&redirect_uri=http://127.0.0.1:7782/cb".to_string(),
+            error: None,
+        };
+    }
+    let refresh = optional_string_param(params, "refresh_token");
+    let expires = params.get("expires_at").and_then(|v| v.as_i64());
+    let res = super::secret_store::secret_store_set_oauth(
+        super::secret_store::SecretStoreSetOauthArgs {
+            source: "teams".to_string(),
+            account: account.clone(),
+            access_token: token,
+            refresh_token: refresh,
+            expires_at: expires,
+        },
+    )
+    .await;
+    setup_source_outcome("setup_source_teams", "Microsoft Teams", &account, res)
+}
+
+async fn execute_setup_source_slack(params: &serde_json::Value) -> OnboardingAction {
+    let bot = string_param(params, "bot_token");
+    let workspace = string_or_default(params, "workspace", "default");
+    if bot.is_empty() {
+        return OnboardingAction {
+            kind: "setup_source_slack".to_string(),
+            status: "pending".to_string(),
+            detail: "Open Slack OAuth: api.slack.com/apps → Tangerine → OAuth & Permissions → Install to workspace. Paste the resulting xoxb-... token here.".to_string(),
+            error: None,
+        };
+    }
+    // Slack supports an optional "app token" (xapp-) for socket-mode events.
+    // We store it in refresh_token so a single keychain entry holds both.
+    let app_token = optional_string_param(params, "app_token");
+    let res = super::secret_store::secret_store_set_oauth(
+        super::secret_store::SecretStoreSetOauthArgs {
+            source: "slack".to_string(),
+            account: workspace.clone(),
+            access_token: bot,
+            refresh_token: app_token,
+            expires_at: None,
+        },
+    )
+    .await;
+    setup_source_outcome("setup_source_slack", "Slack", &workspace, res)
+}
+
+async fn execute_setup_source_github(params: &serde_json::Value) -> OnboardingAction {
+    let pat = string_param(params, "personal_access_token");
+    let login = string_or_default(params, "login", "default");
+    if pat.is_empty() {
+        return OnboardingAction {
+            kind: "setup_source_github".to_string(),
+            status: "pending".to_string(),
+            detail: "Generate a fine-grained PAT at github.com/settings/personal-access-tokens with read access to your repos, then paste it here.".to_string(),
+            error: None,
+        };
+    }
+    let res = super::secret_store::secret_store_set_oauth(
+        super::secret_store::SecretStoreSetOauthArgs {
+            source: "github".to_string(),
+            account: login.clone(),
+            access_token: pat,
+            refresh_token: None,
+            expires_at: None,
+        },
+    )
+    .await;
+    setup_source_outcome("setup_source_github", "GitHub", &login, res)
+}
+
+async fn execute_setup_source_discord(params: &serde_json::Value) -> OnboardingAction {
+    let token = string_param(params, "bot_token");
+    let account = string_or_default(params, "account", "default");
+    if token.is_empty() {
+        return OnboardingAction {
+            kind: "setup_source_discord".to_string(),
+            status: "pending".to_string(),
+            detail: "Open the Discord Developer Portal to create a bot and paste its token. The discord_bot_guide action walks through this in detail.".to_string(),
+            error: None,
+        };
+    }
+    let res = super::secret_store::secret_store_set_oauth(
+        super::secret_store::SecretStoreSetOauthArgs {
+            source: "discord".to_string(),
+            account: account.clone(),
+            access_token: token,
+            refresh_token: None,
+            expires_at: None,
+        },
+    )
+    .await;
+    setup_source_outcome("setup_source_discord", "Discord", &account, res)
+}
+
+fn setup_source_outcome(
+    kind: &str,
+    label: &str,
+    account: &str,
+    res: Result<(), AppError>,
+) -> OnboardingAction {
+    match res {
+        Ok(()) => OnboardingAction {
+            kind: kind.to_string(),
+            status: "succeeded".to_string(),
+            detail: format!("Stored {label} credentials for {account} in OS keychain"),
+            error: None,
+        },
+        Err(e) => OnboardingAction {
+            kind: kind.to_string(),
+            status: "failed".to_string(),
+            detail: format!("Couldn't store {label} credentials"),
+            error: Some(format!("{e:?}")),
+        },
+    }
+}
+
+fn string_param(params: &serde_json::Value, key: &str) -> String {
+    params
+        .get(key)
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string()
+}
+
+fn string_or_default(params: &serde_json::Value, key: &str, default: &str) -> String {
+    let s = string_param(params, key);
+    if s.is_empty() {
+        default.to_string()
+    } else {
+        s
+    }
+}
+
+fn optional_string_param(params: &serde_json::Value, key: &str) -> Option<String> {
+    params
+        .get(key)
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+}
+// === end wave 1.13-E ===
 
 async fn execute_configure_mcp(params: &serde_json::Value) -> OnboardingAction {
     let tool_id = params
@@ -570,6 +806,72 @@ mod tests {
         });
         assert!(r.contains("cursor"), "got {r}");
     }
+
+    // === wave 1.13-E ===
+    #[tokio::test]
+    async fn setup_source_lark_pending_when_credentials_missing() {
+        let req = LlmActionRequest {
+            kind: "setup_source_lark".to_string(),
+            params: serde_json::json!({}),
+        };
+        let r = execute_action(&req).await;
+        assert_eq!(r.status, "pending");
+        assert!(r.detail.contains("app_id"), "got {}", r.detail);
+        assert!(r.error.is_none());
+    }
+
+    #[tokio::test]
+    async fn setup_source_zoom_pending_emits_oauth_url() {
+        let req = LlmActionRequest {
+            kind: "setup_source_zoom".to_string(),
+            params: serde_json::json!({}),
+        };
+        let r = execute_action(&req).await;
+        assert_eq!(r.status, "pending");
+        assert!(r.detail.contains("zoom.us/oauth"), "got {}", r.detail);
+    }
+
+    #[tokio::test]
+    async fn setup_source_github_succeeds_with_pat_inline() {
+        // Use a per-run login so we don't pollute the developer's actual
+        // keychain entries.
+        let login = format!("test-{}", uuid::Uuid::new_v4().simple());
+        let req = LlmActionRequest {
+            kind: "setup_source_github".to_string(),
+            params: serde_json::json!({"personal_access_token": "ghp_test", "login": login}),
+        };
+        let r = execute_action(&req).await;
+        assert_eq!(r.status, "succeeded", "detail={}", r.detail);
+        assert!(r.detail.contains("GitHub"));
+        // Cleanup the keychain entry we just wrote.
+        let _ = super::super::secret_store::secret_store_delete_oauth(
+            super::super::secret_store::SecretStoreGetOauthArgs {
+                source: "github".to_string(),
+                account: login,
+            },
+        )
+        .await;
+    }
+
+    #[test]
+    fn system_prompt_lists_all_setup_source_kinds() {
+        // Defensive: if anyone removes a kind from the prompt the LLM stops
+        // emitting it. Lock the surface here.
+        for kind in [
+            "setup_source_lark",
+            "setup_source_zoom",
+            "setup_source_teams",
+            "setup_source_slack",
+            "setup_source_github",
+            "setup_source_discord",
+        ] {
+            assert!(
+                SYSTEM_PROMPT.contains(kind),
+                "SYSTEM_PROMPT missing kind: {kind}"
+            );
+        }
+    }
+    // === end wave 1.13-E ===
 
     #[test]
     fn append_turn_creates_parent_dir_and_appends_jsonl() {

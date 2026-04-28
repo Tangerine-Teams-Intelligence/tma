@@ -54,6 +54,34 @@ pub mod voice_notes;
 pub mod external;
 // === end v3.0 external world ===
 
+// === wave 1.13-E ===
+// v1.13 Agent E — external human-comm capture. 5 new ingest-side
+// connectors that pull atoms from Lark / Zoom / Microsoft Teams / Slack /
+// GitHub. Distinct from the existing writeback adapters (`github.rs`,
+// `linear.rs`) which post FROM Tangerine; these pull INTO Tangerine.
+// Each module ships a stubbed ingest path (token presence gates real
+// network calls) plus a pure-function atom renderer that the test suite
+// drives directly. See `commands::secret_store` for the OS-keychain
+// token storage layer and `commands::onboarding_chat` for the
+// chat-driven setup actions.
+pub mod lark;
+pub mod zoom;
+pub mod teams;
+pub mod slack_real;
+pub mod github_real;
+
+/// Stable registry of v1.13-E source ids. Used by the Privacy panel +
+/// Settings → Sources tab to enumerate connectors without hard-coding the
+/// list in N places. Order is the user-facing display order.
+pub const SOURCE_REGISTRY: &[&str] = &[
+    "lark",
+    "zoom",
+    "teams",
+    "slack",
+    "github",
+];
+// === end wave 1.13-E ===
+
 use serde::{Deserialize, Serialize};
 
 /// Result of a writeback attempt. Returned both to the auto-watcher (which

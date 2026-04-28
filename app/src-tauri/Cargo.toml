@@ -124,6 +124,13 @@ dirs = "5"
 # so `agi::co_thinker` can `use async_trait::async_trait` reliably.
 async-trait = "0.1"
 
+# === wave 1.13-C ===
+# `regex` powers the heuristic mention extractor in `agi::mention_extractor`.
+# Already a transitive dep (via tracing-subscriber's `env-filter`), promoted
+# here so the extractor can use it directly without leaning on a re-export.
+regex = "1"
+# === end wave 1.13-C ===
+
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["winuser", "processthreadsapi", "handleapi", "winbase"] }
 

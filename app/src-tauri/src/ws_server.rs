@@ -65,6 +65,13 @@ use tokio_tungstenite::tungstenite::Message;
 
 use crate::agi::sampling_bridge;
 use crate::memory_search;
+// === wave 1.13-D ===
+// v1.13 — `/presence` path scaffold. v1.13 ships Path B (git-mediated
+// presence) and reserves the wire shape here for Path A (LAN UDP discovery
+// + peer-to-peer ws). The accept path is wired but the handler currently
+// echoes back a `not_ready` frame — peer-to-peer broadcast lights up in
+// v1.13.1.
+// === end wave 1.13-D ===
 
 /// First port we try. The extension defaults to this exact value
 /// (see `DEFAULT_SETTINGS.endpoint` in browser-ext/types.ts).
@@ -353,6 +360,26 @@ async fn handle_connection(
                 // by `tool_id` env config.
                 return Ok(response);
             }
+            // === wave 1.13-D ===
+            // v1.13 — `/presence` path. Accepts ws upgrades from local
+            // peers (today: only the same machine via 127.0.0.1; future
+            // v1.13.1: same-LAN peers via Path A UDP discovery). The
+            // payload protocol mirrors what the React `PresenceProvider`
+            // sees over the git-mediated channel:
+            //   client → server: `{ "op": "hello", "user": "...", "started_at": "..." }`
+            //                    `{ "op": "heartbeat", ...PresenceInfo }`
+            //   server → client: `{ "op": "presence:update", "teammates": [...] }`
+            //                    `{ "op": "not_ready" }`     (v1.13 stub)
+            //
+            // For v1.13 the body of the connection is just an immediate
+            // `not_ready` frame — git-mediated presence is the live
+            // datapath. Reserving the wire here means the React side can
+            // open the socket today and silently fall back to git polling
+            // without a protocol change when v1.13.1 lights up Path A.
+            if path == "/presence" {
+                return Ok(response);
+            }
+            // === end wave 1.13-D ===
             if path != "/memory" {
                 let body = format!("not found: {}", path);
                 let resp: ErrorResponse = HttpResponse::builder()

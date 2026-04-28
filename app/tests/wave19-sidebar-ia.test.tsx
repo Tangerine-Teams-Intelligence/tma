@@ -64,7 +64,10 @@ describe("Wave 19 — Sidebar 5-item IA", () => {
     expect(subtitle.textContent).toMatch(/team's AI memory/i);
   });
 
-  it("renders exactly 4 primary nav items in the rail body", () => {
+  // === wave 1.13-A === — sidebar gained a 6th nav item (Inbox) for the
+  // collab MVP. Wave 19's "5 items max" rule is intentionally relaxed
+  // because relegating the inbox to a dropdown buries it.
+  it("renders 5 primary nav items in the rail body (today + inbox + memory + brain + canvas)", () => {
     render(
       <MemoryRouter>
         <Sidebar />
@@ -72,6 +75,7 @@ describe("Wave 19 — Sidebar 5-item IA", () => {
     );
     // Targeted testids ensure we count nav items, not footer links.
     expect(screen.getByTestId("sidebar-nav-today")).toBeInTheDocument();
+    expect(screen.getByTestId("sidebar-nav-inbox")).toBeInTheDocument();
     expect(screen.getByTestId("sidebar-nav-memory")).toBeInTheDocument();
     expect(screen.getByTestId("sidebar-nav-brain")).toBeInTheDocument();
     expect(screen.getByTestId("sidebar-nav-canvas")).toBeInTheDocument();
@@ -80,11 +84,15 @@ describe("Wave 19 — Sidebar 5-item IA", () => {
     expect(
       screen.getByTestId("sidebar-nav-brain").getAttribute("href"),
     ).toBe("/brain");
-    // Sanity — no /this-week / /reviews / /inbox NavLinks in the rail.
+    // Inbox lands on /inbox.
+    expect(
+      screen.getByTestId("sidebar-nav-inbox").getAttribute("href"),
+    ).toBe("/inbox");
+    // Sanity — no /this-week / /reviews NavLinks in the rail.
     expect(document.querySelector('a[href="/this-week"]')).toBeNull();
     expect(document.querySelector('a[href="/reviews"]')).toBeNull();
-    expect(document.querySelector('a[href="/inbox"]')).toBeNull();
   });
+  // === end wave 1.13-A ===
 
   it("memory nav link is clickable and points at /memory", () => {
     render(

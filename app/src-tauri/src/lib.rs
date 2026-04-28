@@ -119,3 +119,13 @@ pub mod monitoring;
 // hydrate initial state on mount.
 pub mod activity;
 // === end wave 16 ===
+
+// === wave 1.13-C ===
+// Wave 1.13-C's `agi::mention_extractor` was written against a thin
+// crate-root `inbox` shim. The shim re-exports the canonical surface in
+// `commands::inbox_store` so writes land in the persistent JSONL while
+// 1.13-C keeps its `crate::inbox::{inbox_emit, team_roster, InboxEvent}`
+// import path. Owned by Wave 1.13-B for build-graph hygiene; 1.13-A may
+// collapse this when it does the next pass.
+pub mod inbox;
+// === end wave 1.13-C ===

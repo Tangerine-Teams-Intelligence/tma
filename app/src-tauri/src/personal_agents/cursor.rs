@@ -180,15 +180,58 @@ fn capture_one_conversation(src: &Path, target_dir: &Path) -> Result<bool, Strin
     };
     let rel = wave16_compute_rel_path(&atom_path);
     let ev = crate::activity::ActivityAtomEvent::new(
-        rel,
+        rel.clone(),
         title,
         crate::activity::AtomKind::Thread,
     )
     .with_vendor("cursor");
     crate::activity::push_event_to_ring(ev);
     // === end wave 16 ===
+    // === wave 1.13-C ===
+    // Fire-and-forget mention extraction over the conversation body.
+    // Same dispatcher pattern as the claude-code parser. Other parsers
+    // (codex / windsurf / devin / replit / apple_intelligence /
+    // ms_copilot) do NOT call this yet — the spec scopes wave 1.13-C
+    // wiring to the two confirmed sources. The hook is identical across
+    // parsers so enabling them later is a 3-line copy.
+    wave1_13c_dispatch_extract(&atom_path, &rel, &parsed.body, "cursor");
+    // === end wave 1.13-C ===
     Ok(true)
 }
+
+// === wave 1.13-C ===
+/// Fire-and-forget mention extraction. Mirrors the helper in
+/// `personal_agents::claude_code`. Duplicated rather than hoisted to
+/// avoid widening either parser's public surface; both helpers delegate
+/// to the same `crate::agi::mention_extractor::extract_and_emit`.
+fn wave1_13c_dispatch_extract(atom_path: &Path, rel_path: &str, body: &str, vendor: &str) {
+    if body.trim().is_empty() {
+        return;
+    }
+    if !crate::agi::mention_extractor::is_globally_enabled() {
+        return;
+    }
+    let user = crate::agi::mention_extractor::user_from_atom_path(atom_path)
+        .unwrap_or_else(|| "me".to_string());
+    let atom_path_owned = atom_path.to_path_buf();
+    let rel_owned = rel_path.to_string();
+    let body_owned = body.to_string();
+    let vendor_owned = vendor.to_string();
+    if let Ok(handle) = tokio::runtime::Handle::try_current() {
+        handle.spawn(async move {
+            let _ = crate::agi::mention_extractor::extract_and_emit(
+                &atom_path_owned,
+                &rel_owned,
+                &body_owned,
+                &user,
+                &vendor_owned,
+                crate::agi::mention_extractor::is_llm_enabled(),
+            )
+            .await;
+        });
+    }
+}
+// === end wave 1.13-C ===
 
 // === wave 16 ===
 /// Memory-root-relative path helper. Mirrors the same helper in

@@ -1,8 +1,16 @@
 import { describe, expect, it, beforeEach, vi } from "vitest";
-import { render, screen, fireEvent, act } from "@testing-library/react";
+import { render as rtlRender, screen, fireEvent, act, type RenderResult } from "@testing-library/react";
+// === wave 1.13-A === — wrap WelcomeOverlay in a router so the new
+// `useNavigate()` call (card 5 CTA) doesn't throw on mount.
+import { MemoryRouter } from "react-router-dom";
+import type { ReactElement } from "react";
 
 import { WelcomeOverlay } from "../src/components/WelcomeOverlay";
 import { useStore } from "../src/lib/store";
+
+function render(ui: ReactElement): RenderResult {
+  return rtlRender(<MemoryRouter>{ui}</MemoryRouter>);
+}
 
 beforeEach(() => {
   // Reset welcomed flag so each test starts on a fresh-install footing.
@@ -12,13 +20,15 @@ beforeEach(() => {
 });
 
 describe("WelcomeOverlay", () => {
-  it("renders 4 value cards on first run", () => {
+  it("renders 5 value cards on first run", () => {
     render(<WelcomeOverlay />);
     expect(screen.getByTestId("welcome-overlay")).toBeInTheDocument();
     expect(screen.getByTestId("welcome-card-0")).toBeInTheDocument();
     expect(screen.getByTestId("welcome-card-1")).toBeInTheDocument();
     expect(screen.getByTestId("welcome-card-2")).toBeInTheDocument();
     expect(screen.getByTestId("welcome-card-3")).toBeInTheDocument();
+    // === wave 1.13-A === — privacy moat card.
+    expect(screen.getByTestId("welcome-card-4")).toBeInTheDocument();
   });
 
   it("shows the four CEO-mandated value props", () => {
@@ -73,7 +83,13 @@ describe("WelcomeOverlay", () => {
     expect(useStore.getState().ui.welcomed).toBe(false);
     fireEvent.click(screen.getByTestId("welcome-start"));
     expect(useStore.getState().ui.welcomed).toBe(true);
-    rerender(<WelcomeOverlay />);
+    // === wave 1.13-A === — wrap the rerender in the same MemoryRouter
+    // so useNavigate() doesn't blow up on second mount.
+    rerender(
+      <MemoryRouter>
+        <WelcomeOverlay />
+      </MemoryRouter>,
+    );
     expect(screen.queryByTestId("welcome-overlay")).toBeNull();
   });
 

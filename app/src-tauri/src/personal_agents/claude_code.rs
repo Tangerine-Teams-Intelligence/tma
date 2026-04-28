@@ -158,7 +158,7 @@ fn capture_one_session(src: &Path, target_dir: &Path) -> Result<bool, String> {
         }
     }
     let body = render_atom(&atom);
-    fs::write(&atom_path, body).map_err(|e| format!("write {}: {}", atom_path.display(), e))?;
+    fs::write(&atom_path, body.clone()).map_err(|e| format!("write {}: {}", atom_path.display(), e))?;
     // === wave 16 ===
     // Push onto the in-memory activity ring so the React `<ActivityFeed/>`
     // sees this conversation when it re-reads via `activity_recent`. We
@@ -172,15 +172,62 @@ fn capture_one_session(src: &Path, target_dir: &Path) -> Result<bool, String> {
     };
     let rel = compute_rel_path(&atom_path);
     let ev = crate::activity::ActivityAtomEvent::new(
-        rel,
+        rel.clone(),
         title,
         crate::activity::AtomKind::Thread,
     )
     .with_vendor("claude-code");
     crate::activity::push_event_to_ring(ev);
     // === end wave 16 ===
+    // === wave 1.13-C ===
+    // After successfully writing the atom, scan the body for mentions of
+    // known team members and emit one inbox event per match. Best-effort:
+    // a failure here never aborts the capture (the parser already wrote
+    // the atom file). We fire-and-forget on the existing tokio runtime
+    // so the regex scan + (rare, gated) LLM dispatch never block the
+    // heartbeat. The current_user is parsed from the atom path itself
+    // (.../personal/<user>/threads/...) so the parser doesn't need a
+    // signature change. Feature flag respected via
+    // `crate::agi::mention_extractor::is_enabled()`.
+    wave1_13c_dispatch_extract(&atom_path, &rel, &atom.body, "claude-code");
+    // === end wave 1.13-C ===
     Ok(true)
 }
+
+// === wave 1.13-C ===
+/// Fire-and-forget mention extraction. Runs on the ambient tokio
+/// runtime (the parser is invoked from `tauri::async_runtime::spawn_blocking`
+/// in `commands::personal_agents`, so a runtime exists). When no runtime
+/// is found (unit-test contexts), the call silently no-ops — the parser
+/// tests don't depend on inbox emit succeeding.
+fn wave1_13c_dispatch_extract(atom_path: &Path, rel_path: &str, body: &str, vendor: &str) {
+    if body.trim().is_empty() {
+        return;
+    }
+    if !crate::agi::mention_extractor::is_globally_enabled() {
+        return;
+    }
+    let user = crate::agi::mention_extractor::user_from_atom_path(atom_path)
+        .unwrap_or_else(|| "me".to_string());
+    let atom_path_owned = atom_path.to_path_buf();
+    let rel_owned = rel_path.to_string();
+    let body_owned = body.to_string();
+    let vendor_owned = vendor.to_string();
+    if let Ok(handle) = tokio::runtime::Handle::try_current() {
+        handle.spawn(async move {
+            let _ = crate::agi::mention_extractor::extract_and_emit(
+                &atom_path_owned,
+                &rel_owned,
+                &body_owned,
+                &user,
+                &vendor_owned,
+                crate::agi::mention_extractor::is_llm_enabled(),
+            )
+            .await;
+        });
+    }
+}
+// === end wave 1.13-C ===
 
 // === wave 16 ===
 /// Compute a memory-root-relative path from an absolute atom path. Best

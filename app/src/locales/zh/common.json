@@ -200,6 +200,83 @@
     "emptyTitleOpen": "暂无待审。",
     "emptyTitleAll": "暂无内容。"
   },
+  "review": {
+    "tabsSubtitle": "等待投票的决策。2/3 同意即批准。",
+    "tabs": {
+      "pending": "待我投票",
+      "proposed": "我发起的",
+      "ratified": "已批准",
+      "rejected": "已驳回"
+    },
+    "empty": {
+      "pending": {
+        "title": "都处理完了。",
+        "body": "没有等你投票的项。队友发起的决策会出现在这里。"
+      },
+      "proposed": {
+        "title": "还没发起过审阅。",
+        "body": "你提交的待审决策会出现在这里,带投票进度。"
+      },
+      "ratified": {
+        "title": "暂无已批准决策。",
+        "body": "通过的决策会留在这里作为团队的决策记录。"
+      },
+      "rejected": {
+        "title": "暂无驳回决策。",
+        "body": "未通过或过期的决策会留在这里。"
+      }
+    },
+    "voteProgress": "{{cast}} / {{total}} 已投",
+    "dueBy": "截止 {{when}}",
+    "youAreReviewer": "等你投票",
+    "alreadyUnderReview": "审阅中",
+    "proposeButton": "发起审阅",
+    "proposeConfirm": "发起",
+    "proposing": "提交中...",
+    "proposedToast": "已发起团队审阅。",
+    "proposeFailed": "发起失败",
+    "modalTitle": "把这条原子提交给团队审阅",
+    "reviewers": "审阅人",
+    "rosterEmpty": "除了 @{{user}} 之外团队里还没有其他成员。先添加队友再发起审阅。",
+    "quorumLabel": "投票门槛",
+    "quorum": {
+      "2_3": "2/3 同意 (默认)",
+      "unanimous": "全票通过",
+      "1_3": "1/3 同意"
+    },
+    "deadlineLabel": "截止时间 (可选)",
+    "cancel": "取消",
+    "close": "关闭",
+    "approve": "同意",
+    "reject": "驳回",
+    "requestChanges": "要求修改",
+    "voteRecorded": "已记录。",
+    "voteFailed": "投票失败",
+    "ratifiedToast": "决策已批准。",
+    "rejectedToast": "决策已驳回。",
+    "votesSoFar": "投票 ({{cast}} / {{required}})",
+    "commentPlaceholder": "可选: 投票理由",
+    "youAre": "你的身份: @{{user}}"
+  },
+  "comments": {
+    "sidebarTitle": "评论 ({{count}})",
+    "newOnParagraph": "在第 {{n}} 段开新讨论",
+    "anchorParagraph": "第 {{n}} 段",
+    "placeholder": "添加评论。用 @ 提及队友。",
+    "mentionHint": "用 @ 提及",
+    "post": "发送",
+    "posting": "发送中...",
+    "reply": "回复",
+    "cancelReply": "取消",
+    "resolve": "标记已解决",
+    "unresolve": "重新打开",
+    "archive": "归档",
+    "loading": "加载评论...",
+    "empty": "还没有评论。点击段落开始讨论。",
+    "close": "关闭",
+    "youSuffix": "(你)",
+    "resolvedToggle": "{{count}} 条已解决"
+  },
   "marketplace": {
     "title": "市场",
     "subtitle": "社区发布的垂直模板 + 自家发布的参考包。一键安装会把团队大脑提示词、Source 配置、画布模板、建议规则合并进团队记忆。",
@@ -375,6 +452,7 @@
       "general": "常规",
       "aiTools": "AI 工具",
       "sources": "数据源",
+      "privacy": "隐私",
       "agi": "大脑",
       "team": "团队",
       "adapters": "适配器",
@@ -591,7 +669,41 @@
     "resolve": "标记解决",
     "dismiss": "忽略",
     "due": "截止",
-    "back": "/today"
+    "back": "/today",
+    "aiExtracted": {
+      "badge": "AI 提取提及",
+      "headerAsk": "{{author}} 在 {{vendor}} 中问:\"{{snippet}}\"",
+      "headerTell": "{{author}} 在 {{vendor}} 中记录:\"{{snippet}}\"",
+      "headerReview": "{{author}} 在 {{vendor}} 中点了你审阅",
+      "headerTodo": "{{author}} 在 {{vendor}} 中给你列了 TODO",
+      "headerMention": "{{author}} 在 {{vendor}} 中 @ 你",
+      "openAtom": "打开原文",
+      "replyInChat": "在对话中回复",
+      "lowConfidence": "AI 自动识别,可能不准",
+      "vendorCursor": "Cursor",
+      "vendorClaudeCode": "Claude Code"
+    },
+    "titleCollab": "你的活动",
+    "subtitle": "队友 @ 你、请你审阅、回复你评论的内容都汇集在这里。",
+    "tabMentions": "@ 我的",
+    "tabReviews": "审阅请求",
+    "tabReplies": "评论回复",
+    "unreadOnly": "只看未读",
+    "showArchived": "显示归档",
+    "hideArchived": "隐藏归档",
+    "markAllRead": "全部标为已读",
+    "markRead": "标为已读",
+    "open": "打开",
+    "archive": "归档",
+    "unreadDotLabel": "未读",
+    "emptyTabTitle": "暂无内容。",
+    "emptyTabBody": "当队友 @ 你、请你审阅、或者回复你参与的话题时,会出现在这里。",
+    "relative": {
+      "justNow": "刚刚",
+      "minutes": "{{count}} 分钟前",
+      "hours": "{{count}} 小时前",
+      "days": "{{count}} 天前"
+    }
   },
   "alignment": {
     "kicker": "对齐",
@@ -787,7 +899,14 @@
     "succeeded": "完成",
     "executing": "执行中…",
     "pending": "下一步",
-    "failed": "失败"
+    "failed": "失败",
+    "scopePrompt": "嘿!这次配置是只给你自己用,还是要拉团队进来?",
+    "scopeSoloButton": "只给我自己",
+    "scopeTeamButton": "拉团队进来",
+    "scopeSoloPick": "只给我自己用。",
+    "scopeTeamPick": "拉团队进来。",
+    "scopeSoloAck": "好,单人配置。告诉我你常用的 AI 工具(Cursor / Claude Code / Codex / Windsurf / Ollama),团队成员相关步骤直接跳过。",
+    "scopeTeamAck": "好,团队配置。告诉我你常用的 AI 工具,以及一个用于共享记忆目录的 GitHub 仓库,例如「主用 Claude Code,仓库 github.com/me/team-private」。"
   },
   "welcome": {
     "kicker": "欢迎来到 Tangerine",
@@ -808,6 +927,11 @@
     "card4": {
       "title": "10 个 AI 工具已对齐",
       "body": "侧边栏标出哪些工具已经接入,哪个是你的 ⭐ 主工具。再加一个只要几秒。"
+    },
+    "card5": {
+      "title": "你的数据,你的电脑。",
+      "body": "Tangerine 读你 AI 工具的本地文件 + 团队的 git 仓库。Token 存在系统钥匙串里。除非你主动开启 Cloud sync,0 KB 数据上传到 Tangerine。",
+      "cta": "看看哪些数据留在本地"
     },
     "cta": "30 秒上手",
     "skip": "跳过",
@@ -974,5 +1098,80 @@
     "empty": "暂无模板。",
     "appliedToast": "已套用模板:{{label}}",
     "applyFailedToast": "套用模板失败:{{msg}}"
+  },
+  "privacy": {
+    "title": "隐私",
+    "subtitle": "Tangerine 默认 100% 在你自己的机器上运行。下面是凭证。",
+    "loading": "正在加载隐私概览…",
+    "diagramTitle": "数据流",
+    "localTitle": "留在你机器上的内容",
+    "egressTitle": "可能离开你机器的内容",
+    "sourcesTitle": "源凭证(存于操作系统密钥库)",
+    "sourceConfigured": "已配置",
+    "sourceNotConfigured": "未配置",
+    "telemetryToggle": "发送匿名使用遥测",
+    "telemetryHint": "默认开启。帮助我们了解哪些功能被使用。无内容、无标识符。",
+    "savedAt": "已保存",
+    "verifyBtn": "验证本地执行",
+    "verifyLoading": "审计中…",
+    "verifyZero": "过去一小时内 0 次调用 Tangerine 服务器",
+    "verifyNonZero": "次调用 Tangerine 服务器(过去一小时)",
+    "local": {
+      "memory_dir": "记忆目录(~/.tangerine-memory/)",
+      "git_remote_user_owned": "Git 仓库(你的 GitHub/Gitea — 不是 Tangerine)",
+      "whisper_transcription": "Whisper 转录(内置 faster-whisper,本地 CPU 运行)",
+      "mcp_sampling": "MCP 采样(用你编辑器的 LLM,不是我们的)",
+      "discord_bot_subprocess": "Discord 机器人子进程(Node.js 在你的机器上)",
+      "source_tokens_keychain": "源凭证(操作系统密钥库加密)",
+      "ai_tool_conversations": "AI 工具会话文件(本地读取,从不上传)"
+    },
+    "egress": {
+      "git_push_user_remote": "Git push 到你指定的 remote(你的数据 → 你的服务器)",
+      "telemetry_anonymized": "匿名遥测(可通过开关关闭)",
+      "auto_updater_check": "自动更新检查(只比较版本号,不传数据)",
+      "cloud_sync_optional": "如果开启 Cloud:加密大脑同步到 Tangerine 服务器"
+    }
+  },
+  "sources": {
+    "lark": {
+      "title": "飞书 / Lark",
+      "subtitle": "中国优先。拉取你所在团队群聊的消息。",
+      "appIdLabel": "App ID(cli_…)",
+      "appSecretLabel": "App secret",
+      "accountLabel": "账号别名",
+      "connectBtn": "连接飞书",
+      "connectedStatus": "已连接"
+    },
+    "zoom": {
+      "title": "Zoom",
+      "subtitle": "你云端录制会议的转录。",
+      "oauthBtn": "连接 Zoom",
+      "connectedStatus": "已连接",
+      "scopesHint": "请求 recording:read + meeting:read 权限。"
+    },
+    "teams": {
+      "title": "Microsoft Teams",
+      "subtitle": "你所在团队的频道 + 聊天消息。",
+      "oauthBtn": "连接 Teams",
+      "scopesHint": "请求 Chat.Read + OnlineMeetings.Read.All 权限。",
+      "connectedStatus": "已连接"
+    },
+    "slack": {
+      "title": "Slack",
+      "subtitle": "你所在频道的消息。",
+      "tokenLabel": "Bot token(xoxb-…)",
+      "appTokenLabel": "App token(xapp-…)— 可选,socket mode 用",
+      "workspaceLabel": "工作区别名",
+      "connectBtn": "连接 Slack",
+      "connectedStatus": "已连接"
+    },
+    "github": {
+      "title": "GitHub",
+      "subtitle": "你 review/创建的 PR、评论的 issue、被 @ 的位置。",
+      "patLabel": "Personal access token(ghp_…)",
+      "loginLabel": "GitHub 用户名",
+      "connectBtn": "连接 GitHub",
+      "connectedStatus": "已连接"
+    }
   }
 }

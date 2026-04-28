@@ -17,6 +17,11 @@
 // === wave 4-D i18n ===
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+// === wave 1.13-A === — `?tab=privacy` deep-link from WelcomeOverlay
+// card 5 CTA. Lets the welcome tour drop the user straight on the
+// privacy panel without manually clicking through the tab row.
+import { useLocation, useNavigate } from "react-router-dom";
+// === end wave 1.13-A ===
 
 import { getConfig, setConfig } from "@/lib/tauri";
 import { useStore } from "@/lib/store";
@@ -34,6 +39,12 @@ import { PersonalAgentsSettings } from "./PersonalAgentsSettings";
 // the default tab band so connectors are still one click away.
 import { SourcesSettings } from "./SourcesSettings";
 // === end wave 19 ===
+// === wave 1.13-E ===
+// Privacy panel — load-bearing for the dual-layer capture positioning.
+// Lives in the default tab band alongside General / AI tools / Sources so
+// the local-first claim has a one-click receipt.
+import { PrivacySettings } from "./PrivacySettings";
+// === end wave 1.13-E ===
 
 // === wave 5-α ===
 // Tab classification:
@@ -53,6 +64,9 @@ const DEFAULT_TABS = [
   { id: "general", label: "General" },
   { id: "ai-tools", label: "AI tools" },
   { id: "sources", label: "Sources" },
+  // === wave 1.13-E === — Privacy panel default-visible.
+  { id: "privacy", label: "Privacy" },
+  // === end wave 1.13-E ===
 ] as const;
 
 const ADVANCED_TABS = [
@@ -92,11 +106,44 @@ export default function Settings() {
   // === wave 5-α ===
   const showAdvanced = useStore((s) => s.ui.showAdvancedSettings);
   const setShowAdvanced = useStore((s) => s.ui.setShowAdvancedSettings);
-  const [tab, setTab] = useState<TabId>("general");
+  // === wave 1.13-A === — Pre-select tab from `?tab=` query so
+  // WelcomeOverlay card 5 ("See what stays local →") deep-links into
+  // the Privacy panel.
+  const location = useLocation();
+  const navigate = useNavigate();
+  const initialTab: TabId = (() => {
+    const q = new URLSearchParams(location.search).get("tab");
+    if (!q) return "general";
+    const all: TabId[] = [
+      "general",
+      "ai-tools",
+      "sources",
+      "privacy",
+      "agi",
+      "personal-agents",
+      "team",
+      "adapters",
+      "advanced",
+    ];
+    return (all as string[]).includes(q) ? (q as TabId) : "general";
+  })();
+  const [tab, setTab] = useState<TabId>(initialTab);
+  // === end wave 1.13-A ===
   // === end wave 5-α ===
   const [draft, setDraft] = useState<ConfigDraft>(DEFAULT_DRAFT);
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // === wave 1.13-A === — strip the `?tab=` query after consuming it so
+  // a later in-page tab switch doesn't fight the URL state.
+  useEffect(() => {
+    if (location.search) {
+      navigate("/settings", { replace: true });
+    }
+    // run only once on mount — stripping is idempotent
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // === end wave 1.13-A ===
 
   useEffect(() => {
     void getConfig().then((cfg) => {
@@ -149,6 +196,9 @@ export default function Settings() {
     // === wave 19 === — Sources tab i18n key.
     sources: "settings.tabs.sources",
     // === end wave 19 ===
+    // === wave 1.13-E === — Privacy panel i18n key.
+    privacy: "settings.tabs.privacy",
+    // === end wave 1.13-E ===
     agi: "settings.tabs.agi",
     "personal-agents": "settings.tabs.personalAgents",
     team: "settings.tabs.team",
@@ -219,6 +269,9 @@ export default function Settings() {
         {/* === wave 19 === — Sources directory tab. */}
         {tab === "sources" && <SourcesSettings />}
         {/* === end wave 19 === */}
+        {/* === wave 1.13-E === — Privacy panel. */}
+        {tab === "privacy" && <PrivacySettings />}
+        {/* === end wave 1.13-E === */}
         {tab === "agi" && <AGISettings />}
         {tab === "personal-agents" && <PersonalAgentsSettings />}
         {tab === "team" && <TeamSettings draft={draft} update={update} />}

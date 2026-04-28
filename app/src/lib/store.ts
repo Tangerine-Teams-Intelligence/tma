@@ -346,6 +346,15 @@ interface UiSlice {
   setOnboardingMode: (v: "chat" | "wizard") => void;
   setOnboardingChatStarted: (v: boolean) => void;
   // === end wave 18 ===
+  // === wave 1.13-A ===
+  /** v1.13 — Solo/Team setup scope. The OnboardingChat asks this on its
+   *  first prompt and uses the answer to skip team-roster setup (solo) or
+   *  drive the full team chat-driven flow (team). `null` = not yet asked
+   *  (the UI surfaces the choice). Persisted so the answer survives cold
+   *  launches. */
+  onboardingScope: "solo" | "team" | null;
+  setOnboardingScope: (v: "solo" | "team" | null) => void;
+  // === end wave 1.13-A ===
   // === wave 22 ===
   /** Wave 22 — first-run guided coachmark tour completion latch.
    *  Flips `true` once the user finishes or skips the 6-step tour.
@@ -867,6 +876,10 @@ export const useStore = create<Store>()(
         onboardingMode: "chat",
         onboardingChatStarted: false,
         // === end wave 18 ===
+        // === wave 1.13-A === — Solo/Team scope. `null` until the
+        // OnboardingChat first-run prompt asks the user.
+        onboardingScope: null,
+        // === end wave 1.13-A ===
         // === wave 22 ===
         // Wave 22 — first-run guided tour + TryThisFAB dismiss memory.
         // All three default to "fresh install" values. The FirstRunTour
@@ -977,6 +990,10 @@ export const useStore = create<Store>()(
         setOnboardingChatStarted: (v) =>
           set((s) => ({ ui: { ...s.ui, onboardingChatStarted: v } })),
         // === end wave 18 ===
+        // === wave 1.13-A ===
+        setOnboardingScope: (v) =>
+          set((s) => ({ ui: { ...s.ui, onboardingScope: v } })),
+        // === end wave 1.13-A ===
         // === wave 22 ===
         // Wave 22 — coachmark + tour + try-this reducers. Each one is a
         // pure idempotent set so re-firing the same dismiss is a no-op
@@ -1499,6 +1516,10 @@ export const useStore = create<Store>()(
             onboardingMode: s.ui.onboardingMode,
             onboardingChatStarted: s.ui.onboardingChatStarted,
             // === end wave 18 ===
+            // === wave 1.13-A === — Solo/Team scope. Persisted so the
+            // user's first-prompt answer survives cold launches.
+            onboardingScope: s.ui.onboardingScope,
+            // === end wave 1.13-A ===
             // === wave 16 === — right-rail ACTIVITY filter pick.
             activityFeedFilter: s.ui.activityFeedFilter,
             // === end wave 16 ===
@@ -1673,6 +1694,14 @@ export const useStore = create<Store>()(
                 ?.setupWizardPrimaryChannel ??
               current.ui.setupWizardPrimaryChannel,
             // === end wave 11 ===
+            // === wave 1.13-A === — Solo/Team scope hydration. Bare cast
+            // so a v1.13.0-and-earlier install (no key persisted) upgrades
+            // cleanly to the `null` default (which makes the OnboardingChat
+            // surface the choice on next launch).
+            onboardingScope:
+              (p?.ui as { onboardingScope?: "solo" | "team" | null } | undefined)
+                ?.onboardingScope ?? current.ui.onboardingScope,
+            // === end wave 1.13-A ===
             // v3.0 §1 — personal-agent capture flags. Persisted; the
             // Settings page also calls `personal_agents_get_settings`
             // on mount to reconcile with the Rust source of truth.

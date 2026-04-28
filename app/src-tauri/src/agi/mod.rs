@@ -111,3 +111,37 @@ pub mod suppression;
 // `team/decisions/`. See `agi::review` module docs for the state machine.
 pub mod review;
 // === end v2.5 review ===
+
+// === wave 1.13-B ===
+// Frontmatter-native review workflow. Sits beside the v2.5 sidecar engine
+// above (both kept — sidecar is co-thinker's persistent log, frontmatter
+// is the human-driven /reviews tabs surface). The Tauri command surface
+// (review_propose / review_vote / review_workflow_status /
+// review_list_pending / review_list_proposed_by / review_list_by_status)
+// lives in `crate::commands::review`.
+pub mod review_workflow;
+// === end wave 1.13-B ===
+
+// === wave 1.13-D ===
+// v1.13 — git-mediated team presence. Each user app emits its own
+// presence file under `<memory_root>/.tangerine/presence/{user}.json`
+// every 10 s while active; the existing `git_sync` ticker propagates
+// the file to teammates and the reader half rehydrates other users'
+// presence on each pull. The React side renders avatar dots in the
+// sidebar / a "N teammates active" pill in the top bar / "X is reading
+// this" indicator in the atom preview (Wave 21). Path A (LAN UDP
+// discovery) is deferred to v1.13.1+; the `/presence` ws path in
+// `ws_server.rs` reserves the wire shape for it without enabling
+// peer-to-peer yet.
+pub mod presence;
+// === end wave 1.13-D ===
+
+// === wave 1.13-C ===
+// Wave 1.13-C — AI-extracted mentions. Reads each personal-agent atom
+// after it's written and emits an `ai_extracted_mention` inbox event for
+// every reference the user made to a known team member ("ask Hongyu about
+// X", "@hongyu", "TODO: ask Sam"). Heuristic regex pass always; LLM pass
+// (via `agi::session_borrower::dispatch`) gated on body length + whether
+// the heuristic returned anything. Wave 1.13-A renders the events.
+pub mod mention_extractor;
+// === end wave 1.13-C ===

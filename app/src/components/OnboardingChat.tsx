@@ -89,21 +89,41 @@ export function OnboardingChat({ onSetupComplete }: OnboardingChatProps) {
   const setSetupWizardChannelReady = useStore(
     (s) => s.ui.setSetupWizardChannelReady,
   );
+  // === wave 1.13-A === — Solo/Team scope. The first prompt asks the user
+  // which path they want; we skip team-roster setup entirely on solo, or
+  // run the full chat-driven team setup otherwise. Persisted via
+  // `ui.onboardingScope` so the answer survives cold launches.
+  const onboardingScope = useStore((s) => s.ui.onboardingScope);
+  const setOnboardingScope = useStore((s) => s.ui.setOnboardingScope);
+  // === end wave 1.13-A ===
 
   const sessionId = useMemo(() => resolveSessionId(), []);
   const [prompt, setPrompt] = useState("");
-  const [messages, setMessages] = useState<ChatMessage[]>(() => [
-    {
-      id: "system-primer",
-      role: "system",
-      content: t("onboardingChat.initialPrompt", {
-        defaultValue:
-          "Hi, I'm Tangerine. To set you up, I need to know two things: (a) your primary AI tool (Cursor / Claude Code / Codex / Windsurf / Ollama), and (b) optionally a GitHub repo for team sync. Just tell me in your own words — e.g. \"primary=Claude Code, repo=github.com/me/team-private\".",
-      }),
-      actions: [],
-      ts: Date.now(),
-    },
-  ]);
+  const [messages, setMessages] = useState<ChatMessage[]>(() => {
+    // === wave 1.13-A === — first-prompt copy depends on whether the
+    // user has already declared their scope. Unset → Solo/Team picker;
+    // set → original setup primer.
+    const initialContent =
+      onboardingScope === null
+        ? t("onboardingChat.scopePrompt", {
+            defaultValue:
+              "Hi! Are you setting up just for yourself, or for a team?",
+          })
+        : t("onboardingChat.initialPrompt", {
+            defaultValue:
+              "Hi, I'm Tangerine. To set you up, I need to know two things: (a) your primary AI tool (Cursor / Claude Code / Codex / Windsurf / Ollama), and (b) optionally a GitHub repo for team sync. Just tell me in your own words — e.g. \"primary=Claude Code, repo=github.com/me/team-private\".",
+          });
+    return [
+      {
+        id: "system-primer",
+        role: "system",
+        content: initialContent,
+        actions: [],
+        ts: Date.now(),
+      },
+    ];
+    // === end wave 1.13-A ===
+  });
   const [dispatchState, setDispatchState] = useState<"idle" | "loading" | "error">("idle");
   const [dispatchError, setDispatchError] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -136,6 +156,53 @@ export function OnboardingChat({ onSetupComplete }: OnboardingChatProps) {
       onSetupComplete();
     }
   }, [setupWizardChannelReady, onSetupComplete]);
+
+  // === wave 1.13-A === — Solo/Team picker. Renders inline above the
+  // textarea when the user hasn't yet picked a scope. Picking flips the
+  // persisted scope, swaps the system primer to the original setup
+  // prompt, and unblocks the rest of the chat-driven setup.
+  const handleScopePick = (scope: "solo" | "team") => {
+    setOnboardingScope(scope);
+    void logEvent("onboarding_scope_picked", {
+      session_id: sessionId,
+      scope,
+    });
+    const ts = Date.now();
+    setMessages((m) => [
+      ...m,
+      {
+        id: `u-${ts}`,
+        role: "user",
+        content:
+          scope === "solo"
+            ? t("onboardingChat.scopeSoloPick", {
+                defaultValue: "Just for me.",
+              })
+            : t("onboardingChat.scopeTeamPick", {
+                defaultValue: "For a team.",
+              }),
+        actions: [],
+        ts,
+      },
+      {
+        id: `a-${ts + 1}`,
+        role: "assistant",
+        content:
+          scope === "solo"
+            ? t("onboardingChat.scopeSoloAck", {
+                defaultValue:
+                  "Got it — solo setup. Tell me your primary AI tool (Cursor / Claude Code / Codex / Windsurf / Ollama). I'll skip the team-roster step.",
+              })
+            : t("onboardingChat.scopeTeamAck", {
+                defaultValue:
+                  "Got it — team setup. Tell me your primary AI tool and a GitHub repo for the shared memory dir. E.g. \"primary=Claude Code, repo=github.com/me/team-private\".",
+              }),
+        actions: [],
+        ts: ts + 1,
+      },
+    ]);
+  };
+  // === end wave 1.13-A ===
 
   const submitPrompt = async () => {
     const text = prompt.trim();
@@ -296,6 +363,39 @@ export function OnboardingChat({ onSetupComplete }: OnboardingChatProps) {
         )}
         <div ref={messagesEndRef} />
       </div>
+
+      {/* === wave 1.13-A === — Solo/Team picker, inline above the
+          textarea. Renders only on first launch (when scope is unset).
+          Once picked, the buttons disappear and the original chat input
+          takes over. */}
+      {onboardingScope === null && (
+        <div
+          data-testid="onboarding-chat-scope-picker"
+          className="flex flex-wrap gap-2"
+        >
+          <button
+            type="button"
+            data-testid="onboarding-chat-scope-solo"
+            onClick={() => handleScopePick("solo")}
+            className="rounded-md border border-stone-200 px-3 py-1.5 text-[12px] text-stone-700 hover:bg-stone-100 dark:border-stone-700 dark:text-stone-200 dark:hover:bg-stone-800"
+          >
+            {t("onboardingChat.scopeSoloButton", {
+              defaultValue: "Just for me",
+            })}
+          </button>
+          <button
+            type="button"
+            data-testid="onboarding-chat-scope-team"
+            onClick={() => handleScopePick("team")}
+            className="rounded-md border border-[var(--ti-orange-500)] bg-[var(--ti-orange-50)] px-3 py-1.5 text-[12px] text-[var(--ti-orange-700)] hover:bg-[var(--ti-orange-100)] dark:bg-[rgba(204,85,0,0.12)] dark:text-[var(--ti-orange-500)] dark:hover:bg-[rgba(204,85,0,0.2)]"
+          >
+            {t("onboardingChat.scopeTeamButton", {
+              defaultValue: "For a team",
+            })}
+          </button>
+        </div>
+      )}
+      {/* === end wave 1.13-A === */}
 
       <div
         data-testid="onboarding-chat-input"

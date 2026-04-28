@@ -116,11 +116,16 @@ describe("Stage 1 Wave 3 routes — smoke", () => {
     ).toBeInTheDocument();
   });
 
-  it("/inbox renders empty state on no alerts", async () => {
+  // === wave 1.13-A === — /inbox is the collab inbox now (Mentions /
+  // Review requests / Comment replies). Asserts on the new shape.
+  it("/inbox renders the collab inbox header + empty state by default", async () => {
     renderRoute("/inbox", <InboxRoute />);
-    expect(await screen.findByText(/Pending alerts/i)).toBeInTheDocument();
-    expect(await screen.findByText(/Nothing pending/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Activity for you/i)).toBeInTheDocument();
+    expect(
+      await screen.findByTestId("inbox-tab-mention"),
+    ).toBeInTheDocument();
   });
+  // === end wave 1.13-A ===
 
   // v1.8 Phase 4-B — canvas index renders the empty/list state by default.
   it("/canvas renders the index", async () => {

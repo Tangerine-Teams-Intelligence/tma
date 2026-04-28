@@ -215,6 +215,33 @@ See [BUSINESS_MODEL_SPEC.md](./BUSINESS_MODEL_SPEC.md) for the full economic bre
 
 ---
 
+<!-- === wave 1.13-E === -->
+## Local-first by default
+
+Tangerine runs 100% on your machines by default. Your AI tool history, your memory, your tokens — all local. We can't read any of it. Cloud sync is opt-in only ($80/team/mo) — even then, E2E encrypted.
+
+Concretely:
+
+- **Memory dir** (`~/.tangerine-memory/`) — local plain-markdown.
+- **Source tokens** (Lark / Zoom / Teams / Slack / GitHub OAuth tokens) — encrypted in your **OS keychain** (Windows Credential Manager / macOS Keychain / Linux Secret Service). The Privacy panel shows presence-only, never the value.
+- **Whisper transcription** — bundled `faster-whisper` runs on your CPU.
+- **MCP sampling** — uses your editor's LLM, not ours.
+- **Discord bot** — Node.js subprocess on your machine.
+- **AI tool conversations** — read locally from each editor's history dir, never uploaded.
+
+What may leave your machine:
+
+- **Git push** to your specified remote (your data → your server).
+- **Telemetry** (anonymized, opt-out via toggle in Settings → Privacy).
+- **Auto-updater check** (version comparison only, no data).
+- **Cloud sync** — opt-in only, E2E encrypted.
+
+The Privacy panel (Settings → Privacy) renders this as a data-flow diagram, lists what's local vs what may egress, surfaces the per-source token presence, and ships a one-click "Verify local-execution" button that audits the last hour of network calls.
+
+<!-- === end wave 1.13-E === -->
+
+---
+
 ## Architecture
 
 Tauri 2 desktop app (Rust backend + React frontend), file-based memory in your home dir, optional MCP server for AI tool integration.

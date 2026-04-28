@@ -2424,6 +2424,236 @@ export async function reviewPromote(atomPath: string): Promise<ReviewState> {
 }
 // === end v2.5 review ===
 
+// === wave 1.13-B ===
+// L4 — Frontmatter-native review workflow. Sits beside the v2.5 sidecar
+// review API above; this set is what the new /reviews tabs + the
+// "Propose for review" button on MemoryPreview talk to.
+
+export type WorkflowVoteValue = "approve" | "reject" | "request_changes";
+export type WorkflowStatus =
+  | "draft"
+  | "proposed"
+  | "under-review"
+  | "ratified"
+  | "rejected"
+  | "expired";
+export type WorkflowQuorum = "2/3" | "unanimous" | "1/3";
+
+export interface WorkflowVoteEntry {
+  user: string;
+  vote: WorkflowVoteValue;
+  at: string;
+  comment: string | null;
+}
+
+export interface ReviewWorkflowState {
+  atom_path: string;
+  status: WorkflowStatus;
+  reviewers: string[];
+  votes: WorkflowVoteEntry[];
+  quorum: WorkflowQuorum;
+  deadline: string | null;
+  proposer: string | null;
+  proposed_at: string;
+}
+
+export interface AtomReviewSummary {
+  atom_path: string;
+  atom_title: string;
+  status: WorkflowStatus;
+  proposer: string | null;
+  reviewers: string[];
+  votes_cast: number;
+  votes_required: number;
+  deadline: string | null;
+  proposed_at: string;
+}
+
+export async function reviewPropose(
+  atomPath: string,
+  reviewers: string[],
+  opts?: { quorum?: WorkflowQuorum; deadline?: string; proposer?: string },
+): Promise<ReviewWorkflowState> {
+  return safeInvoke<ReviewWorkflowState>(
+    "review_propose",
+    {
+      atomPath,
+      reviewers,
+      quorum: opts?.quorum,
+      deadline: opts?.deadline,
+      proposer: opts?.proposer,
+    },
+    () => ({
+      atom_path: atomPath,
+      status: "under-review",
+      reviewers,
+      votes: [],
+      quorum: opts?.quorum ?? "2/3",
+      deadline: opts?.deadline ?? null,
+      proposer: opts?.proposer ?? null,
+      proposed_at: new Date().toISOString(),
+    }),
+  );
+}
+
+export async function reviewVote(
+  atomPath: string,
+  user: string,
+  vote: WorkflowVoteValue,
+  comment?: string,
+): Promise<ReviewWorkflowState> {
+  return safeInvoke<ReviewWorkflowState>(
+    "review_vote",
+    { atomPath, user, vote, comment: comment ?? null },
+    () => ({
+      atom_path: atomPath,
+      status: "under-review",
+      reviewers: [user],
+      votes: [
+        {
+          user,
+          vote,
+          at: new Date().toISOString(),
+          comment: comment ?? null,
+        },
+      ],
+      quorum: "2/3",
+      deadline: null,
+      proposer: null,
+      proposed_at: new Date().toISOString(),
+    }),
+  );
+}
+
+export async function reviewWorkflowStatus(
+  atomPath: string,
+): Promise<ReviewWorkflowState | null> {
+  return safeInvoke<ReviewWorkflowState | null>(
+    "review_workflow_status",
+    { atomPath },
+    () => null,
+  );
+}
+
+export async function reviewListPending(user?: string): Promise<AtomReviewSummary[]> {
+  return safeInvoke<AtomReviewSummary[]>(
+    "review_list_pending",
+    user ? { user } : undefined,
+    () => [],
+  );
+}
+
+export async function reviewListProposedBy(user: string): Promise<AtomReviewSummary[]> {
+  return safeInvoke<AtomReviewSummary[]>(
+    "review_list_proposed_by",
+    { user },
+    () => [],
+  );
+}
+
+export async function reviewListByStatus(
+  status: WorkflowStatus,
+): Promise<AtomReviewSummary[]> {
+  return safeInvoke<AtomReviewSummary[]>(
+    "review_list_by_status",
+    { status },
+    () => [],
+  );
+}
+
+// L5 — Inline comment threads anchored to atom paragraphs.
+
+export interface ParagraphAnchor {
+  paragraph_index: number;
+  char_offset_start: number;
+  char_offset_end: number;
+}
+
+export interface CommentRecord {
+  id: string;
+  thread_id: string;
+  atom_path: string;
+  anchor: ParagraphAnchor;
+  author: string;
+  body: string;
+  created_at: string;
+  parent_id: string | null;
+  resolved: boolean;
+}
+
+export interface CommentThread {
+  thread_id: string;
+  atom_path: string;
+  anchor: ParagraphAnchor;
+  comments: CommentRecord[];
+  resolved: boolean;
+}
+
+export async function commentsList(atomPath: string): Promise<CommentThread[]> {
+  return safeInvoke<CommentThread[]>("comments_list", { atomPath }, () => []);
+}
+
+export async function commentsCreate(
+  atomPath: string,
+  anchor: ParagraphAnchor,
+  body: string,
+  author: string,
+  parentId?: string,
+): Promise<CommentRecord> {
+  return safeInvoke<CommentRecord>(
+    "comments_create",
+    { atomPath, anchor, body, author, parentId: parentId ?? null },
+    () => ({
+      id: `c_mock_${Date.now()}`,
+      thread_id: parentId ?? `th_mock_${Date.now()}`,
+      atom_path: atomPath,
+      anchor,
+      author,
+      body,
+      created_at: new Date().toISOString(),
+      parent_id: parentId ?? null,
+      resolved: false,
+    }),
+  );
+}
+
+export async function commentsResolve(
+  atomPath: string,
+  threadId: string,
+  by: string,
+): Promise<void> {
+  await safeInvoke<void>(
+    "comments_resolve",
+    { atomPath, threadId, by },
+    () => undefined,
+  );
+}
+
+export async function commentsUnresolve(
+  atomPath: string,
+  threadId: string,
+  by: string,
+): Promise<void> {
+  await safeInvoke<void>(
+    "comments_unresolve",
+    { atomPath, threadId, by },
+    () => undefined,
+  );
+}
+
+export async function commentsArchive(
+  atomPath: string,
+  threadId: string,
+  by: string,
+): Promise<void> {
+  await safeInvoke<void>(
+    "comments_archive",
+    { atomPath, threadId, by },
+    () => undefined,
+  );
+}
+// === end wave 1.13-B ===
+
 // === v2.5 cloud_sync ===
 // v2.5 §5 — cloud sync stub. Real network transport lands in v2.5 production;
 // these wrappers persist the per-team config and call the Rust stub which
@@ -4104,3 +4334,87 @@ export async function templatesApply(args: {
   );
 }
 // === end wave 24 ===
+
+// === wave 1.13-D ===
+// v1.13 Wave 1.13-D — git-mediated team presence wrappers.
+//
+// `presenceEmit` writes the local user's presence file once per heartbeat
+// (10 s tick) and on every route change. `presenceListActive` returns
+// teammates whose presence file is fresher than `ttlSeconds` (default 60).
+// Both surfaces are best-effort — the mocks return empty/no-op so vitest
+// and browser dev render the React tree cleanly without a Tauri host.
+//
+// `listenPresenceUpdates` subscribes to the optional `presence:update`
+// Tauri event the daemon may emit when it detects a fresh presence file
+// after a git pull. The React `PresenceProvider` consumes this for live
+// updates without polling; outside Tauri / when the daemon doesn't emit
+// the event, the provider falls back to its 10 s polling cycle.
+export interface PresenceInfo {
+  user: string;
+  current_route: string;
+  active_atom: string | null;
+  action_type: string | null;
+  last_active: string;
+  started_at: string;
+}
+
+export async function presenceEmit(args: {
+  user: string;
+  currentRoute: string;
+  activeAtom?: string | null;
+  actionType?: string | null;
+}): Promise<void> {
+  return safeInvoke<void>(
+    "presence_emit",
+    {
+      args: {
+        user: args.user,
+        current_route: args.currentRoute,
+        active_atom: args.activeAtom ?? null,
+        action_type: args.actionType ?? null,
+      },
+    },
+    () => undefined,
+  );
+}
+
+export async function presenceListActive(args?: {
+  ttlSeconds?: number;
+  excludeUser?: string | null;
+}): Promise<PresenceInfo[]> {
+  const result = await safeInvoke<{ teammates: PresenceInfo[] }>(
+    "presence_list_active",
+    {
+      ttlSeconds: args?.ttlSeconds ?? 60,
+      excludeUser: args?.excludeUser ?? null,
+    },
+    () => ({ teammates: [] }),
+  );
+  return result.teammates;
+}
+
+export type UnlistenPresenceFn = () => void;
+
+export async function listenPresenceUpdates(
+  callback: (event: PresenceInfo) => void,
+): Promise<UnlistenPresenceFn> {
+  if (!inTauri()) return () => {};
+  try {
+    const { listen } = await import("@tauri-apps/api/event");
+    const unlisten = await listen<PresenceInfo>("presence:update", (e) => {
+      try {
+        callback(e.payload);
+      } catch (err) {
+        // Defensive: a thrown callback must not take down the listener.
+        // eslint-disable-next-line no-console
+        console.error("[wave1.13-D] presence callback failed:", err);
+      }
+    });
+    return unlisten;
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error("[wave1.13-D] failed to subscribe to presence:update:", e);
+    return () => {};
+  }
+}
+// === end wave 1.13-D ===

@@ -100,18 +100,21 @@ describe("Wave 14 sidebar — wave-19 IA contract", () => {
       </MemoryRouter>,
     );
     // Routes alive in App.tsx but yanked from the rail in wave 19.
+    // === wave 1.13-A === — `/inbox` is no longer in this list. The
+    // collab-loop inbox is the 6th rail item now; killed-from-sidebar
+    // means "no NavLink AT ALL", which is no longer true for /inbox.
     const killedHrefs = [
       "/this-week",
       "/people",
       "/projects",
       "/threads",
       "/alignment",
-      "/inbox",
       "/reviews",
       "/marketplace",
       "/sources/discord",
       "/sinks/browser",
     ];
+    // === end wave 1.13-A ===
     for (const href of killedHrefs) {
       expect(
         document.querySelector(`a[href="${href}"]`),

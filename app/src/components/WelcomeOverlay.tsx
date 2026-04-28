@@ -27,8 +27,9 @@
  */
 
 import { useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { Sparkles, FileText, Eye, ListChecks, X, ArrowRight } from "lucide-react";
+import { Sparkles, FileText, Eye, ListChecks, Lock, X, ArrowRight } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { useStore } from "@/lib/store";
@@ -41,23 +42,39 @@ import { BorrowAIVisual } from "@/components/BorrowAIVisual";
 interface ValueCard {
   icon: typeof Sparkles;
   /** i18n key under `welcome.cardN`. */
-  key: "card1" | "card2" | "card3" | "card4";
+  key: "card1" | "card2" | "card3" | "card4" | "card5";
   // === wave 8 === — soft tint per card so the 2x2 grid reads as four
   // distinct value props rather than four identical rectangles.
   // Mapped to the new design tokens; each card picks up a different
   // background gradient + icon-bg color.
   tint: "warm" | "cool" | "alive" | "neutral";
+  /** Optional CTA — when set, renders a small link below the body. */
+  cta?: { labelKey: string; route: string };
 }
 
 // === wave 6 === BUG #6 — strings are now i18n keys, not literals.
 // === wave 8 === — added per-card `tint` so each value prop carries its
 // own visual weight (orange = no-sub, blue = markdown, green = visibility,
 // neutral = catalog). Helps the eye chunk the cards in 2 seconds.
+// === wave 1.13-A === — added card 5 ("Your data, your machines.") so the
+// privacy story lands at first launch. Rotates the tints so card 5 picks
+// up the same neutral treatment as card 4 (the grid is now 2x3 on small
+// viewports, 3x2 on wider ones — both fit the existing max-w-2xl dialog).
 const VALUE_CARDS: ValueCard[] = [
   { icon: Sparkles, key: "card1", tint: "warm" },
   { icon: FileText, key: "card2", tint: "cool" },
   { icon: Eye, key: "card3", tint: "alive" },
   { icon: ListChecks, key: "card4", tint: "neutral" },
+  // === wave 1.13-A === — privacy moat. Body copy hammers "0 KB sent to
+  // Tangerine ever" so the local-first story lands in 2s. The CTA opens
+  // the Settings → Privacy panel so the curious user can verify.
+  {
+    icon: Lock,
+    key: "card5",
+    tint: "warm",
+    cta: { labelKey: "card5.cta", route: "/settings?tab=privacy" },
+  },
+  // === end wave 1.13-A ===
 ];
 
 // === wave 8 === — color recipes for each tint. Inlined as objects so
@@ -91,6 +108,10 @@ const TINT_STYLES: Record<
 
 export function WelcomeOverlay() {
   const { t } = useTranslation();
+  // === wave 1.13-A === — needed for card 5's "See what stays local →"
+  // CTA to navigate into Settings → Privacy.
+  const navigate = useNavigate();
+  // === end wave 1.13-A ===
   const welcomed = useStore((s) => s.ui.welcomed);
   const setWelcomed = useStore((s) => s.ui.setWelcomed);
   // === wave 6 === BUG #3 — version-aware tour replay.
@@ -202,13 +223,30 @@ export function WelcomeOverlay() {
         </header>
 
         {/* === wave 8 === — gap bumped to gap-6 (was gap-3) so the four
-            cards have room to breathe. */}
+            cards have room to breathe.
+            === wave 1.13-A === — grid still uses 2 columns on >= sm; the
+            5th card naturally lands as a wide tile in the third row. */}
         <div
           className="grid grid-cols-1 gap-6 sm:grid-cols-2"
           data-testid="welcome-cards"
         >
           {VALUE_CARDS.map((card, idx) => (
-            <ValueCardView key={idx} card={card} index={idx} />
+            <ValueCardView
+              key={idx}
+              card={card}
+              index={idx}
+              onCtaClick={(route) => {
+                void logEvent("welcome_card_cta", {
+                  card: card.key,
+                  route,
+                });
+                navigate(route);
+                // Treat it as "started" — close the overlay so the user
+                // lands on the destination route.
+                setWelcomed(true);
+                setLastWelcomedVersion(__APP_VERSION__);
+              }}
+            />
           ))}
         </div>
 
@@ -239,7 +277,15 @@ export function WelcomeOverlay() {
   );
 }
 
-function ValueCardView({ card, index }: { card: ValueCard; index: number }) {
+function ValueCardView({
+  card,
+  index,
+  onCtaClick,
+}: {
+  card: ValueCard;
+  index: number;
+  onCtaClick?: (route: string) => void;
+}) {
   const { t } = useTranslation();
   const Icon = card.icon;
   // === wave 8 === — pick up the per-tint color recipe so each card
@@ -282,6 +328,20 @@ function ValueCardView({ card, index }: { card: ValueCard; index: number }) {
           <p className="mt-1 text-[12px] leading-relaxed text-[var(--ti-ink-700)] dark:text-[var(--ti-ink-500)]">
             {t(`welcome.${card.key}.body`)}
           </p>
+          {/* === wave 1.13-A === — optional CTA link (e.g. card 5 →
+              Settings → Privacy). Only renders when the card declared a
+              `cta` and the parent provided a click handler. */}
+          {card.cta && onCtaClick && (
+            <button
+              type="button"
+              data-testid={`welcome-card-${index}-cta`}
+              onClick={() => onCtaClick(card.cta!.route)}
+              className="mt-2 inline-flex items-center gap-1 font-mono text-[11px] text-[var(--ti-orange-700)] hover:underline dark:text-[var(--ti-orange-500)]"
+            >
+              {t(`welcome.${card.cta.labelKey}`)} <span aria-hidden>→</span>
+            </button>
+          )}
+          {/* === end wave 1.13-A === */}
         </div>
       </div>
     </div>

@@ -13,7 +13,7 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
-import { ExternalLink, FileText, User, Tag, Calendar } from "lucide-react";
+import { ExternalLink, FileText, User, Tag, Calendar, MessageSquare } from "lucide-react";
 import { Link } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 
@@ -25,11 +25,18 @@ import {
   stripFrontmatter,
 } from "@/lib/memory";
 import {
+  commentsList,
   computeBacklinks,
   openInEditor,
   type BacklinkHit,
+  type CommentThread,
 } from "@/lib/tauri";
 import { vendorColor } from "@/lib/vendor-colors";
+
+// === wave 1.13-B ===
+import { CommentSidebar } from "@/components/comments/CommentSidebar";
+import { ProposeForReviewButton } from "@/components/review/ProposeForReviewButton";
+// === end wave 1.13-B ===
 
 interface Props {
   /** Selected file path (rel to memory root). null → empty state. */
@@ -38,32 +45,61 @@ interface Props {
 
 export function MemoryPreview({ relPath }: Props) {
   const memoryRoot = useStore((s) => s.ui.memoryRoot);
+  const currentUser = useStore((s) => s.ui.currentUser);
   const [content, setContent] = useState<string | null>(null);
   const [backlinks, setBacklinks] = useState<BacklinkHit[]>([]);
   const [loading, setLoading] = useState(false);
+  // === wave 1.13-B ===
+  const [commentThreads, setCommentThreads] = useState<CommentThread[]>([]);
+  const [commentSidebarOpen, setCommentSidebarOpen] = useState(false);
+  const [activeParagraph, setActiveParagraph] = useState<number | undefined>(undefined);
+  // === end wave 1.13-B ===
 
   useEffect(() => {
     let cancel = false;
     if (!relPath) {
       setContent(null);
       setBacklinks([]);
+      setCommentThreads([]);
       return;
     }
     setLoading(true);
     void (async () => {
-      const [body, bl] = await Promise.all([
+      const [body, bl, threads] = await Promise.all([
         readMemoryFile(memoryRoot, relPath),
         computeBacklinks({ atomPath: relPath }),
+        commentsList(relPath).catch(() => []),
       ]);
       if (cancel) return;
       setContent(body);
       setBacklinks(bl.hits);
+      setCommentThreads(threads);
       setLoading(false);
     })();
     return () => {
       cancel = true;
     };
   }, [memoryRoot, relPath]);
+
+  // === wave 1.13-B ===
+  // Set of paragraph indices that have at least one un-resolved comment
+  // thread anchored to them. Used to add a yellow underline.
+  const annotatedParagraphs = useMemo(() => {
+    const set = new Set<number>();
+    for (const th of commentThreads) {
+      if (!th.resolved) set.add(th.anchor.paragraph_index);
+    }
+    return set;
+  }, [commentThreads]);
+  async function refreshThreads() {
+    if (!relPath) return;
+    try {
+      setCommentThreads(await commentsList(relPath));
+    } catch {
+      // best-effort
+    }
+  }
+  // === end wave 1.13-B ===
 
   const fm = useMemo(() => (content ? parseFrontmatter(content) : null), [content]);
   const body = useMemo(() => (content ? stripFrontmatter(content) : ""), [content]);
@@ -101,8 +137,13 @@ export function MemoryPreview({ relPath }: Props) {
   const vc = vendor ? vendorColor(vendor) : null;
   const dotHex = vc && vc.hex.startsWith("linear-gradient") ? "#A855F7" : vc?.hex;
 
+  // === wave 1.13-B ===
+  const openThreadCount = commentThreads.filter((t) => !t.resolved).length;
+  // === end wave 1.13-B ===
+
   return (
-    <div data-testid="memory-preview" className="flex h-full flex-col overflow-auto">
+    <div data-testid="memory-preview" className="flex h-full flex-row overflow-hidden">
+    <div className="flex h-full flex-1 flex-col overflow-auto">
       <div className="border-b border-stone-200 px-8 py-5 dark:border-stone-800">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
@@ -113,14 +154,30 @@ export function MemoryPreview({ relPath }: Props) {
               {title}
             </h1>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => void openInEditor(`${memoryRoot}/${relPath}`)}
-            data-testid="memory-preview-open-editor"
-          >
-            <ExternalLink size={12} /> Open in editor
-          </Button>
+          <div className="flex items-center gap-2">
+            {/* === wave 1.13-B === */}
+            <ProposeForReviewButton atomPath={relPath} />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCommentSidebarOpen((v) => !v)}
+              data-testid="memory-preview-toggle-comments"
+            >
+              <MessageSquare size={12} className="mr-1" />
+              {openThreadCount > 0
+                ? `Comments (${openThreadCount})`
+                : "Comments"}
+            </Button>
+            {/* === end wave 1.13-B === */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void openInEditor(`${memoryRoot}/${relPath}`)}
+              data-testid="memory-preview-open-editor"
+            >
+              <ExternalLink size={12} /> Open in editor
+            </Button>
+          </div>
         </div>
 
         <div
@@ -147,12 +204,60 @@ export function MemoryPreview({ relPath }: Props) {
       </div>
 
       <div className="flex-1 px-8 py-6">
-        <article className="prose-tangerine max-w-none">
-          <ReactMarkdown>{body || "_(empty)_"}</ReactMarkdown>
+        {/* === wave 1.13-B === */}
+        {/* Custom paragraph render so we can underline annotated paragraphs +
+            wire click → open the comment sidebar scrolled to that paragraph. */}
+        <article
+          className="prose-tangerine max-w-none"
+          data-testid="memory-preview-body"
+        >
+          <ReactMarkdown
+            components={{
+              p: ({ node, children }) => {
+                const idx = (node as unknown as { position?: { start?: { line?: number } } })?.position?.start?.line ?? 0;
+                const annotated = annotatedParagraphs.has(idx);
+                const paragraphIndex = idx;
+                return (
+                  <p
+                    data-paragraph-index={paragraphIndex}
+                    data-annotated={annotated || undefined}
+                    onClick={(e) => {
+                      // Only react when the user clicks on whitespace/text,
+                      // not on a nested link.
+                      if (e.target instanceof HTMLAnchorElement) return;
+                      setActiveParagraph(paragraphIndex);
+                      setCommentSidebarOpen(true);
+                    }}
+                    className={
+                      annotated
+                        ? "underline decoration-amber-300 decoration-2 underline-offset-4 cursor-pointer"
+                        : "cursor-pointer hover:bg-stone-50 dark:hover:bg-stone-900"
+                    }
+                  >
+                    {children}
+                  </p>
+                );
+              },
+            }}
+          >
+            {body || "_(empty)_"}
+          </ReactMarkdown>
         </article>
+        {/* === end wave 1.13-B === */}
 
         <BacklinksSection backlinks={backlinks} />
       </div>
+    </div>
+    {/* === wave 1.13-B === */}
+    <CommentSidebar
+      atomPath={relPath}
+      currentUser={currentUser}
+      open={commentSidebarOpen}
+      onClose={() => setCommentSidebarOpen(false)}
+      activeParagraph={activeParagraph}
+      onChanged={() => void refreshThreads()}
+    />
+    {/* === end wave 1.13-B === */}
     </div>
   );
 }

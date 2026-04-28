@@ -200,6 +200,83 @@
     "emptyTitleOpen": "No open reviews.",
     "emptyTitleAll": "Nothing here yet."
   },
+  "review": {
+    "tabsSubtitle": "Decisions waiting on a vote. 2/3 approval ratifies.",
+    "tabs": {
+      "pending": "Pending review",
+      "proposed": "Proposed by me",
+      "ratified": "Ratified",
+      "rejected": "Rejected"
+    },
+    "empty": {
+      "pending": {
+        "title": "Inbox zero.",
+        "body": "Nothing is waiting on your vote. Atoms a teammate proposes will land here."
+      },
+      "proposed": {
+        "title": "Nothing proposed yet.",
+        "body": "When you propose an atom for review, it will appear here with vote progress."
+      },
+      "ratified": {
+        "title": "No ratified decisions yet.",
+        "body": "Decisions that pass quorum land here as the team's audit trail."
+      },
+      "rejected": {
+        "title": "No rejected decisions.",
+        "body": "Atoms that fail quorum or hit their deadline land here."
+      }
+    },
+    "voteProgress": "{{cast}} of {{total}} voted",
+    "dueBy": "Due {{when}}",
+    "youAreReviewer": "Your vote needed",
+    "alreadyUnderReview": "Under review",
+    "proposeButton": "Propose for review",
+    "proposeConfirm": "Propose",
+    "proposing": "Proposing...",
+    "proposedToast": "Proposed for team review.",
+    "proposeFailed": "Propose failed",
+    "modalTitle": "Propose this atom for review",
+    "reviewers": "Reviewers",
+    "rosterEmpty": "No teammates besides @{{user}} on the roster yet. Add a teammate to propose.",
+    "quorumLabel": "Quorum mode",
+    "quorum": {
+      "2_3": "2 of 3 (default)",
+      "unanimous": "Unanimous",
+      "1_3": "1 of 3"
+    },
+    "deadlineLabel": "Deadline (optional)",
+    "cancel": "Cancel",
+    "close": "Close",
+    "approve": "Approve",
+    "reject": "Reject",
+    "requestChanges": "Request changes",
+    "voteRecorded": "Vote recorded.",
+    "voteFailed": "Vote failed",
+    "ratifiedToast": "Decision ratified.",
+    "rejectedToast": "Decision rejected.",
+    "votesSoFar": "Votes ({{cast}} of {{required}})",
+    "commentPlaceholder": "Optional comment with your vote",
+    "youAre": "Voting as @{{user}}"
+  },
+  "comments": {
+    "sidebarTitle": "Comments ({{count}})",
+    "newOnParagraph": "New thread on paragraph {{n}}",
+    "anchorParagraph": "Paragraph {{n}}",
+    "placeholder": "Add a comment. Use @ to mention a teammate.",
+    "mentionHint": "Use @ to mention",
+    "post": "Post",
+    "posting": "Posting...",
+    "reply": "Reply",
+    "cancelReply": "Cancel",
+    "resolve": "Resolve",
+    "unresolve": "Reopen",
+    "archive": "Archive",
+    "loading": "Loading comments...",
+    "empty": "No comments yet. Click a paragraph to start a thread.",
+    "close": "Close",
+    "youSuffix": "(you)",
+    "resolvedToggle": "{{count}} resolved"
+  },
   "marketplace": {
     "title": "Marketplace",
     "subtitle": "Vertical templates published by the community + self-shipped reference packs. One-click install merges team brain prompts, source configs, canvas templates, and suggestion rules into your team memory.",
@@ -375,6 +452,7 @@
       "general": "General",
       "aiTools": "AI tools",
       "sources": "Sources",
+      "privacy": "Privacy",
       "agi": "Brain",
       "team": "Team",
       "adapters": "Adapters",
@@ -591,7 +669,41 @@
     "resolve": "Resolve",
     "dismiss": "Dismiss",
     "due": "due",
-    "back": "/today"
+    "back": "/today",
+    "aiExtracted": {
+      "badge": "AI-extracted mention",
+      "headerAsk": "{{author}} asked {{vendor}}: \"{{snippet}}\"",
+      "headerTell": "{{author}} noted in {{vendor}}: \"{{snippet}}\"",
+      "headerReview": "{{author}} flagged you in {{vendor}} to review",
+      "headerTodo": "{{author}} has a TODO for you in {{vendor}}",
+      "headerMention": "{{author}} mentioned you in {{vendor}}",
+      "openAtom": "Open atom",
+      "replyInChat": "Reply in chat",
+      "lowConfidence": "AI-detected, may be imprecise",
+      "vendorCursor": "Cursor",
+      "vendorClaudeCode": "Claude Code"
+    },
+    "titleCollab": "Activity for you",
+    "subtitle": "Mentions, review requests, and replies your teammates sent your way.",
+    "tabMentions": "Mentions",
+    "tabReviews": "Review requests",
+    "tabReplies": "Comment replies",
+    "unreadOnly": "Unread only",
+    "showArchived": "Show archived",
+    "hideArchived": "Hide archived",
+    "markAllRead": "Mark all read",
+    "markRead": "Mark read",
+    "open": "Open",
+    "archive": "Archive",
+    "unreadDotLabel": "unread",
+    "emptyTabTitle": "Nothing here yet.",
+    "emptyTabBody": "When a teammate @mentions you, asks for a review, or replies to a thread you're in, it shows up here.",
+    "relative": {
+      "justNow": "just now",
+      "minutes": "{{count}}m ago",
+      "hours": "{{count}}h ago",
+      "days": "{{count}}d ago"
+    }
   },
   "alignment": {
     "kicker": "Alignment",
@@ -787,7 +899,14 @@
     "succeeded": "Done",
     "executing": "Running…",
     "pending": "Next step",
-    "failed": "Failed"
+    "failed": "Failed",
+    "scopePrompt": "Hi! Are you setting up just for yourself, or for a team?",
+    "scopeSoloButton": "Just for me",
+    "scopeTeamButton": "For a team",
+    "scopeSoloPick": "Just for me.",
+    "scopeTeamPick": "For a team.",
+    "scopeSoloAck": "Got it — solo setup. Tell me your primary AI tool (Cursor / Claude Code / Codex / Windsurf / Ollama). I'll skip the team-roster step.",
+    "scopeTeamAck": "Got it — team setup. Tell me your primary AI tool and a GitHub repo for the shared memory dir. E.g. \"primary=Claude Code, repo=github.com/me/team-private\"."
   },
   "welcome": {
     "kicker": "Welcome to Tangerine",
@@ -808,6 +927,11 @@
     "card4": {
       "title": "10 AI tools aligned",
       "body": "The sidebar shows which tools we've wired in and which one is your starred ⭐ primary. Add more in seconds."
+    },
+    "card5": {
+      "title": "Your data, your machines.",
+      "body": "Tangerine reads your AI tools' local files + your team's git repo. Tokens stored in your OS keychain. 0 KB sent to Tangerine ever unless you opt into Cloud sync.",
+      "cta": "See what stays local"
     },
     "cta": "Get started in 30 seconds",
     "skip": "Skip tour",
@@ -974,5 +1098,80 @@
     "empty": "No templates installed.",
     "appliedToast": "Applied template: {{label}}",
     "applyFailedToast": "Template apply failed: {{msg}}"
+  },
+  "privacy": {
+    "title": "Privacy",
+    "subtitle": "Tangerine runs 100% on your machines by default. Receipts below.",
+    "loading": "Loading privacy overview…",
+    "diagramTitle": "Data flow",
+    "localTitle": "What stays on your machine",
+    "egressTitle": "What may leave your machine",
+    "sourcesTitle": "Source tokens (in OS keychain)",
+    "sourceConfigured": "configured",
+    "sourceNotConfigured": "not configured",
+    "telemetryToggle": "Send anonymized usage telemetry",
+    "telemetryHint": "Default ON. Helps us see which features get used. No content, no identifiers.",
+    "savedAt": "Saved",
+    "verifyBtn": "Verify local-execution",
+    "verifyLoading": "Auditing…",
+    "verifyZero": "0 calls to Tangerine servers in last hour",
+    "verifyNonZero": "calls to Tangerine servers in last hour",
+    "local": {
+      "memory_dir": "Memory dir (~/.tangerine-memory/)",
+      "git_remote_user_owned": "Git repo (your GitHub/Gitea — not Tangerine)",
+      "whisper_transcription": "Whisper transcription (faster-whisper bundled, runs CPU local)",
+      "mcp_sampling": "MCP sampling (uses your editor's LLM, not ours)",
+      "discord_bot_subprocess": "Discord bot subprocess (Node.js on your machine)",
+      "source_tokens_keychain": "Source tokens (OS keychain encrypted)",
+      "ai_tool_conversations": "AI tool conversation files (read locally, never uploaded)"
+    },
+    "egress": {
+      "git_push_user_remote": "Git push to your specified remote (your data → your server)",
+      "telemetry_anonymized": "Anonymized telemetry (opt-out via toggle)",
+      "auto_updater_check": "Auto-updater check (version comparison only, no data)",
+      "cloud_sync_optional": "If Cloud opted in: encrypted brain sync to Tangerine servers"
+    }
+  },
+  "sources": {
+    "lark": {
+      "title": "Lark / Feishu",
+      "subtitle": "CN priority. Pulls messages from team chats you're in.",
+      "appIdLabel": "App ID (cli_…)",
+      "appSecretLabel": "App secret",
+      "accountLabel": "Account alias",
+      "connectBtn": "Connect Lark",
+      "connectedStatus": "Connected"
+    },
+    "zoom": {
+      "title": "Zoom",
+      "subtitle": "Transcripts from your cloud recordings.",
+      "oauthBtn": "Connect Zoom",
+      "connectedStatus": "Connected",
+      "scopesHint": "Requests recording:read + meeting:read."
+    },
+    "teams": {
+      "title": "Microsoft Teams",
+      "subtitle": "Channel + chat messages from teams you belong to.",
+      "oauthBtn": "Connect Teams",
+      "scopesHint": "Requests Chat.Read + OnlineMeetings.Read.All.",
+      "connectedStatus": "Connected"
+    },
+    "slack": {
+      "title": "Slack",
+      "subtitle": "Messages from channels you're in.",
+      "tokenLabel": "Bot token (xoxb-…)",
+      "appTokenLabel": "App token (xapp-…) — optional, for socket mode",
+      "workspaceLabel": "Workspace alias",
+      "connectBtn": "Connect Slack",
+      "connectedStatus": "Connected"
+    },
+    "github": {
+      "title": "GitHub",
+      "subtitle": "PRs reviewed/created, issues commented, mentions.",
+      "patLabel": "Personal access token (ghp_…)",
+      "loginLabel": "GitHub username",
+      "connectBtn": "Connect GitHub",
+      "connectedStatus": "Connected"
+    }
   }
 }

@@ -184,6 +184,17 @@ pub mod active_agents;
 pub mod review;
 // === end v2.5 review ===
 
+// === wave 1.13-B ===
+// L4/L5 — Frontmatter-native review workflow + inline comment threads.
+// Sits beside the v2.5 sidecar review surface above; the new layer is
+// what the /reviews tabs + MemoryPreview comment sidebar call. Coordinates
+// with Wave 1.13-A's `inbox_emit` for review_request + comment-mention
+// notifications via the `commands::inbox` stub (1.13-A flips that stub to
+// its real impl when it lands). Engine in `crate::agi::review_workflow`.
+pub mod inbox;
+pub mod comments;
+// === end wave 1.13-B ===
+
 // === v2.5 auth + billing ===
 // v2.5 §2 + §3 — Tauri command surface for real Supabase auth + Stripe
 // Connect billing. Both modules thin-wrap `crate::auth` + `crate::billing`
@@ -296,6 +307,47 @@ pub mod onboarding_chat;
 // for the full module doc.
 pub mod daily_notes;
 // === end wave 24 ===
+
+// === wave 1.13-E ===
+// v1.13 Agent E — OS-keychain-backed source token store + privacy panel
+// support. Distinct from `commands::env` (the .env-file allow-list) and
+// from `commands::sync::TokenStore` (the GitHub-specific keychain). This
+// module is the generic surface for OAuth tokens belonging to the
+// v1.13-E human-comm sources (Lark / Zoom / Teams / Slack / GitHub).
+// Tokens are namespaced under `tangerine.source.<source>.<account>` and
+// never leave the OS keychain — the Privacy panel renders presence-only.
+pub mod secret_store;
+pub mod privacy;
+// === end wave 1.13-E ===
+
+// === wave 1.13-D ===
+// v1.13 — git-mediated team presence. Two commands wrap
+// `crate::agi::presence`: `presence_emit` (writes the local user's
+// presence file every 10 s; called from the React `PresenceProvider`)
+// and `presence_list_active` (returns teammates fresher than a TTL;
+// drives the avatar dots + top-bar pill + atom-preview indicator).
+pub mod presence;
+// === end wave 1.13-D ===
+
+// === wave 1.13-A ===
+// Wave 1.13-A — Identity + canonical Inbox store for the collab MVP.
+//   * `identity` surfaces the current user (alias + optional display name +
+//     email + avatar URL) and the team roster (derived from
+//     `<memory_dir>/personal/*` subdirectories — each subdir name == one
+//     teammate's alias).
+//   * `inbox_store` is the canonical append-only JSONL the @mention parser
+//     fires into; the new /inbox React route consumes it via
+//     `inbox_list` / `inbox_emit` / `inbox_mark_read` / `inbox_archive` /
+//     `inbox_mark_all_read`.
+//
+// Coexists deliberately with the Wave 1.13-B placeholder at
+// `commands::inbox` (different schema + dated-shard storage; left untouched
+// per the agent-A-doesn't-touch-other-wave's-files rule) and the Wave 1.13-C
+// top-level `crate::inbox` AI-extraction stub (different again — that one is
+// an in-process queue feeding 1.13-A's bus once it lands).
+pub mod identity;
+pub mod inbox_store;
+// === end wave 1.13-A ===
 
 mod error;
 mod paths;
@@ -570,6 +622,21 @@ macro_rules! tmi_invoke_handler {
             $crate::commands::review::review_list_open,
             $crate::commands::review::review_promote,
             // === end v2.5 review ===
+            // === wave 1.13-B ===
+            // L4 review workflow (frontmatter-native).
+            $crate::commands::review::review_propose,
+            $crate::commands::review::review_vote,
+            $crate::commands::review::review_workflow_status,
+            $crate::commands::review::review_list_pending,
+            $crate::commands::review::review_list_proposed_by,
+            $crate::commands::review::review_list_by_status,
+            // L5 inline comment threads.
+            $crate::commands::comments::comments_list,
+            $crate::commands::comments::comments_create,
+            $crate::commands::comments::comments_resolve,
+            $crate::commands::comments::comments_unresolve,
+            $crate::commands::comments::comments_archive,
+            // === end wave 1.13-B ===
             // === v2.5 cloud_sync ===
             $crate::cloud_sync::cloud_sync_get_config,
             $crate::cloud_sync::cloud_sync_set_config,
@@ -705,6 +772,44 @@ macro_rules! tmi_invoke_handler {
             $crate::commands::daily_notes::templates_list,
             $crate::commands::daily_notes::templates_apply,
             // === end wave 24 ===
+            // === wave 1.13-D ===
+            // v1.13 — team presence (Path B git-mediated).
+            $crate::commands::presence::presence_emit,
+            $crate::commands::presence::presence_list_active,
+            // === end wave 1.13-D ===
+            // === wave 1.13-A ===
+            // Identity layer: current user + team roster + persisted profile.
+            $crate::commands::identity::identity_get_current_user,
+            $crate::commands::identity::identity_team_roster,
+            $crate::commands::identity::identity_set_profile,
+            // Inbox event store: list / emit / mark-read / archive / mark-all-read.
+            // The @mention parser fires `inbox_emit` once per mentioned user
+            // when an atom is submitted. The /inbox React route consumes
+            // `inbox_list`. The AppShell listener subscribes to the
+            // `inbox:event_created` Tauri event for live toast + system
+            // notifications.
+            $crate::commands::inbox_store::inbox_list,
+            $crate::commands::inbox_store::inbox_emit,
+            $crate::commands::inbox_store::inbox_mark_read,
+            $crate::commands::inbox_store::inbox_archive,
+            $crate::commands::inbox_store::inbox_mark_all_read,
+            // === end wave 1.13-A ===
+            // === wave 1.13-E ===
+            // OS-keychain-backed source token store. The set/get/delete trio
+            // is what the chat-driven onboarding (`onboarding_chat`) hands
+            // off to when the user pastes Lark / Zoom / Teams / Slack /
+            // GitHub credentials inline. Privacy panel reads presence-only
+            // (never the token value) via secret_store_get_oauth.
+            $crate::commands::secret_store::secret_store_set_oauth,
+            $crate::commands::secret_store::secret_store_get_oauth,
+            $crate::commands::secret_store::secret_store_delete_oauth,
+            // Privacy panel data: enumerate the 5 v1.13-E sources, return
+            // their token presence + a snapshot of "what's local vs what
+            // leaves the machine" for the React-side diagram.
+            $crate::commands::privacy::privacy_get_overview,
+            $crate::commands::privacy::privacy_set_telemetry_opt_out,
+            $crate::commands::privacy::privacy_verify_local_execution,
+            // === end wave 1.13-E ===
         ]
     };
 }

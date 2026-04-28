@@ -34,6 +34,14 @@ import { CoachmarkProvider } from "@/components/coachmark/CoachmarkProvider";
 import { FirstRunTour } from "@/components/coachmark/FirstRunTour";
 import { TryThisFAB } from "@/components/coachmark/TryThisFAB";
 // === end wave 22 ===
+// === wave 1.13-D ===
+// v1.13 — team presence layer. Provider wraps the AppShell so every
+// route shares one heartbeat + reader pair (no duplicate intervals
+// across route mounts). The TeammatesPill renders in the system-banner
+// strip when ≥ 1 teammate is active.
+import { PresenceProvider } from "@/components/presence/PresenceProvider";
+import { TeammatesPill } from "@/components/presence/TeammatesPill";
+// === end wave 1.13-D ===
 // === wave 25 === — auto-update banner. Sits in top-right notification slot,
 // fires once on mount after WelcomeOverlay closes. Self-suppresses if the
 // updater bridge isn't available (browser dev / vitest), if the running
@@ -116,6 +124,17 @@ import { logEvent } from "@/lib/telemetry";
 // `pushSuggestion(...)` so the bus can apply the disciplines + tier
 // selection across all 7 P2 templates uniformly.
 import { pushSuggestion } from "@/lib/suggestion-bus";
+// === wave 1.13-A ===
+// Wave 1.13-A — collab inbox event listener. Subscribes to the
+// `inbox:event_created` Tauri event emitted by `commands::inbox_store::
+// inbox_emit` and pushes a toast + system notification when the event
+// targets the current user. Identity hook resolves the alias once on mount.
+import {
+  identityGetCurrentUser,
+  type InboxEvent as CollabInboxEvent,
+} from "@/lib/identity";
+import { systemNotify } from "@/lib/tauri";
+// === end wave 1.13-A ===
 
 /** Custom DOM event name dispatched after a successful sample-seed so the
  *  sidebar tree + /today timeline can refresh in-place without a route nav. */
@@ -675,6 +694,84 @@ export function AppShell() {
   ]);
   // === end wave 11 ===
 
+  // === wave 1.13-A ===
+  // Wave 1.13-A — collab inbox listener.
+  //
+  // Subscribes to the `inbox:event_created` Tauri event emitted by
+  // `commands::inbox_store::inbox_emit`. When the event's `targetUser`
+  // matches the current user, push:
+  //   1. An in-app toast (uses the existing wave-1.9 toast layer).
+  //   2. A system notification via `system_notify` (best-effort; degrades
+  //      to a no-op when the OS plugin isn't wired).
+  //
+  // Source-user events are dropped silently — you don't need a
+  // notification when YOU mention yourself.
+  const pushToast = useStore((s) => s.ui.pushToast);
+  useEffect(() => {
+    let unlistenFn: (() => void) | null = null;
+    let cancelled = false;
+    let myAlias: string | null = null;
+    void (async () => {
+      try {
+        // Resolve the current user once. Falls back to the mock alias
+        // ("you") outside Tauri so the no-op listener path still runs.
+        try {
+          const me = await identityGetCurrentUser();
+          if (cancelled) return;
+          myAlias = me.alias;
+        } catch {
+          /* identity is best-effort */
+        }
+        const { listen } = await import("@tauri-apps/api/event");
+        if (cancelled) return;
+        unlistenFn = await listen<CollabInboxEvent>(
+          "inbox:event_created",
+          (e) => {
+            const ev = e.payload;
+            // Drop self-mentions + events that aren't for me.
+            if (myAlias && ev.targetUser !== myAlias) return;
+            if (myAlias && ev.sourceUser === myAlias) return;
+            const verb =
+              ev.kind === "mention"
+                ? "mentioned you"
+                : ev.kind === "review_request"
+                  ? "requested your review"
+                  : ev.kind === "comment_reply"
+                    ? "replied to your comment"
+                    : "sent you something";
+            const title = `@${ev.sourceUser} ${verb}`;
+            const snippet =
+              (ev.payload?.snippet as string | undefined) ??
+              (ev.payload?.atom_title as string | undefined) ??
+              ev.sourceAtom ??
+              "";
+            pushToast({
+              kind: "info",
+              msg: snippet ? `${title}: ${snippet}` : title,
+              ctaLabel: "Open inbox",
+              ctaHref: "/inbox",
+              durationMs: 6000,
+            });
+            // System notification — best-effort. The Tauri-side handler is
+            // a no-op stub today (see commands::external::system_notify),
+            // so this keeps working when OS notifications are wired in
+            // later without requiring a code change here.
+            void systemNotify(title, snippet || "Open Tangerine to view.");
+          },
+        );
+      } catch {
+        // Browser dev / vitest where `@tauri-apps/api/event` isn't
+        // available — silently no-op so the React layer still mounts.
+      }
+    })();
+    return () => {
+      cancelled = true;
+      if (unlistenFn) unlistenFn();
+    };
+    // pushToast is a stable zustand setter so effect runs once.
+  }, [pushToast]);
+  // === end wave 1.13-A ===
+
   return (
     // v1.8 Phase 4 — the AmbientInputObserver wraps the whole shell so a
     // single delegated input listener sees every textarea / contenteditable
@@ -686,6 +783,12 @@ export function AppShell() {
     // tracks one active step at a time and is a no-op until something calls
     // `showStep`.
     <CoachmarkProvider>
+    {/* === wave 1.13-D === — Team presence wraps inside CoachmarkProvider so
+        the pill + sidebar dots can call useCoachmark in future iterations.
+        Provider must mount inside <BrowserRouter> (which AppShell already
+        sits under) because the heartbeat reads `useLocation()`. */}
+    <PresenceProvider>
+    {/* === end wave 1.13-D === */}
     <AmbientInputObserver>
       <div className="flex h-full w-full bg-stone-50 text-stone-900 dark:bg-stone-950 dark:text-stone-100">
         <Sidebar />
@@ -739,6 +842,13 @@ export function AppShell() {
               (its own `null` return collapses height to 0). */}
           <HomeStrip />
           {/* === end v2.0-beta.3 co-thinker home strip === */}
+          {/* === wave 1.13-D === — TeammatesPill sits flush-right in the
+              same row as the HomeStrip-adjacent strip. Self-hides when 0
+              teammates active so a solo session looks unchanged. */}
+          <div className="flex justify-end px-3 py-1">
+            <TeammatesPill />
+          </div>
+          {/* === end wave 1.13-D === */}
           {localOnly && (
             <div className="ti-no-select flex h-7 items-center justify-center border-b border-[var(--ti-orange-500)]/30 bg-[var(--ti-orange-50)] px-4 text-[11px] font-medium text-[var(--ti-orange-700)] dark:border-[var(--ti-orange-500)]/30 dark:bg-stone-900 dark:text-[var(--ti-orange-500)]">
               Local memory only — sign in to sync your memory dir across machines.
@@ -914,6 +1024,9 @@ export function AppShell() {
         {/* === end wave 22 === */}
       </div>
     </AmbientInputObserver>
+    {/* === wave 1.13-D === */}
+    </PresenceProvider>
+    {/* === end wave 1.13-D === */}
     </CoachmarkProvider>
   );
 }
