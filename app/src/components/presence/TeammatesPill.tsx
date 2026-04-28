@@ -73,6 +73,23 @@ export function TeammatesPill() {
                     {p.current_route}
                     {p.action_type ? ` · ${p.action_type}` : ""}
                   </Link>
+                  {/* === v1.13.4 round-4 ===
+                      Render active_atom when set so the watcher sees not
+                      just "Hongyu — /memory" but "reading
+                      team/decisions/pricing.md". Wave 1.13-D shipped this
+                      field across the entire wire (presence_emit →
+                      .tangerine/presence/{user}.json → presence_list_active
+                      → PresenceInfo) but no consumer ever rendered it. */}
+                  {p.active_atom && (
+                    <Link
+                      to={`/memory/${p.active_atom}`}
+                      data-testid={`presence-pill-row-${p.user}-atom`}
+                      className="truncate font-mono text-[10px] text-[var(--ti-orange-700)] hover:underline dark:text-[var(--ti-orange-500)]"
+                    >
+                      {p.active_atom}
+                    </Link>
+                  )}
+                  {/* === end v1.13.4 round-4 === */}
                 </div>
               </li>
             ))}

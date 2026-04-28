@@ -39,11 +39,11 @@ export function extractMentions(markdown: string): string[] {
   return out;
 }
 
-/**
- * Test helper — strip a leading `@` from a string. Useful for the
- * autocomplete dropdown that wants the bare alias.
- */
-export function stripAt(token: string): string {
-  return token.startsWith("@") ? token.slice(1) : token;
-}
+// === v1.13.4 round-4 ===
+// Removed `stripAt` — shipped as a "test helper" but had zero callers
+// (production OR test). The autocomplete dropdown in MentionInput stores
+// aliases without the leading @ so it never needed the helper. One-line
+// dead helper not worth keeping for hypothetical future use; trivially
+// re-implementable inline if anyone needs it.
+// === end v1.13.4 round-4 ===
 // === end wave 1.13-A ===

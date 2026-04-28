@@ -111,6 +111,15 @@ export async function identityTeamRoster(): Promise<TeamMember[]> {
   );
 }
 
+// === v1.13.4 round-4 ===
+// kept for: Settings → Profile editor (display_name / avatar picker).
+// Backend command + persistence layer are wired (Rust side at
+// commands::identity::identity_set_profile + personal/<alias>/profile.json),
+// just no UI consumer yet. The Wave 1.13-A inbox toast already greets
+// teammates by displayName, so as soon as the Settings profile editor
+// lands this becomes the natural setter. Delete only after one full
+// release with no settings UI added.
+// === end v1.13.4 round-4 ===
 export async function identitySetProfile(args: {
   displayName?: string;
   email?: string;
@@ -138,6 +147,15 @@ export async function inboxList(args?: {
   );
 }
 
+// === v1.13.4 round-4 ===
+// kept for: frontend-driven inbox events from CommandPalette, /people
+// page ("notify @alice this matters"), and dev/QA fixture seeders.
+// Today every emit comes from Rust (mention parser, review_request,
+// comment_reply) — that's intentional, the source-of-truth is the file
+// write. But the wrapper keeps the door open for UI-initiated nudges
+// without a Rust round-trip. Delete only if we lock in a "Rust-only
+// emit" architectural rule.
+// === end v1.13.4 round-4 ===
 export async function inboxEmit(args: {
   kind: string;
   targetUser: string;

@@ -49,6 +49,14 @@ import {
 } from "@/lib/identity";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { EmptyState } from "@/components/EmptyState";
+// === v1.13.4 round-4 ===
+// Wire usePresence().emitNow so clicking "Open" on an inbox event fires
+// an immediate route-change beat carrying the source atom. Wave 1.13-D
+// exposed emitNow but had zero callers — without this the watching
+// teammate has to wait up to 10s for the next cadence beat to see "X
+// jumped to atom Y from inbox". Cheap responsiveness win.
+import { usePresence } from "@/components/presence/PresenceProvider";
+// === end v1.13.4 round-4 ===
 // === v1.13.2 round-2 ===
 // Wire the Wave 1.13-C AIExtractedMentionCard into the inbox renderer so
 // `kind === "ai_extracted_mention"` events get the distinct 🍊 badge +
@@ -114,6 +122,9 @@ export default function InboxRoute() {
   const [showArchived, setShowArchived] = useState(false);
   const filter = showArchived ? "archived" : unreadOnly ? "unread" : "all";
   const inbox = useInbox(filter);
+  // === v1.13.4 round-4 === — see import block.
+  const { emitNow } = usePresence();
+  // === end v1.13.4 round-4 ===
 
   const eventsByKind = useMemo(() => {
     const buckets: Record<Tab, InboxEvent[]> = {
@@ -356,6 +367,12 @@ export default function InboxRoute() {
                     event={event as unknown as AIExtractedMentionEvent}
                     onOpenAtom={(atom) => {
                       void inbox.markRead(event.id);
+                      // === v1.13.4 round-4 ===
+                      // Fire an immediate presence beat carrying the atom
+                      // path so a watching teammate sees "X jumped from
+                      // inbox to atom Y" without waiting on the cadence.
+                      emitNow({ activeAtom: atom, actionType: "inbox_open_atom" });
+                      // === end v1.13.4 round-4 ===
                       navigate(`/memory/${atom}`);
                     }}
                     onReplyInChat={() => {
@@ -364,6 +381,12 @@ export default function InboxRoute() {
                       // available as context. Future polish can pre-fill the
                       // chat input; for now we just navigate the user there.
                       if (event.sourceAtom) {
+                        // === v1.13.4 round-4 ===
+                        emitNow({
+                          activeAtom: event.sourceAtom,
+                          actionType: "inbox_reply_in_chat",
+                        });
+                        // === end v1.13.4 round-4 ===
                         navigate(`/memory/${event.sourceAtom}`);
                       }
                     }}
@@ -384,6 +407,12 @@ export default function InboxRoute() {
                     // direct file deep-link works.
                     void inbox.markRead(event.id);
                     if (event.sourceAtom) {
+                      // === v1.13.4 round-4 ===
+                      emitNow({
+                        activeAtom: event.sourceAtom,
+                        actionType: "inbox_open",
+                      });
+                      // === end v1.13.4 round-4 ===
                       navigate(`/memory/${event.sourceAtom}`);
                     }
                   }}

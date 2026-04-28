@@ -117,6 +117,8 @@
     "withSourceCta": "你的 AI 看到 {{meetings}} 个会议 · {{decisions}} 项决策 · {{people}} 位成员 · Slack / Linear / Notion 覆盖率 0%(v1.6+ 上线)。",
     "emptyTitle": "记忆树为空。",
     "emptyBody": "接入一个 Source,Tangerine 就会开始把会议、决策、话题记录写到这里。在那之前,这里有意保持安静。",
+    "_v1_13_4_round_4_newDecision": "v1.13.4 round-4 — 主按钮 aria-label 之前只有英文",
+    "newDecision": "新建决策",
     "graph": {
       "toggleTree": "树形",
       "toggleGraph": "图谱",
@@ -470,6 +472,10 @@
       "defaultTimezone": "默认时区",
       "tzHint": "按项目默认锁定 Asia/Shanghai。如有需求,T6 会加一个选择器。"
     },
+    "_v1_13_4_round_4_settingsSources": "v1.13.4 round-4 — 设置/Sources 计数标签之前只有英文",
+    "sources": {
+      "connectorsLabel": "个连接器"
+    },
     "language": {
       "label": "语言",
       "subtitle": "界面语言。记忆内容不会被翻译。",
@@ -699,6 +705,9 @@
     "unreadDotLabel": "未读",
     "emptyTabTitle": "暂无内容。",
     "emptyTabBody": "当队友 @ 你、请你审阅、或者回复你参与的话题时,会出现在这里。",
+    "_v1_13_4_round_4_emptyCta": "v1.13.4 round-4 — 收件箱空状态按钮原本只有英文",
+    "emptyCta": "打开大脑",
+    "emptyCtaSecondary": "回到今天",
     "relative": {
       "justNow": "刚刚",
       "minutes": "{{count}} 分钟前",
@@ -1131,48 +1140,6 @@
       "telemetry_anonymized": "匿名遥测(可通过开关关闭)",
       "auto_updater_check": "自动更新检查(只比较版本号,不传数据)",
       "cloud_sync_optional": "如果开启 Cloud:加密大脑同步到 Tangerine 服务器"
-    }
-  },
-  "sources": {
-    "lark": {
-      "title": "飞书 / Lark",
-      "subtitle": "中国优先。拉取你所在团队群聊的消息。",
-      "appIdLabel": "App ID(cli_…)",
-      "appSecretLabel": "App secret",
-      "accountLabel": "账号别名",
-      "connectBtn": "连接飞书",
-      "connectedStatus": "已连接"
-    },
-    "zoom": {
-      "title": "Zoom",
-      "subtitle": "你云端录制会议的转录。",
-      "oauthBtn": "连接 Zoom",
-      "connectedStatus": "已连接",
-      "scopesHint": "请求 recording:read + meeting:read 权限。"
-    },
-    "teams": {
-      "title": "Microsoft Teams",
-      "subtitle": "你所在团队的频道 + 聊天消息。",
-      "oauthBtn": "连接 Teams",
-      "scopesHint": "请求 Chat.Read + OnlineMeetings.Read.All 权限。",
-      "connectedStatus": "已连接"
-    },
-    "slack": {
-      "title": "Slack",
-      "subtitle": "你所在频道的消息。",
-      "tokenLabel": "Bot token(xoxb-…)",
-      "appTokenLabel": "App token(xapp-…)— 可选,socket mode 用",
-      "workspaceLabel": "工作区别名",
-      "connectBtn": "连接 Slack",
-      "connectedStatus": "已连接"
-    },
-    "github": {
-      "title": "GitHub",
-      "subtitle": "你 review/创建的 PR、评论的 issue、被 @ 的位置。",
-      "patLabel": "Personal access token(ghp_…)",
-      "loginLabel": "GitHub 用户名",
-      "connectBtn": "连接 GitHub",
-      "connectedStatus": "已连接"
     }
   }
 }

@@ -37,6 +37,15 @@ import { vendorColor } from "@/lib/vendor-colors";
 import { CommentSidebar } from "@/components/comments/CommentSidebar";
 import { ProposeForReviewButton } from "@/components/review/ProposeForReviewButton";
 // === end wave 1.13-B ===
+// === v1.13.4 round-4 ===
+// PresenceProvider exposes setActiveAtom but Wave 1.13-D shipped it with
+// zero callers — the wire shape carried `active_atom` end-to-end but no
+// surface ever set it. Wire it here so when a teammate opens an atom,
+// their next heartbeat carries the atom path. The TeammatesPill renders
+// it in the popover so the rest of the team sees "Hongyu — /memory ·
+// reading team/decisions/pricing.md" instead of just the bare route.
+import { usePresence } from "@/components/presence/PresenceProvider";
+// === end v1.13.4 round-4 ===
 
 interface Props {
   /** Selected file path (rel to memory root). null → empty state. */
@@ -54,6 +63,12 @@ export function MemoryPreview({ relPath }: Props) {
   const [commentSidebarOpen, setCommentSidebarOpen] = useState(false);
   const [activeParagraph, setActiveParagraph] = useState<number | undefined>(undefined);
   // === end wave 1.13-B ===
+  // === v1.13.4 round-4 ===
+  // Pull setActiveAtom + emitNow from PresenceProvider. The hook is safe
+  // outside the provider — defaults to no-op so unit tests that mount
+  // MemoryPreview standalone don't blow up.
+  const { setActiveAtom, emitNow } = usePresence();
+  // === end v1.13.4 round-4 ===
 
   useEffect(() => {
     let cancel = false;
@@ -80,6 +95,24 @@ export function MemoryPreview({ relPath }: Props) {
       cancel = true;
     };
   }, [memoryRoot, relPath]);
+
+  // === v1.13.4 round-4 ===
+  // Emit a presence beat carrying the active atom path the moment the
+  // user opens it, plus clear it on unmount/swap. The 10s heartbeat would
+  // eventually catch up but firing immediately makes "X is reading Y"
+  // feel instant for the watching teammate. Fire-and-forget via emitNow.
+  useEffect(() => {
+    if (!relPath) {
+      setActiveAtom(null);
+      return;
+    }
+    setActiveAtom(relPath);
+    emitNow({ activeAtom: relPath, actionType: "atom_open" });
+    return () => {
+      setActiveAtom(null);
+    };
+  }, [relPath, setActiveAtom, emitNow]);
+  // === end v1.13.4 round-4 ===
 
   // === wave 1.13-B ===
   // Set of paragraph indices that have at least one un-resolved comment

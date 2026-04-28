@@ -117,6 +117,8 @@
     "withSourceCta": "Your AI sees {{meetings}} meetings · {{decisions}} decisions · {{people}} people · 0% of Slack / Linear / Notion (Sources land v1.6+).",
     "emptyTitle": "Memory tree is empty.",
     "emptyBody": "Connect a source and Tangerine will start writing meeting / decision / thread notes here. Until then this view is intentionally quiet.",
+    "_v1_13_4_round_4_newDecision": "v1.13.4 round-4 — primary CTA aria-label was English-only",
+    "newDecision": "New decision",
     "graph": {
       "toggleTree": "Tree",
       "toggleGraph": "Graph",
@@ -470,6 +472,10 @@
       "defaultTimezone": "Default timezone",
       "tzHint": "Locked to Asia/Shanghai per project default. T6 will surface a picker if anyone asks."
     },
+    "_v1_13_4_round_4_settingsSources": "v1.13.4 round-4 — settings/sources count label was English-only via defaultValue",
+    "sources": {
+      "connectorsLabel": "connectors"
+    },
     "language": {
       "label": "Language",
       "subtitle": "UI language. Memory content is never translated.",
@@ -699,6 +705,9 @@
     "unreadDotLabel": "unread",
     "emptyTabTitle": "Nothing here yet.",
     "emptyTabBody": "When a teammate @mentions you, asks for a review, or replies to a thread you're in, it shows up here.",
+    "_v1_13_4_round_4_emptyCta": "v1.13.4 round-4 — empty-state CTAs were rendering English defaultValue in ZH",
+    "emptyCta": "Open Brain",
+    "emptyCtaSecondary": "Back to Today",
     "relative": {
       "justNow": "just now",
       "minutes": "{{count}}m ago",
@@ -1131,48 +1140,6 @@
       "telemetry_anonymized": "Anonymized telemetry (opt-out via toggle)",
       "auto_updater_check": "Auto-updater check (version comparison only, no data)",
       "cloud_sync_optional": "If Cloud opted in: encrypted brain sync to Tangerine servers"
-    }
-  },
-  "sources": {
-    "lark": {
-      "title": "Lark / Feishu",
-      "subtitle": "CN priority. Pulls messages from team chats you're in.",
-      "appIdLabel": "App ID (cli_…)",
-      "appSecretLabel": "App secret",
-      "accountLabel": "Account alias",
-      "connectBtn": "Connect Lark",
-      "connectedStatus": "Connected"
-    },
-    "zoom": {
-      "title": "Zoom",
-      "subtitle": "Transcripts from your cloud recordings.",
-      "oauthBtn": "Connect Zoom",
-      "connectedStatus": "Connected",
-      "scopesHint": "Requests recording:read + meeting:read."
-    },
-    "teams": {
-      "title": "Microsoft Teams",
-      "subtitle": "Channel + chat messages from teams you belong to.",
-      "oauthBtn": "Connect Teams",
-      "scopesHint": "Requests Chat.Read + OnlineMeetings.Read.All.",
-      "connectedStatus": "Connected"
-    },
-    "slack": {
-      "title": "Slack",
-      "subtitle": "Messages from channels you're in.",
-      "tokenLabel": "Bot token (xoxb-…)",
-      "appTokenLabel": "App token (xapp-…) — optional, for socket mode",
-      "workspaceLabel": "Workspace alias",
-      "connectBtn": "Connect Slack",
-      "connectedStatus": "Connected"
-    },
-    "github": {
-      "title": "GitHub",
-      "subtitle": "PRs reviewed/created, issues commented, mentions.",
-      "patLabel": "Personal access token (ghp_…)",
-      "loginLabel": "GitHub username",
-      "connectBtn": "Connect GitHub",
-      "connectedStatus": "Connected"
     }
   }
 }
