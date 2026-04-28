@@ -50,6 +50,10 @@ import ReviewsRoute from "@/routes/reviews";
 import MarketplaceRoute from "@/routes/marketplace/index";
 import MarketplaceDetailRoute from "@/routes/marketplace/[id]";
 // === end v3.5 marketplace ===
+// === v1.14.6 round-7 === — in-app version changelog (different from
+// /what's-new which surfaces ATOMS since last view).
+import WhatsNewAppRoute from "@/routes/whats-new-app";
+// === end v1.14.6 round-7 ===
 // === v2.0-beta.1 graphs ===
 // V2_0_SPEC §2.2-§2.4 — three sibling graph surfaces sitting next to
 // /today's WorkflowGraph. Each is a thin wrapper over the matching
@@ -266,6 +270,10 @@ export default function App() {
         <Route path="marketplace" element={<MarketplaceRoute />} />
         <Route path="marketplace/:id" element={<MarketplaceDetailRoute />} />
         {/* === end v3.5 marketplace === */}
+
+        {/* === v1.14.6 round-7 === — in-app version changelog. */}
+        <Route path="whats-new-app" element={<WhatsNewAppRoute />} />
+        {/* === end v1.14.6 round-7 === */}
       </Route>
 
       <Route path="*" element={<Navigate to="/today" replace />} />

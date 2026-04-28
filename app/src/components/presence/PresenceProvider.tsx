@@ -190,17 +190,56 @@ export function PresenceProvider({
   // shrinks the perceived latency from the 10 s polling window down to
   // single-digit seconds when both sides are git-sync'd. Silent no-op
   // outside Tauri or when the daemon doesn't emit the event.
+  //
+  // === v1.14.6 round-7 === — burst debounce.
+  // R7 scaling test caught this: 4 simultaneous teammate emits produced
+  // 4 separate `refreshTeammates()` reads → 4 React commits. With N
+  // teammates this scales linearly per heartbeat tick (10-person standup
+  // = 10 reads/sec for one second). Coalesce the burst with a leading-
+  // edge fire + trailing flush. 80 ms is well under perceptible UI
+  // latency but big enough to swallow the typical fan-out window after
+  // a single git pull lands several presence files at once.
   useEffect(() => {
     if (!currentUser) return;
     let cancelled = false;
     let unlisten: UnlistenPresenceFn | null = null;
+    let leadingFired = false;
+    let trailingPending = false;
+    let trailingHandle: ReturnType<typeof setTimeout> | null = null;
+    const COALESCE_MS = 80;
+    const fire = () => {
+      if (cancelled) return;
+      void refreshTeammates();
+    };
+    const onEvent = () => {
+      if (cancelled) return;
+      if (!leadingFired) {
+        // Leading edge — fire immediately so the user sees the update fast.
+        leadingFired = true;
+        fire();
+        // Schedule the cooldown window. Any events arriving inside the
+        // window flag a single trailing flush at the end.
+        trailingHandle = setTimeout(() => {
+          if (cancelled) return;
+          if (trailingPending) {
+            trailingPending = false;
+            fire();
+          }
+          leadingFired = false;
+          trailingHandle = null;
+        }, COALESCE_MS);
+      } else {
+        // Inside the cooldown window — just mark trailing.
+        trailingPending = true;
+      }
+    };
     void (async () => {
       try {
         unlisten = await listenPresenceUpdates(() => {
           if (cancelled) return;
           // Don't apply the single payload directly — pull the freshest
           // full list so we get TTL filtering + ordering for free.
-          void refreshTeammates();
+          onEvent();
         });
       } catch {
         // Already swallowed inside the wrapper; nothing to do here.
@@ -208,6 +247,10 @@ export function PresenceProvider({
     })();
     return () => {
       cancelled = true;
+      if (trailingHandle !== null) {
+        clearTimeout(trailingHandle);
+        trailingHandle = null;
+      }
       try {
         unlisten?.();
       } catch {

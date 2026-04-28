@@ -385,6 +385,35 @@ export function AppShell() {
     };
   }, [toasts, dismissToast]);
 
+  // === v1.14.6 round-7 ===
+  // First-launch-after-upgrade toast. Compares `lastSeenAppVersion` to
+  // the bundled APP_VERSION ("1.14.6"); if they don't match (or the
+  // user has never seen the changelog) push a one-shot toast pointing
+  // at /whats-new-app. We DON'T flip lastSeenAppVersion here — the
+  // route itself stamps it forward on visit. That way a user who
+  // dismisses the toast without clicking still sees it on their next
+  // launch until they actually read the changelog. Mount-only — the
+  // lookup runs once when currentUser flips, not on every toast change.
+  const upgradeToastFiredRef = useRef(false);
+  useEffect(() => {
+    if (!currentUser) return;
+    if (upgradeToastFiredRef.current) return;
+    const ui = useStore.getState().ui;
+    if (ui.lastSeenAppVersion === "1.14.6") return;
+    upgradeToastFiredRef.current = true;
+    ui.pushToast({
+      kind: "info",
+      msg:
+        ui.lastSeenAppVersion === null
+          ? "Tangerine v1.14 is here — see what shipped"
+          : "Updated to v1.14.6 — see what's new",
+      ctaLabel: "What's new",
+      ctaHref: "/whats-new-app",
+      durationMs: 12_000,
+    });
+  }, [currentUser]);
+  // === end v1.14.6 round-7 ===
+
   // === wave 5-β ===
   // Local state for the keyboard-shortcuts overlay. Lives in component
   // state (not the store) because it's purely transient UI — opens via

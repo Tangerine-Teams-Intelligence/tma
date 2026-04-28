@@ -101,7 +101,36 @@ pub async fn presence_emit<R: Runtime>(
         started_at: now.clone(),
     };
 
-    presence::write_local_presence(&root, &info)?;
+    // === v1.14.6 round-7 ===
+    // Pre-R7 the write swallowed all errors and always returned Ok. R7
+    // tightened `write_local_presence` to propagate hard FS errors
+    // (PermissionDenied / ReadOnlyFilesystem / StorageFull) so we can
+    // tell the user their presence isn't actually being shared. Log a
+    // dedicated telemetry event so the daemon's pulse picks it up; do
+    // NOT propagate to the React render path (CEO rule: presence write
+    // failures must never cascade — the heartbeat keeps ticking and the
+    // observable surface is the telemetry log + a downstream banner).
+    if let Err(e) = presence::write_local_presence(&root, &info) {
+        tracing::error!(error = %e, user = %info.user, "presence_emit: hard FS error");
+        let event = TelemetryEvent {
+            event: "presence_update_failed".to_string(),
+            ts: now.clone(),
+            user: info.user.clone(),
+            payload: serde_json::json!({
+                "error": e.to_string(),
+                "route": info.current_route,
+            }),
+        };
+        if let Err(te) = agi_telemetry::append_event(&root, event).await {
+            tracing::warn!(error = %te, "presence_emit: failure-telemetry append failed");
+        }
+        // Best-effort emit so a UI surface can react. Soft-fail.
+        if let Err(emit_err) = app.emit("presence:write_failed", &info.user) {
+            tracing::warn!(error = ?emit_err, "presence_emit: failed-event emit failed");
+        }
+        return Ok(());
+    }
+    // === end v1.14.6 round-7 ===
 
     // Telemetry — best-effort, never propagate.
     let event = TelemetryEvent {

@@ -113,9 +113,23 @@ fn sanitize_user(user: &str) -> String {
         .to_string()
 }
 
-/// Atomically write one user's presence file. Best-effort: any I/O error
-/// is logged at WARN and swallowed so the caller (a heartbeat or the
-/// `presence_emit` Tauri command) is never blocked by a transient FS hiccup.
+/// Atomically write one user's presence file.
+///
+/// === v1.14.6 round-7 === — error-propagation tightening.
+/// Pre-R7 this swallowed *all* I/O errors and always returned `Ok(())`.
+/// R7 audit caught the silent mode masking PermissionDenied / quota /
+/// keychain-locked-mount errors so the user never knew their presence
+/// file wasn't being shared. Now:
+///   * Hard errors (`PermissionDenied`, `ReadOnlyFilesystem` and friends)
+///     propagate up through `Result<(), AppError>` so the React side
+///     can surface a one-shot toast.
+///   * Soft errors (transient `Other` / `Interrupted` / serialize fail
+///     on a single tick) still warn-log and return `Ok(())` so the
+///     heartbeat keeps ticking.
+/// `presence_emit` swallows the propagated error after telemetry so the
+/// React render path is still safe (CEO rule: presence write failures
+/// must not cascade) but the Rust observability layer finally has a
+/// signal it can act on.
 ///
 /// Defensive write strategy: write to `<file>.tmp` then rename. Avoids a
 /// reader on another machine seeing a half-written JSON blob if the git
@@ -127,8 +141,17 @@ pub fn write_local_presence(memory_root: &Path, info: &PresenceInfo) -> Result<(
             tracing::warn!(
                 dir = %parent.display(),
                 error = %e,
-                "presence: mkdir failed — skipping write"
+                "presence: mkdir failed"
             );
+            // === v1.14.6 round-7 === — propagate hard FS errors so the
+            // caller can surface them. Soft errors (Interrupted, Other)
+            // still soft-fail to keep the heartbeat resilient.
+            if is_hard_fs_error(&e) {
+                return Err(AppError::internal(
+                    "presence_write_mkdir",
+                    format!("{}: {}", parent.display(), e),
+                ));
+            }
             return Ok(());
         }
     }
@@ -156,11 +179,24 @@ pub fn write_local_presence(memory_root: &Path, info: &PresenceInfo) -> Result<(
                     error = %e,
                     "presence: open tmp failed"
                 );
+                // === v1.14.6 round-7 === — same hard-error split.
+                if is_hard_fs_error(&e) {
+                    return Err(AppError::internal(
+                        "presence_write_open",
+                        format!("{}: {}", tmp.display(), e),
+                    ));
+                }
                 return Ok(());
             }
         };
         if let Err(e) = f.write_all(json.as_bytes()) {
             tracing::warn!(error = %e, "presence: write tmp failed");
+            if is_hard_fs_error(&e) {
+                return Err(AppError::internal(
+                    "presence_write_payload",
+                    format!("{}: {}", tmp.display(), e),
+                ));
+            }
             return Ok(());
         }
     }
@@ -174,9 +210,35 @@ pub fn write_local_presence(memory_root: &Path, info: &PresenceInfo) -> Result<(
         );
         // Best-effort cleanup; ignore errors on cleanup itself.
         let _ = fs::remove_file(&tmp);
+        if is_hard_fs_error(&e) {
+            return Err(AppError::internal(
+                "presence_write_rename",
+                format!("{}->{}: {}", tmp.display(), path.display(), e),
+            ));
+        }
     }
     Ok(())
 }
+
+// === v1.14.6 round-7 ===
+/// Split FS errors into "user needs to know" vs "transient — keep ticking".
+/// Hard = PermissionDenied (keychain-locked mount on macOS, ACL on Win32),
+/// ReadOnlyFilesystem (root partition mounted RO), StorageFull (disk full
+/// or quota). These are the failure modes a user CAN act on (unlock
+/// keychain, remount RW, free disk).
+/// Soft = Interrupted / Other / WouldBlock — keep heartbeat resilient.
+/// Conservative variant set so we compile against the project's pinned
+/// Rust 1.89 toolchain without depending on still-unstable variants.
+fn is_hard_fs_error(e: &std::io::Error) -> bool {
+    use std::io::ErrorKind;
+    matches!(
+        e.kind(),
+        ErrorKind::PermissionDenied
+            | ErrorKind::ReadOnlyFilesystem
+            | ErrorKind::StorageFull
+    )
+}
+// === end v1.14.6 round-7 ===
 
 /// Read every presence file under `<memory_root>/.tangerine/presence/`
 /// whose `last_active` is within `ttl` of now. Returns newest-first.
@@ -436,5 +498,35 @@ mod tests {
         assert!(!last.contains(".."));
         assert!(last.ends_with(".json"));
     }
+
+    // === v1.14.6 round-7 ===
+    #[test]
+    fn hard_fs_error_classifier_matches_actionable_kinds() {
+        use std::io::{Error, ErrorKind};
+        // Hard — user can act on these.
+        assert!(is_hard_fs_error(&Error::new(
+            ErrorKind::PermissionDenied,
+            "ACL"
+        )));
+        assert!(is_hard_fs_error(&Error::new(
+            ErrorKind::ReadOnlyFilesystem,
+            "ro mount"
+        )));
+        assert!(is_hard_fs_error(&Error::new(
+            ErrorKind::StorageFull,
+            "disk full"
+        )));
+        // Soft — heartbeat keeps ticking.
+        assert!(!is_hard_fs_error(&Error::new(
+            ErrorKind::Interrupted,
+            "EINTR"
+        )));
+        assert!(!is_hard_fs_error(&Error::new(
+            ErrorKind::WouldBlock,
+            "would block"
+        )));
+        assert!(!is_hard_fs_error(&Error::new(ErrorKind::Other, "misc")));
+    }
+    // === end v1.14.6 round-7 ===
 }
 // === end wave 1.13-D ===

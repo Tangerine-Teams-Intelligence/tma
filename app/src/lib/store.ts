@@ -191,6 +191,12 @@ interface UiSlice {
   /** Whats-new banner state. dismissed=true hides the banner until next
    *  cursor.last_opened_at refresh. */
   whatsNewDismissed: boolean;
+  // === v1.14.6 round-7 ===
+  /** Most recent app version the user has seen the changelog for.
+   *  Drives the one-shot "/whats-new-app has new entries" toast on
+   *  AppShell mount after an upgrade. `null` until first visit. */
+  lastSeenAppVersion: string | null;
+  // === end v1.14.6 round-7 ===
   /** v1.8 Phase 1 — id of the user's "primary" AI tool (the one with the ⭐
    *  in the sidebar). `null` until first launch's auto-pick runs. The pick
    *  itself happens in components/ai-tools/AIToolsSection.tsx after
@@ -564,6 +570,9 @@ interface UiSlice {
   snoozeAtom: (atomId: string, untilMs: number) => void;
   resetDismissals: () => void;
   setWhatsNewDismissed: (v: boolean) => void;
+  // === v1.14.6 round-7 ===
+  setLastSeenAppVersion: (v: string | null) => void;
+  // === end v1.14.6 round-7 ===
   setPrimaryAITool: (id: string | null) => void;
   /** v1.9.0-beta.1 — extended pushToast.
    *
@@ -838,6 +847,9 @@ export const useStore = create<Store>()(
         // === end wave 23 ===
         snoozedAtoms: {},
         whatsNewDismissed: false,
+        // === v1.14.6 round-7 ===
+        lastSeenAppVersion: null,
+        // === end v1.14.6 round-7 ===
         primaryAITool: null,
         agiParticipation: true,
         agiVolume: "quiet",
@@ -1122,6 +1134,10 @@ export const useStore = create<Store>()(
           })),
         setWhatsNewDismissed: (v) =>
           set((s) => ({ ui: { ...s.ui, whatsNewDismissed: v } })),
+        // === v1.14.6 round-7 ===
+        setLastSeenAppVersion: (v) =>
+          set((s) => ({ ui: { ...s.ui, lastSeenAppVersion: v } })),
+        // === end v1.14.6 round-7 ===
         setPrimaryAITool: (id) =>
           set((s) => ({ ui: { ...s.ui, primaryAITool: id } })),
         // ---- v1.8 Phase 4 ambient input layer ----
