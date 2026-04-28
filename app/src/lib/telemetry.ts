@@ -142,8 +142,35 @@ export type TelemetryEventName =
   | "setup_wizard_tested"
   | "setup_wizard_completed"
   | "setup_wizard_banner_open"
-  | "setup_wizard_banner_dismissed";
+  | "setup_wizard_banner_dismissed"
   // === end wave 11 ===
+  // === wave 15 ===
+  // v1.10.4 — Cmd+K full memory search. Fired by the CommandPalette
+  // every time the debounced query length crosses the threshold and
+  // the `search_atoms` Tauri command returns. Lets the suggestion
+  // engine spot "user keeps searching for X but it's not in their
+  // memory dir → maybe wire a new source" or measure the p95 latency
+  // of the Rust walker on real-world dirs.
+  //
+  // Payload shape:
+  //   - palette_memory_search : { query: string, result_count: number,
+  //                                latency_ms: number }
+  | "palette_memory_search"
+  // === end wave 15 ===
+  // === wave 18 ===
+  // v1.10.4 — conversational onboarding agent. Lets analytics measure
+  // chat completion rates vs. the form wizard, see which intents the
+  // LLM extracts well vs. drops, and detect "user keeps falling back
+  // to the form" patterns.
+  // Payload shapes:
+  //   - onboarding_chat_message         : { session_id: string, length: number }
+  //   - onboarding_chat_action_executed : { session_id: string, kind: string,
+  //                                           status: string }
+  //   - onboarding_chat_completed       : { session_id: string }
+  | "onboarding_chat_message"
+  | "onboarding_chat_action_executed"
+  | "onboarding_chat_completed";
+  // === end wave 18 ===
 // === end wave 5-β discoverability ===
 
 /** One telemetry record. Mirrors `app/src-tauri/src/agi/telemetry.rs::TelemetryEvent`. */

@@ -74,6 +74,18 @@
     "summaryAria": "今日摘要",
     "workflowAria": "工作流"
   },
+  "activity": {
+    "emptyTitle": "还没有动态",
+    "emptyBody": "接入一个来源,动态会自动进来。",
+    "filterAll": "全部",
+    "filterMe": "我",
+    "filterTeam": "团队",
+    "relativeTime": {
+      "justNow": "刚刚",
+      "secondsAgo": "{{n}} 秒前",
+      "minutesAgo": "{{n}} 分钟前"
+    }
+  },
   "memory": {
     "title": "团队记忆",
     "subtitle": "Tangerine 在团队沟通的每一处听取信息,结构化成团队记忆,让团队和他们的 AI 工具同步。",
@@ -741,6 +753,24 @@
     "heartbeatToastBody": "Tangerine 需要一个 AI 算力路径才能让大脑思考。",
     "heartbeatToastCta": "配置通道"
   },
+  "onboardingChat": {
+    "initialPrompt": "你好,我是 Tangerine。配置只需要两件事:(a) 你常用的 AI 工具(Cursor / Claude Code / Codex / Windsurf / Ollama),(b) 可选,一个用于团队同步的 GitHub 仓库。直接用自己的话告诉我即可,例如「主用 Claude Code,仓库 github.com/me/team-private」。",
+    "modeBadge": "配置模式",
+    "thinking": "思考中…",
+    "inputPlaceholder": "告诉我你想配置什么…",
+    "inputAriaLabel": "Tangerine 配置对话输入框",
+    "sendButton": "发送",
+    "errorTitle": "无法连接到 LLM。",
+    "errorRetry": "重试",
+    "setupComplete": "配置完成。可以问任何关于团队的问题,例如「上周关于定价我们做了什么决定?」",
+    "fallbackHint": "更想用表单?按 Cmd+K 选择「配置 LLM 通道」。",
+    "openWizardLink": "改用表单配置",
+    "actionCta": "打开",
+    "succeeded": "完成",
+    "executing": "执行中…",
+    "pending": "下一步",
+    "failed": "失败"
+  },
   "welcome": {
     "kicker": "欢迎来到 Tangerine",
     "title": "团队的共享 AI 记忆,30 秒搞定。",
@@ -809,5 +839,15 @@
     "toastPullConflict": "拉取冲突 — 请到终端解决。",
     "toastPushOk": "已将本地提交推送到团队。",
     "toastPushRejected": "推送被拒 — 请先拉取。"
+  },
+  "palette": {
+    "search": {
+      "searching": "正在搜索记忆…",
+      "noResults": "没有匹配的记忆",
+      "sectionLabel": "记忆",
+      "resultsHint": "{{n}} 条匹配",
+      "untitled": "未命名",
+      "openHint": "打开"
+    }
   }
 }

@@ -3584,3 +3584,204 @@ export async function setupWizardPersistState(args: {
   );
 }
 // === end wave 11 ===
+
+// === wave 15 ===
+// v1.10.4 — Cmd+K full memory search. Frontend wrapper around the
+// new `search_atoms` Tauri command. Mock fallback returns an empty
+// array so vitest + non-Tauri dev runs render the palette's
+// "no memory matches" branch instead of crashing.
+
+/** One scored atom hit returned by `search_atoms`. Mirrors the Rust
+ *  `commands::search::AtomSearchResult` shape exactly. */
+export interface AtomSearchResult {
+  /** Path relative to the memory root (forward slashes). The palette
+   *  navigates to `/memory/<path>` on Enter / click. */
+  path: string;
+  /** Display title — frontmatter `title:` if present, else first H1
+   *  in the body, else filename. */
+  title: string;
+  /** ~150 chars of body around the first match, whitespace flattened
+   *  with `…` ellipses on either side when truncated. */
+  snippet: string;
+  /** Frontmatter `vendor:` (claude / cursor / discord / ...) — used
+   *  by the palette to pick a colour dot per row. */
+  vendor: string | null;
+  /** Frontmatter `author:` if present. */
+  author: string | null;
+  /** Frontmatter `created:` ISO 8601 timestamp if present. */
+  timestamp: string | null;
+  /** Composite score 0..1 — higher is better. Title hits are weighted
+   *  2× over body hits and tf-idf shimmer keeps generic terms from
+   *  drowning out specific ones. */
+  score: number;
+}
+
+/**
+ * Fuzzy + scored search across every markdown file under
+ * `~/.tangerine-memory/`. Returns up to `limit` (default 10) hits
+ * sorted by descending score.
+ *
+ * Soft-fail: outside Tauri (vitest, vite dev) returns `[]` so the
+ * palette gracefully renders its no-match state. Inside Tauri an
+ * IPC error logs to console and falls back to `[]` (we never want
+ * to crash the palette on a bridge hiccup).
+ */
+export async function searchAtoms(args: {
+  query: string;
+  limit?: number;
+}): Promise<AtomSearchResult[]> {
+  return safeInvoke<AtomSearchResult[]>(
+    "search_atoms",
+    { query: args.query, limit: args.limit ?? null },
+    () => [],
+  );
+}
+// === end wave 15 ===
+
+// === wave 16 ===
+// Wave 16 — activity event bus. The right-rail ACTIVITY panel uses these
+// two helpers:
+//   1. `activityRecent` — initial-paint hydration via the
+//      `activity_recent` Tauri command. Returns the most recent N events
+//      from the in-memory ring buffer (newest first).
+//   2. `listenActivityAtoms` — live subscription via the Tauri
+//      `activity:atom_written` event. The frontend calls this on mount
+//      and prepends each event to its local state. Returns the unlisten
+//      function so the caller can clean up on unmount.
+//
+// Both use the camelCase payload shape from `crate::activity::ActivityAtomEvent`
+// (serde rename_all = "camelCase").
+
+export type ActivityAtomKind =
+  | "decision"
+  | "thread"
+  | "brain_update"
+  | "timeline"
+  | "observation";
+
+export interface ActivityAtomEvent {
+  /** Repo-relative path with forward slashes. */
+  path: string;
+  /** Best-effort title (frontmatter / H1 / fallback). */
+  title: string;
+  /** AI tool / source label when known (cursor / claude-code / …). */
+  vendor: string | null;
+  /** Author handle when known. */
+  author: string | null;
+  /** RFC 3339 UTC timestamp. */
+  timestamp: string;
+  /** What kind of atom this is. */
+  kind: ActivityAtomKind;
+}
+
+/** Tauri unlisten fn — return from `listenActivityAtoms`. */
+export type UnlistenActivityFn = () => void;
+
+/**
+ * Hydrate initial activity feed state from the Rust ring buffer.
+ * Mock returns an empty array so vitest / browser dev gives a clean
+ * "Nothing captured yet" empty state.
+ */
+export async function activityRecent(args?: {
+  limit?: number;
+}): Promise<ActivityAtomEvent[]> {
+  return safeInvoke<ActivityAtomEvent[]>(
+    "activity_recent",
+    { limit: args?.limit ?? null },
+    () => [],
+  );
+}
+
+/**
+ * Subscribe to live `activity:atom_written` Tauri events. Calls
+ * `callback` for each event; returns an unlisten fn the caller invokes
+ * on unmount. Outside Tauri (vitest / browser dev) returns a no-op
+ * unlisten so the React component still mounts cleanly.
+ */
+export async function listenActivityAtoms(
+  callback: (event: ActivityAtomEvent) => void,
+): Promise<UnlistenActivityFn> {
+  if (!inTauri()) return () => {};
+  try {
+    const { listen } = await import("@tauri-apps/api/event");
+    const unlisten = await listen<ActivityAtomEvent>(
+      "activity:atom_written",
+      (e) => {
+        try {
+          callback(e.payload);
+        } catch (err) {
+          // Defensive: a callback throw must NOT take down the listener.
+          // eslint-disable-next-line no-console
+          console.error("[wave16] activity callback failed:", err);
+        }
+      },
+    );
+    return unlisten;
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error("[wave16] failed to subscribe to activity:atom_written:", e);
+    return () => {};
+  }
+}
+// === end wave 16 ===
+
+// === wave 18 ===
+// v1.10.4 — conversational onboarding agent. Single Tauri command that
+// turns a free-form user message into action dispatches against the
+// existing setup_wizard / git_sync / whisper_model surfaces. The mock
+// fallback (used in vitest + non-Tauri dev runs) returns a deterministic
+// "ok" turn so the OnboardingChat component renders without a real LLM.
+
+export interface OnboardingAction {
+  /** "configure_mcp" | "git_remote_set" | "whisper_download" |
+   *  "discord_bot_guide" | "github_oauth" | "restart_required" */
+  kind: string;
+  /** "pending" | "executing" | "succeeded" | "failed" */
+  status: string;
+  /** Human-readable description of what happened or what the user should do. */
+  detail: string;
+  /** Stable error code (snake_case) when status === "failed". */
+  error: string | null;
+}
+
+export interface OnboardingChatTurn {
+  /** Always "assistant" for the returned turn. */
+  role: string;
+  /** Markdown body the React side renders inside the chat bubble. */
+  content: string;
+  /** Actions the backend already executed (succeeded or failed). */
+  actions_taken: OnboardingAction[];
+  /** Actions the frontend must complete (open Discord portal, restart editor, etc). */
+  actions_pending: OnboardingAction[];
+}
+
+export interface OnboardingChatTurnArgs {
+  userMessage: string;
+  sessionId: string;
+  primaryToolId?: string | null;
+}
+
+export async function onboardingChatTurn(
+  args: OnboardingChatTurnArgs,
+): Promise<OnboardingChatTurn> {
+  return safeInvoke<OnboardingChatTurn>(
+    "onboarding_chat_turn",
+    {
+      args: {
+        user_message: args.userMessage,
+        session_id: args.sessionId,
+        primary_tool_id: args.primaryToolId ?? null,
+      },
+    },
+    () => ({
+      role: "assistant",
+      // Mock content acknowledges the prompt verbatim (truncated) so devs
+      // can see end-to-end the message they typed traveled through.
+      content:
+        "(mock) I would set that up for you, but the Tauri bridge isn't loaded right now. Run inside the desktop app to test for real.",
+      actions_taken: [],
+      actions_pending: [],
+    }),
+  );
+}
+// === end wave 18 ===

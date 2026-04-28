@@ -161,6 +161,13 @@ interface UiSlice {
    *  Independent of cursor.atoms_acked — that one is server-trip; this is
    *  ephemeral filtering so the rail clears immediately. */
   dismissedAtoms: string[];
+  // === wave 16 ===
+  /** Wave 16 — right-rail ACTIVITY panel filter selection. Persisted so
+   *  the user's pick survives across launches. The filter applies to the
+   *  live event stream (`activity:atom_written`) AND the initial
+   *  `activity_recent` hydration. */
+  activityFeedFilter: "all" | "me" | "team";
+  // === end wave 16 ===
   /** Atom ids snoozed locally; cleared after 24h via setInterval. */
   snoozedAtoms: Record<string, number>;
   /** Whats-new banner state. dismissed=true hides the banner until next
@@ -317,6 +324,20 @@ interface UiSlice {
   setSetupWizardPrimaryChannel: (v: string | null) => void;
   setSetupWizardDismissedThisSession: (v: boolean) => void;
   // === end wave 11 ===
+  // === wave 18 ===
+  /** v1.10.4 — conversational onboarding agent. Default mode = "chat";
+   *  user can flip to "wizard" via Settings → General → "Use form-based
+   *  setup" if they prefer the legacy form flow. Persisted so the choice
+   *  survives cold launches. */
+  onboardingMode: "chat" | "wizard";
+  /** Latch — flips true the first time the OnboardingChat component
+   *  mounts (i.e. user landed on /today and saw the chat primer). The
+   *  AppShell auto-trigger reads this to decide NOT to also pop the
+   *  legacy SetupWizard modal on top. */
+  onboardingChatStarted: boolean;
+  setOnboardingMode: (v: "chat" | "wizard") => void;
+  setOnboardingChatStarted: (v: boolean) => void;
+  // === end wave 18 ===
   setAgiParticipation: (v: boolean) => void;
   setAgiVolume: (v: AgiVolume) => void;
   toggleAgiChannelMute: (channel: string) => void;
@@ -487,6 +508,10 @@ interface UiSlice {
   resetMemoryConfig: () => void;
   setCurrentUser: (u: string) => void;
   dismissAtom: (atomId: string) => void;
+  // === wave 16 ===
+  /** Wave 16 — set the right-rail ACTIVITY filter selection. */
+  setActivityFeedFilter: (f: "all" | "me" | "team") => void;
+  // === end wave 16 ===
   snoozeAtom: (atomId: string, untilMs: number) => void;
   resetDismissals: () => void;
   setWhatsNewDismissed: (v: boolean) => void;
@@ -750,6 +775,10 @@ export const useStore = create<Store>()(
         memoryConfig: { personalDirEnabled: true },
         currentUser: "me",
         dismissedAtoms: [],
+        // === wave 16 ===
+        // Default = "all" so first-launch users see every captured atom.
+        activityFeedFilter: "all",
+        // === end wave 16 ===
         snoozedAtoms: {},
         whatsNewDismissed: false,
         primaryAITool: null,
@@ -797,6 +826,14 @@ export const useStore = create<Store>()(
         setupWizardPrimaryChannel: null,
         setupWizardDismissedThisSession: false,
         // === end wave 11 ===
+        // === wave 18 ===
+        // Default = "chat" so fresh installs land in the conversational
+        // flow per the CEO-ratified paradigm shift. Existing users who
+        // already finished the form-based wizard see no behavior change
+        // (channelReady is true → both surfaces self-hide).
+        onboardingMode: "chat",
+        onboardingChatStarted: false,
+        // === end wave 18 ===
         // v3.0 §1 + §5 — personal-agent capture flags. ALL FALSE by default
         // — opt-in per source. Hydrated from `personal_agents_get_settings`
         // on Settings page mount; the flag map mirrors the Rust persisted
@@ -890,6 +927,12 @@ export const useStore = create<Store>()(
             ui: { ...s.ui, setupWizardDismissedThisSession: v },
           })),
         // === end wave 11 ===
+        // === wave 18 ===
+        setOnboardingMode: (v) =>
+          set((s) => ({ ui: { ...s.ui, onboardingMode: v } })),
+        setOnboardingChatStarted: (v) =>
+          set((s) => ({ ui: { ...s.ui, onboardingChatStarted: v } })),
+        // === end wave 18 ===
         toggleSidebar: () =>
           set((s) => ({ ui: { ...s.ui, sidebarCollapsed: !s.ui.sidebarCollapsed } })),
         setPalette: (open) =>
@@ -928,6 +971,10 @@ export const useStore = create<Store>()(
                 : [...s.ui.dismissedAtoms, atomId],
             },
           })),
+        // === wave 16 ===
+        setActivityFeedFilter: (f) =>
+          set((s) => ({ ui: { ...s.ui, activityFeedFilter: f } })),
+        // === end wave 16 ===
         snoozeAtom: (atomId, untilMs) =>
           set((s) => ({
             ui: {
@@ -1364,6 +1411,16 @@ export const useStore = create<Store>()(
             setupWizardSkipped: s.ui.setupWizardSkipped,
             setupWizardPrimaryChannel: s.ui.setupWizardPrimaryChannel,
             // === end wave 11 ===
+            // === wave 18 === — conversational onboarding agent. Mode
+            // pick + chat-started latch persist so the user's choice
+            // (and the AppShell auto-trigger suppression) survive cold
+            // launches.
+            onboardingMode: s.ui.onboardingMode,
+            onboardingChatStarted: s.ui.onboardingChatStarted,
+            // === end wave 18 ===
+            // === wave 16 === — right-rail ACTIVITY filter pick.
+            activityFeedFilter: s.ui.activityFeedFilter,
+            // === end wave 16 ===
           },
           skills: { meetingConfig: s.skills.meetingConfig },
         }) as unknown as Store,
@@ -1591,6 +1648,17 @@ export const useStore = create<Store>()(
                   ?.sidebarSections?.activeAgents ??
                 current.ui.sidebarSections.activeAgents,
             },
+            // === wave 16 === — right-rail ACTIVITY filter pick. Persisted
+            // so a power user's "team only" choice carries forward across
+            // launches. Default = "all" when absent (fresh install or
+            // v1.10.3-and-earlier upgrade with no persisted key).
+            activityFeedFilter: ((): "all" | "me" | "team" => {
+              const v = (p?.ui as { activityFeedFilter?: string } | undefined)
+                ?.activityFeedFilter;
+              if (v === "all" || v === "me" || v === "team") return v;
+              return current.ui.activityFeedFilter;
+            })(),
+            // === end wave 16 ===
           },
           skills: {
             ...current.skills,

@@ -234,6 +234,15 @@ pub struct CoThinkerEngine {
     /// `AppHandle`) calls `set_event_sink` to install a real Tauri-backed
     /// sink that forwards to the frontend's `template_match` listener.
     pub event_sink: Arc<dyn EventSink>,
+    // === wave 16 ===
+    /// Wave 16 — destination for `activity:atom_written` events. Default
+    /// is `RingOnlyActivitySink` so the in-memory ring + on-disk JSONL
+    /// always populate even on the daemon's no-AppHandle path; Tauri
+    /// command surfaces (manual heartbeat trigger) install a
+    /// `TauriActivitySink<R>` via `set_activity_sink` so the React feed
+    /// gets the live emit too.
+    pub activity_sink: Arc<dyn crate::activity::ActivitySink>,
+    // === end wave 16 ===
     /// Throttle: heartbeat takes this lock; a second concurrent call gets
     /// `try_lock` → None → short-circuits with "throttled".
     throttle: Arc<tokio::sync::Mutex<()>>,
@@ -247,6 +256,12 @@ impl CoThinkerEngine {
             last_heartbeat_ts: None,
             dispatcher: Arc::new(ProductionDispatcher),
             event_sink: Arc::new(NoopSink),
+            // === wave 16 ===
+            // Default = RingOnly so daemon path always populates the
+            // ring + on-disk ledger even without an AppHandle. Manual
+            // trigger swaps to a TauriActivitySink for live emit.
+            activity_sink: Arc::new(crate::activity::RingOnlyActivitySink),
+            // === end wave 16 ===
             throttle: Arc::new(tokio::sync::Mutex::new(())),
         }
     }
@@ -258,6 +273,9 @@ impl CoThinkerEngine {
             last_heartbeat_ts: None,
             dispatcher,
             event_sink: Arc::new(NoopSink),
+            // === wave 16 ===
+            activity_sink: Arc::new(crate::activity::RingOnlyActivitySink),
+            // === end wave 16 ===
             throttle: Arc::new(tokio::sync::Mutex::new(())),
         }
     }
@@ -269,6 +287,20 @@ impl CoThinkerEngine {
         self.event_sink = sink;
         self
     }
+
+    // === wave 16 ===
+    /// Install a custom activity sink. The Tauri-command-driven manual
+    /// heartbeat path calls this with `TauriActivitySink::new(app)` so
+    /// `activity:atom_written` events surface to the React `<ActivityFeed/>`.
+    /// Returns `&mut Self` for chaining (mirrors `set_event_sink`).
+    pub fn set_activity_sink(
+        &mut self,
+        sink: Arc<dyn crate::activity::ActivitySink>,
+    ) -> &mut Self {
+        self.activity_sink = sink;
+        self
+    }
+    // === end wave 16 ===
 
     /// Path to the brain doc.
     ///
@@ -328,7 +360,21 @@ impl CoThinkerEngine {
             std::fs::create_dir_all(parent)
                 .map_err(|e| AppError::internal("mkdir_team", e.to_string()))?;
         }
-        atomic_write(&p, content)
+        atomic_write(&p, content)?;
+        // === wave 16 ===
+        // Fire-and-forget activity event for the right-rail feed.
+        // `extract_brain_title` peeks the first H1 / "Initialized: <ts>"
+        // line; defensive fallback is "Team brain" so the row always has
+        // something to render. Failures inside the sink are absorbed.
+        let title = extract_brain_title(content);
+        let event = crate::activity::ActivityAtomEvent::new(
+            "team/co-thinker.md",
+            title,
+            crate::activity::AtomKind::BrainUpdate,
+        );
+        self.activity_sink.record(&self.memory_root, event);
+        // === end wave 16 ===
+        Ok(())
     }
 
     /// Wave 3 cross-cut — corruption recovery (OBSERVABILITY_SPEC §8 edge
@@ -1244,6 +1290,43 @@ fn sanitize_slug(s: &str) -> String {
         })
         .collect()
 }
+
+// === wave 16 ===
+/// Pull a human-friendly title out of the brain markdown for the
+/// activity feed row. Picks the first `# ` heading; falls back to
+/// "Team brain refresh" so the feed never shows an empty title.
+/// Caps at 80 chars (matches `personal_agents::topic_from_first_message`).
+fn extract_brain_title(raw: &str) -> String {
+    for line in raw.lines() {
+        let t = line.trim_start();
+        if let Some(rest) = t.strip_prefix("# ") {
+            let s = rest.trim();
+            if !s.is_empty() {
+                return cap_title(s);
+            }
+        }
+    }
+    "Team brain refresh".to_string()
+}
+
+fn cap_title(s: &str) -> String {
+    const MAX: usize = 80;
+    if s.chars().count() <= MAX {
+        return s.to_string();
+    }
+    let mut out = String::new();
+    let mut n = 0usize;
+    for c in s.chars() {
+        if n >= MAX - 1 {
+            break;
+        }
+        out.push(c);
+        n += 1;
+    }
+    out.push('…');
+    out
+}
+// === end wave 16 ===
 
 // ---------------------------------------------------------------------------
 // Filesystem helpers

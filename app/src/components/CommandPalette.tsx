@@ -23,6 +23,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import {
   Settings,
   Lock,
@@ -51,13 +52,30 @@ import { gitSyncPull, gitSyncPush, gitSyncStatus } from "@/lib/tauri";
 // === wave 11 === — Test LLM channel palette command.
 import { setupWizardTestChannel } from "@/lib/tauri";
 // === end wave 11 ===
+// === wave 15 === — Atom-content full memory search via the new
+// `search_atoms` Tauri command. Distinct from `searchMemory` (above):
+// that wrapper does a JS-side substring scan on top of `readDir` /
+// `readTextFile`, which is fine for small dirs but spends a Tauri
+// IPC round-trip per file. `searchAtoms` is the single-shot Rust
+// walker with frontmatter parsing + tf-idf scoring + vendor/title
+// metadata so we can render colour dots + titles in the palette.
+import { searchAtoms, type AtomSearchResult } from "@/lib/tauri";
+import { vendorColor } from "@/lib/vendor-colors";
+// === end wave 15 ===
 
 interface Props {
   open: boolean;
   onClose: () => void;
 }
 
-type ItemKind = "route" | "action" | "hit" | "shortcut";
+// === wave 15 === — `atom` extends the union beyond the old `hit` kind
+// (which is the legacy MemorySearchHit row from `searchMemory`). Both
+// coexist for now: legacy `hit` rows ship the existing JS-side scan,
+// new `atom` rows ship the Rust-side scored search with vendor dots
+// + frontmatter title. The palette section header for `atom` rows is
+// the i18n'd "MEMORY" / "记忆" label.
+type ItemKind = "route" | "action" | "hit" | "atom" | "shortcut";
+// === end wave 15 ===
 
 interface PaletteItem {
   id: string;
@@ -68,6 +86,10 @@ interface PaletteItem {
   hint?: string;
   icon: React.ComponentType<{ size?: number; className?: string }>;
   onSelect: () => void;
+  // === wave 15 === — Optional vendor id for `atom` rows so the
+  // renderer can paint a colour dot. Undefined for non-atom rows.
+  vendor?: string | null;
+  // === end wave 15 ===
 }
 
 // ---------- catalog ----------
@@ -203,6 +225,7 @@ function score(haystack: string, q: string): number {
 
 export function CommandPalette({ open, onClose }: Props) {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const memoryRoot = useStore((s) => s.ui.memoryRoot);
   const cycleTheme = useStore((s) => s.ui.cycleTheme);
   const setWelcomed = useStore((s) => s.ui.setWelcomed);
@@ -214,6 +237,13 @@ export function CommandPalette({ open, onClose }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<MemorySearchHit[]>([]);
+  // === wave 15 === — atom-content search state. `atomHits` holds the
+  // scored rows from the Rust `search_atoms` command; `atomSearching`
+  // gates the inline "Searching memory…" spinner so the user gets
+  // immediate feedback before the IPC round-trip resolves.
+  const [atomHits, setAtomHits] = useState<AtomSearchResult[]>([]);
+  const [atomSearching, setAtomSearching] = useState(false);
+  // === end wave 15 ===
   const [active, setActive] = useState(0);
 
   // Build the static (route + action) item list once per open. Memory
@@ -482,11 +512,62 @@ export function CommandPalette({ open, onClose }: Props) {
     };
   }, [memoryRoot, query]);
 
+  // === wave 15 === — Atom-content search via the Rust `search_atoms`
+  // walker. Threshold is 3 chars: shorter queries match too many
+  // atoms (e.g. "the" hits everything) AND each query is one Rust
+  // walker pass over up to MAX_FILES files, so the threshold also
+  // protects p95 latency when the user is typing quickly. We measure
+  // wall-clock latency around the IPC and emit the
+  // `palette_memory_search` telemetry event so the suggestion engine
+  // can flag pathological dirs.
+  const ATOM_SEARCH_MIN_CHARS = 3;
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < ATOM_SEARCH_MIN_CHARS) {
+      setAtomHits([]);
+      setAtomSearching(false);
+      return;
+    }
+    let cancelled = false;
+    setAtomSearching(true);
+    const t0 = performance.now();
+    void searchAtoms({ query: q, limit: 10 })
+      .then((rows) => {
+        if (cancelled) return;
+        const dt = Math.round(performance.now() - t0);
+        setAtomHits(rows);
+        setAtomSearching(false);
+        void logEvent("palette_memory_search", {
+          query: q,
+          result_count: rows.length,
+          latency_ms: dt,
+        });
+      })
+      .catch(() => {
+        if (cancelled) return;
+        // safeInvoke already swallows IPC errors and falls back to
+        // []; this catch is here purely so the spinner clears even
+        // if the Promise rejects through some other path.
+        setAtomHits([]);
+        setAtomSearching(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [query]);
+  // === end wave 15 ===
+
   // Reset on open + telemetry.
   useEffect(() => {
     if (open) {
       setQuery("");
       setHits([]);
+      // === wave 15 === — also clear the atom-content hits + spinner
+      // so the palette opens to a clean state (no stale rows from a
+      // previous session).
+      setAtomHits([]);
+      setAtomSearching(false);
+      // === end wave 15 ===
       setActive(0);
       requestAnimationFrame(() => inputRef.current?.focus());
       void logEvent("palette_open", {});
@@ -516,8 +597,34 @@ export function CommandPalette({ open, onClose }: Props) {
         onClose();
       },
     }));
-    return [...ranked, ...memoryItems];
-  }, [staticItems, hits, query, navigate, onClose]);
+    // === wave 15 === — Scored atom rows from `search_atoms`. We
+    // dedupe against the legacy `searchMemory` rows (matched by
+    // path) so a file that shows up in both scans only renders
+    // once, with the atom row taking precedence (it has the
+    // frontmatter title + vendor decoration).
+    const atomItems: PaletteItem[] = atomHits.map((a, i) => ({
+      id: `atom:${i}:${a.path}`,
+      kind: "atom" as const,
+      label: a.title || t("palette.search.untitled"),
+      search: `${a.title} ${a.path} ${a.snippet}`,
+      hint: a.snippet,
+      icon: FileText,
+      vendor: a.vendor,
+      onSelect: () => {
+        navigate(`/memory/${a.path}`);
+        onClose();
+      },
+    }));
+    const atomPaths = new Set(atomHits.map((a) => a.path));
+    const dedupedMemoryItems = memoryItems.filter((m) => {
+      // Memory items use `id` like `hit:<i>:<path>`. Strip the
+      // prefix to recover the rel-path for the dedupe check.
+      const path = m.id.replace(/^hit:\d+:/, "");
+      return !atomPaths.has(path);
+    });
+    return [...ranked, ...atomItems, ...dedupedMemoryItems];
+    // === end wave 15 ===
+  }, [staticItems, hits, atomHits, query, navigate, onClose, t]);
 
   if (!open) return null;
 
@@ -546,6 +653,11 @@ export function CommandPalette({ open, onClose }: Props) {
     if (k === "route") return "navigate";
     if (k === "action") return "actions";
     if (k === "hit") return "memory";
+    // === wave 15 === — Scored atom rows live under the i18n'd
+    // "MEMORY" / "记忆" header so the section is recognisable in
+    // both EN and ZH locales.
+    if (k === "atom") return t("palette.search.sectionLabel");
+    // === end wave 15 ===
     return "shortcuts";
   }
 
@@ -594,12 +706,23 @@ export function CommandPalette({ open, onClose }: Props) {
               const Icon = it.icon;
               const isActive = idx === active;
               const prev = items[idx - 1];
+              // === wave 15 === — Always show the section header at
+              // a kind boundary, even when the user is typing. The
+              // old rule (`!showHits`) suppressed all headers during
+              // an active query, which made it impossible to tell
+              // which rows came from the memory walker vs. routes /
+              // actions / shortcuts. With atom rows in the mix the
+              // grouping becomes load-bearing.
               const showHeader =
-                !showHits && (idx === 0 || (prev && prev.kind !== it.kind));
+                idx === 0 || (prev && prev.kind !== it.kind);
+              // === end wave 15 ===
               return (
                 <div key={it.id}>
                   {showHeader && (
-                    <div className="ti-no-select px-4 pt-2 pb-1 text-[10px] uppercase tracking-wide text-stone-500 dark:text-stone-500">
+                    <div
+                      className="ti-no-select px-4 pt-2 pb-1 text-[10px] uppercase tracking-wide text-stone-500 dark:text-stone-500"
+                      data-testid={`command-palette-section-${it.kind}`}
+                    >
                       {kindLabel(it.kind)}
                     </div>
                   )}
@@ -618,7 +741,23 @@ export function CommandPalette({ open, onClose }: Props) {
                         : "text-stone-900 hover:bg-stone-100 dark:text-stone-100 dark:hover:bg-stone-800")
                     }
                   >
-                    <Icon size={16} className="shrink-0" />
+                    {/* === wave 15 === — vendor colour dot on atom
+                        rows. Falls through to the lucide icon for
+                        every other kind so the layout doesn't
+                        shift. Uses inline style (vs. a data-vendor
+                        CSS selector) so unknown vendors get the
+                        default-grey fallback from `vendorColor`. */}
+                    {it.kind === "atom" ? (
+                      <span
+                        data-testid="command-palette-vendor-dot"
+                        className="inline-block h-2 w-2 shrink-0 rounded-full"
+                        style={{ backgroundColor: vendorColor(it.vendor).hex }}
+                        aria-hidden
+                      />
+                    ) : (
+                      <Icon size={16} className="shrink-0" />
+                    )}
+                    {/* === end wave 15 === */}
                     <span className="flex-1 truncate font-mono text-[12px]">{it.label}</span>
                     {it.hint && (
                       <span className="truncate text-[11px] text-stone-500 dark:text-stone-400">
@@ -630,6 +769,30 @@ export function CommandPalette({ open, onClose }: Props) {
               );
             })
           )}
+          {/* === wave 15 === — Inline status row for the atom-content
+              search. Renders below whatever route / action / atom rows
+              are already showing so the user always sees the static
+              palette items first and the memory-search progress as a
+              secondary signal. */}
+          {query.trim().length >= ATOM_SEARCH_MIN_CHARS && atomSearching && (
+            <div
+              data-testid="command-palette-memory-searching"
+              className="ti-no-select px-4 py-2 text-[11px] italic text-stone-500 dark:text-stone-400"
+            >
+              {t("palette.search.searching")}
+            </div>
+          )}
+          {query.trim().length >= ATOM_SEARCH_MIN_CHARS &&
+            !atomSearching &&
+            atomHits.length === 0 && (
+              <div
+                data-testid="command-palette-memory-empty"
+                className="ti-no-select px-4 py-2 text-[11px] italic text-stone-500 dark:text-stone-400"
+              >
+                {t("palette.search.noResults")}
+              </div>
+            )}
+          {/* === end wave 15 === */}
         </div>
 
         <div className="ti-no-select flex items-center justify-between border-t border-stone-200 bg-stone-100 px-4 py-2 text-[10px] text-stone-500 dark:border-stone-800 dark:bg-stone-900 dark:text-stone-400">

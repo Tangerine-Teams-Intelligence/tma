@@ -57,6 +57,13 @@ import { loadAITools, type AIToolStatus } from "@/lib/ai-tools";
 // frontmatter + provenance footer); ReactMarkdown directly is simpler
 // here.
 import ReactMarkdown from "react-markdown";
+// === wave 18 === — conversational onboarding agent. Replaces the
+// Wave 14 chat input (in setup mode only) so first-run users describe
+// what they want in natural language instead of being walked through a
+// form wizard. Once `setupWizardChannelReady` flips, the OnboardingChat
+// surface returns null and the existing /today chat input takes over
+// for general queries — same DOM slot, mode-switched contents.
+import { OnboardingChat } from "@/components/OnboardingChat";
 
 /**
  * /today — default landing surface for the Chief of Staff UX.
@@ -90,6 +97,16 @@ export default function TodayRoute() {
   // (master switch off → no green pulse, no observation count).
   const agiParticipation = useStore((s) => s.ui.agiParticipation);
   const primaryAITool = useStore((s) => s.ui.primaryAITool);
+  // === wave 18 === — drives the setup-mode-vs-general-mode swap on the
+  // shared /today chat input slot. Setup mode renders OnboardingChat;
+  // general mode renders the Wave 14 ChatGPT-style input below.
+  const setupWizardChannelReady = useStore(
+    (s) => s.ui.setupWizardChannelReady,
+  );
+  const onboardingMode = useStore((s) => s.ui.onboardingMode);
+  const inSetupMode =
+    onboardingMode === "chat" && !setupWizardChannelReady;
+  // === end wave 18 ===
   const [brief, setBrief] = useState<BriefData | null>(null);
   const [slice, setSlice] = useState<TimelineSlice | null>(null);
   const [notes, setNotes] = useState<TangerineNote[]>([]);
@@ -323,10 +340,15 @@ export default function TodayRoute() {
                 team's AI tools have captured.
               </p>
 
-              {/* === wave 14 === — Chat input. Submit = Enter or Send
-                  click; Shift+Enter for newline. Loading state shows
-                  the Loader2 spin + "Thinking…" label inside the
-                  button so the user gets immediate feedback. */}
+              {/* === wave 18 === — single chat input slot. Setup mode
+                  routes intents to onboarding_chat_turn; general mode
+                  uses the Wave 14 coThinkerDispatch flow. Same visual
+                  position; mode-switched contents. */}
+              {inSetupMode ? (
+                <div className="mt-5">
+                  <OnboardingChat />
+                </div>
+              ) : (
               <div
                 data-testid="today-chat-input"
                 className="mt-5 flex items-end gap-2 rounded-xl border border-stone-200 bg-white px-3 py-2 shadow-sm dark:border-stone-800 dark:bg-stone-900"
@@ -366,9 +388,14 @@ export default function TodayRoute() {
                   )}
                 </button>
               </div>
+              )}
+              {/* === end wave 18 === */}
 
-              {/* === wave 14 === — Inline result bubble. */}
-              {response && dispatchState !== "loading" && (
+              {/* === wave 14 === — Inline result bubble.
+                  === wave 18 === gated on !inSetupMode so the
+                  OnboardingChat owns the bubble area while setup is
+                  in progress. */}
+              {!inSetupMode && response && dispatchState !== "loading" && (
                 <div
                   data-testid="today-chat-response"
                   className="mt-4 rounded-xl border border-stone-200 bg-stone-50/80 px-4 py-3 dark:border-stone-800 dark:bg-stone-900/60"
@@ -384,7 +411,7 @@ export default function TodayRoute() {
                   </div>
                 </div>
               )}
-              {dispatchState === "error" && dispatchError && (
+              {!inSetupMode && dispatchState === "error" && dispatchError && (
                 <div
                   data-testid="today-chat-error"
                   className="mt-4 rounded-xl border border-rose-200 bg-rose-50/80 px-4 py-3 text-[12px] text-rose-700 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-300"

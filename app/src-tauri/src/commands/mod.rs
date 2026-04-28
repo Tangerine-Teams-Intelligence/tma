@@ -254,6 +254,38 @@ pub mod setup_wizard;
 pub mod demo_seed;
 // === end wave 13 ===
 
+// === wave 15 ===
+// v1.10.4 — Cmd+K full memory search. Walks the user's
+// `~/.tangerine-memory/` tree and returns scored AtomSearchResult rows
+// the React `CommandPalette` renders inline below ACTIONS / NAVIGATE.
+// Sits next to (NOT replacing) `crate::memory_search`: that one is the
+// browser-extension MCP wire shape (absolute paths, ~200 char snippets
+// for an LLM prompt); this one is the palette-friendly shape
+// (rel paths, ~150 char snippets, vendor / author / timestamp from
+// frontmatter for a colour-dot UI). See `search.rs`.
+pub mod search;
+// === end wave 15 ===
+
+// === wave 16 ===
+// Wave 16 — activity event bus Tauri command surface. One command,
+// `activity_recent`, that reads from the in-memory ring buffer in
+// `crate::activity`. The atom-write side fires `activity:atom_written`
+// events on every successful write (see `crate::activity::record_atom_written`
+// — call sites in `agi::co_thinker`, `personal_agents::*` parsers, etc.).
+pub mod activity;
+// === end wave 16 ===
+
+// === wave 18 ===
+// v1.10.4 — conversational onboarding agent. CEO ratified replacing the
+// form-based SetupWizard with an LLM-driven chat that extracts intent
+// (configure MCP, link git remote, download whisper, etc.) and dispatches
+// to the existing setup_wizard / git_sync / whisper_model commands. The
+// SetupWizard surface stays mounted as a fallback (Cmd+K → "Use form-
+// based setup"). See `onboarding_chat.rs` for the prompt strategy + the
+// JSONL persistence shape.
+pub mod onboarding_chat;
+// === end wave 18 ===
+
 mod error;
 mod paths;
 mod runner;
@@ -617,6 +649,27 @@ macro_rules! tmi_invoke_handler {
             $crate::commands::demo_seed::demo_seed_install,
             $crate::commands::demo_seed::demo_seed_clear,
             // === end wave 13 ===
+            // === wave 15 ===
+            // v1.10.4 — Cmd+K full memory search. 1 command. See
+            // `search.rs` for the scoring algorithm + soft-fail
+            // contract. Frontend wraps it in `lib/tauri.ts::searchAtoms`.
+            $crate::commands::search::search_atoms,
+            // === end wave 15 ===
+            // === wave 16 ===
+            // Wave 16 — activity event bus read side. The write side
+            // (atom_written events) flows through the
+            // `activity:atom_written` Tauri event emitted from
+            // `crate::activity::record_atom_written`; the React side
+            // hydrates initial state via this single command.
+            $crate::commands::activity::activity_recent,
+            // === end wave 16 ===
+            // === wave 18 ===
+            // Conversational onboarding agent — single command that turns
+            // a free-form user message ("github=daizhe, repo=foo,
+            // primary=Claude Code") into action dispatches against the
+            // existing setup wizard / git_sync / whisper_model surfaces.
+            $crate::commands::onboarding_chat::onboarding_chat_turn,
+            // === end wave 18 ===
         ]
     };
 }

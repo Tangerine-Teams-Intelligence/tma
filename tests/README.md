@@ -50,3 +50,16 @@ When v2.0 lands (see `V2_0_SPEC.md`), the plan is:
    (lifecycle + diff apply + state machine).
 
 Until then, treat `smoke_e2e.py` as load-bearing.
+
+## Cross-platform validation status — wave 17 (2026-04-27)
+
+- Python smoke (`tests/smoke_e2e.py`) — runs on all 3 OSes in CI today.
+- Playwright E2E (`app/e2e/`) — currently only validated on the Windows
+  runner (matches the v1.10.x "Windows is the full-feature path" stance).
+  The macOS + Linux release jobs are added in `release.yml` (wave 17) and
+  build the Tauri shell only — they do NOT yet run the Playwright suite.
+- TODO before v1.11: add Playwright matrix entries for `macos-14` +
+  `ubuntu-22.04` so the desktop shell smoke runs on every OS we publish
+  installers for. Until then, manual smoke before each macOS / Linux
+  release: install the artifact, boot the app, walk the WelcomeOverlay,
+  open the memory viewer, verify the AI tools sidebar populates.

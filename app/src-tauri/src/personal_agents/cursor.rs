@@ -168,8 +168,47 @@ fn capture_one_conversation(src: &Path, target_dir: &Path) -> Result<bool, Strin
     }
     let body = render_atom(&parsed);
     fs::write(&atom_path, body).map_err(|e| format!("write {}: {}", atom_path.display(), e))?;
+    // === wave 16 ===
+    // Push onto the in-memory activity ring so the React `<ActivityFeed/>`
+    // sees this conversation when it re-reads via `activity_recent`. The
+    // Tauri command thunk that wraps `capture` fires the
+    // `activity:atom_written` event itself.
+    let title = if parsed.topic.is_empty() {
+        parsed.conversation_id.clone()
+    } else {
+        parsed.topic.clone()
+    };
+    let rel = wave16_compute_rel_path(&atom_path);
+    let ev = crate::activity::ActivityAtomEvent::new(
+        rel,
+        title,
+        crate::activity::AtomKind::Thread,
+    )
+    .with_vendor("cursor");
+    crate::activity::push_event_to_ring(ev);
+    // === end wave 16 ===
     Ok(true)
 }
+
+// === wave 16 ===
+/// Memory-root-relative path helper. Mirrors the same helper in
+/// `personal_agents::claude_code`; duplicated to avoid pulling the module
+/// into the public surface of either parser.
+fn wave16_compute_rel_path(atom_path: &Path) -> String {
+    let s = atom_path.to_string_lossy().replace('\\', "/");
+    if let Some(idx) = s.find(".tangerine-memory/") {
+        let rest = &s[idx + ".tangerine-memory/".len()..];
+        return rest.to_string();
+    }
+    let parts: Vec<&str> = s.split('/').collect();
+    let n = parts.len();
+    if n >= 4 {
+        parts[n - 4..].join("/")
+    } else {
+        s
+    }
+}
+// === end wave 16 ===
 
 /// Strip path-traversal and unsafe filename chars from a conversation id so
 /// it's safe to use as a basename.

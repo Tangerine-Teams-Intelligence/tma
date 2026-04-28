@@ -13,6 +13,11 @@ import { MemoryRouter } from "react-router-dom";
 
 import TodayRoute from "../src/routes/today";
 import * as tauri from "../src/lib/tauri";
+// === wave 18 === — Wave 14 covers the post-setup chat input. Wave 18
+// added a setup-mode swap (OnboardingChat replaces the chat input when
+// `setupWizardChannelReady === false`), so this suite must land in
+// post-setup state by flipping the store latch in beforeEach.
+import { useStore } from "../src/lib/store";
 
 describe("Wave 14 — /today ChatGPT-style hero", () => {
   beforeEach(() => {
@@ -24,6 +29,12 @@ describe("Wave 14 — /today ChatGPT-style hero", () => {
       brain_doc_size: 0,
       observations_today: 0,
     });
+    // === wave 18 === — flip into post-setup (general-query) mode so
+    // the Wave 14 chat input is rendered (instead of the OnboardingChat
+    // setup-mode shell).
+    useStore.setState((s) => ({
+      ui: { ...s.ui, setupWizardChannelReady: true, onboardingMode: "chat" },
+    }));
   });
 
   afterEach(() => {

@@ -608,11 +608,25 @@ export function AppShell() {
   // gate (so the welcome 4-card tour comes first), and we leave a beat for
   // the welcome dismissal to render through before opening to avoid a
   // layered modal stacking glitch.
+  //
+  // === wave 18 === — when the user is in conversational onboarding mode
+  // (default), we DO NOT auto-pop the form-based SetupWizard. The
+  // OnboardingChat that lives inline on /today owns the first-run
+  // experience instead. The form wizard is still reachable via Cmd+K and
+  // the inline "Use form-based setup" link in the chat shell.
+  const onboardingMode = useStore((s) => s.ui.onboardingMode);
+  // === end wave 18 ===
   useEffect(() => {
     if (!welcomed) return;
     if (setupWizardChannelReady) return;
     if (setupWizardSkipped) return;
     if (setupWizardOpen) return;
+    // === wave 18 ===
+    // Chat mode owns first-run. Bail out of the form-wizard auto-trigger
+    // entirely so the user lands on /today and sees the OnboardingChat,
+    // not a layered modal on top of it.
+    if (onboardingMode === "chat") return;
+    // === end wave 18 ===
     const timer = window.setTimeout(() => {
       setSetupWizardOpen(true);
       void logEvent("setup_wizard_auto_triggered", {});
@@ -624,6 +638,9 @@ export function AppShell() {
     setupWizardSkipped,
     setupWizardOpen,
     setSetupWizardOpen,
+    // === wave 18 ===
+    onboardingMode,
+    // === end wave 18 ===
   ]);
   // === end wave 11 ===
 

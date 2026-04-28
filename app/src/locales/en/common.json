@@ -74,6 +74,18 @@
     "summaryAria": "Today summary",
     "workflowAria": "Workflow"
   },
+  "activity": {
+    "emptyTitle": "Nothing captured yet",
+    "emptyBody": "Connect a source to start the feed.",
+    "filterAll": "all",
+    "filterMe": "me",
+    "filterTeam": "team",
+    "relativeTime": {
+      "justNow": "just now",
+      "secondsAgo": "{{n}}s ago",
+      "minutesAgo": "{{n}}m ago"
+    }
+  },
   "memory": {
     "title": "Your team's memory",
     "subtitle": "Tangerine listens in every corner of your team's comms, structures it into team memory, and keeps your team — and their AI tools — on the same page.",
@@ -741,6 +753,24 @@
     "heartbeatToastBody": "Tangerine needs an AI inference channel before the brain can think.",
     "heartbeatToastCta": "Set up channel"
   },
+  "onboardingChat": {
+    "initialPrompt": "Hi, I'm Tangerine. To set you up, I need to know two things: (a) your primary AI tool (Cursor / Claude Code / Codex / Windsurf / Ollama), and (b) optionally a GitHub repo for team sync. Just tell me in your own words — e.g. \"primary=Claude Code, repo=github.com/me/team-private\".",
+    "modeBadge": "Setup mode",
+    "thinking": "Thinking…",
+    "inputPlaceholder": "Tell me what you want to set up…",
+    "inputAriaLabel": "Tangerine onboarding chat input",
+    "sendButton": "Send",
+    "errorTitle": "Couldn't reach the LLM.",
+    "errorRetry": "Retry",
+    "setupComplete": "Setup complete. Try asking me anything about your team — e.g. \"What did we decide about pricing last week?\"",
+    "fallbackHint": "Prefer a form? Press Cmd+K and pick \"Set up LLM channel\".",
+    "openWizardLink": "Use form-based setup",
+    "actionCta": "Open",
+    "succeeded": "Done",
+    "executing": "Running…",
+    "pending": "Next step",
+    "failed": "Failed"
+  },
   "welcome": {
     "kicker": "Welcome to Tangerine",
     "title": "Your team's shared AI memory, in 30 seconds.",
@@ -809,5 +839,15 @@
     "toastPullConflict": "Pull conflict — resolve in shell.",
     "toastPushOk": "Pushed local commits to team.",
     "toastPushRejected": "Push rejected — pull first."
+  },
+  "palette": {
+    "search": {
+      "searching": "Searching memory…",
+      "noResults": "No memory matches",
+      "sectionLabel": "MEMORY",
+      "resultsHint": "{{n}} memory matches",
+      "untitled": "Untitled",
+      "openHint": "open atom"
+    }
   }
 }

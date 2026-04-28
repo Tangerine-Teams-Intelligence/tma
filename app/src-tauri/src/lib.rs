@@ -107,3 +107,15 @@ pub mod perf;
 // Per OBSERVABILITY_SPEC §9 — SOC 2 monitoring controls.
 pub mod monitoring;
 // === end Wave 3 cross-cut ===
+
+// === wave 16 ===
+// Wave 16 — activity event bus. Every successful atom write (co-thinker
+// brain refresh, personal-agent parser, source ingestion) calls
+// `activity::record_atom_written` which pushes onto an in-memory ring,
+// optionally persists to `<memory_dir>/.tangerine/activity.jsonl`, and
+// emits a Tauri `activity:atom_written` event for the React
+// `<ActivityFeed/>` listener. The Tauri command surface
+// (`activity_recent`) lives at `commands::activity` so the frontend can
+// hydrate initial state on mount.
+pub mod activity;
+// === end wave 16 ===

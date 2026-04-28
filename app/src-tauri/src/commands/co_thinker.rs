@@ -56,9 +56,17 @@ pub async fn co_thinker_read_brain() -> Result<String, AppError> {
 /// the user is allowed to write whatever they want; the next heartbeat will
 /// rebuild from atoms anyway.
 #[tauri::command]
-pub async fn co_thinker_write_brain(content: String) -> Result<(), AppError> {
+pub async fn co_thinker_write_brain<R: Runtime>(
+    app: AppHandle<R>,
+    content: String,
+) -> Result<(), AppError> {
     let root = memory_root()?;
-    let engine = CoThinkerEngine::new(root);
+    let mut engine = CoThinkerEngine::new(root);
+    // === wave 16 ===
+    // Install the Tauri activity sink so a manual brain edit also surfaces
+    // on the right-rail feed (the user clicked Save, that's a real event).
+    engine.set_activity_sink(Arc::new(crate::activity::TauriActivitySink::new(app)));
+    // === end wave 16 ===
     engine.write_brain_doc(&content)
 }
 
@@ -77,7 +85,17 @@ pub async fn co_thinker_trigger_heartbeat<R: Runtime>(
 ) -> Result<HeartbeatOutcome, AppError> {
     let root = memory_root()?;
     let mut engine = CoThinkerEngine::new(root);
-    engine.set_event_sink(Arc::new(TauriEventSink::new(app)));
+    engine.set_event_sink(Arc::new(TauriEventSink::new(app.clone())));
+    // === wave 16 ===
+    // Install the TauriActivitySink so brain-doc writes from the
+    // heartbeat surface as `activity:atom_written` events on the React
+    // side. The default RingOnly sink is replaced; the daemon-driven
+    // path keeps RingOnly so the ring populates without needing an
+    // AppHandle.
+    engine.set_activity_sink(Arc::new(crate::activity::TauriActivitySink::new(
+        app,
+    )));
+    // === end wave 16 ===
     engine
         .heartbeat(HeartbeatCadence::Manual, primary_tool_id)
         .await
@@ -103,6 +121,15 @@ pub async fn co_thinker_initialize_brain<R: Runtime>(
 ) -> Result<HeartbeatOutcome, AppError> {
     let root = memory_root()?;
     let mut engine = CoThinkerEngine::new(root);
+    // === wave 16 ===
+    // Install the activity sink BEFORE the seed-write below so that
+    // first-run users see the brain seed event surface in their right-
+    // rail feed immediately (otherwise the seed lands silently on the
+    // RingOnly default).
+    engine.set_activity_sink(Arc::new(crate::activity::TauriActivitySink::new(
+        app.clone(),
+    )));
+    // === end wave 16 ===
 
     // Step 1 — ensure the seed is on disk. If the user already has a brain
     // doc with real content, skip; otherwise (missing, or just the seed

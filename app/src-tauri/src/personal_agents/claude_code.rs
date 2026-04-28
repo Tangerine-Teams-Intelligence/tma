@@ -159,8 +159,50 @@ fn capture_one_session(src: &Path, target_dir: &Path) -> Result<bool, String> {
     }
     let body = render_atom(&atom);
     fs::write(&atom_path, body).map_err(|e| format!("write {}: {}", atom_path.display(), e))?;
+    // === wave 16 ===
+    // Push onto the in-memory activity ring so the React `<ActivityFeed/>`
+    // sees this conversation when it re-reads via `activity_recent`. We
+    // intentionally use the no-emit variant here — the Tauri command
+    // thunk that wraps `capture` walks the result + fires the
+    // `activity:atom_written` event itself once it knows the count.
+    let title = if atom.topic.is_empty() {
+        atom.conversation_id.clone()
+    } else {
+        atom.topic.clone()
+    };
+    let rel = compute_rel_path(&atom_path);
+    let ev = crate::activity::ActivityAtomEvent::new(
+        rel,
+        title,
+        crate::activity::AtomKind::Thread,
+    )
+    .with_vendor("claude-code");
+    crate::activity::push_event_to_ring(ev);
+    // === end wave 16 ===
     Ok(true)
 }
+
+// === wave 16 ===
+/// Compute a memory-root-relative path from an absolute atom path. Best
+/// effort: walks up looking for `.tangerine-memory`; falls back to the
+/// last 4 components which still gives the React feed a usable string
+/// (`personal/<user>/threads/claude-code/<id>.md`).
+fn compute_rel_path(atom_path: &Path) -> String {
+    let s = atom_path.to_string_lossy().replace('\\', "/");
+    if let Some(idx) = s.find(".tangerine-memory/") {
+        let rest = &s[idx + ".tangerine-memory/".len()..];
+        return rest.to_string();
+    }
+    // Fallback — last 4 components.
+    let parts: Vec<&str> = s.split('/').collect();
+    let n = parts.len();
+    if n >= 4 {
+        parts[n - 4..].join("/")
+    } else {
+        s
+    }
+}
+// === end wave 16 ===
 
 fn sanitize_id(s: &str) -> String {
     let mut out = String::with_capacity(s.len());

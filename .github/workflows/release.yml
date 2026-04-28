@@ -5,18 +5,84 @@ name: Release Tangerine AI Teams
     tags:
       - 'v*'
 
+# === wave 17 ===
+# Cross-platform installer matrix. Previously this workflow only built a
+# Windows NSIS installer (60% of dev market is non-Windows = lost users).
+#
+# Matrix produces 5 artifacts per tag:
+#   - Windows (NSIS .exe, x64)
+#   - macOS Apple Silicon (.dmg, aarch64)
+#   - macOS Intel (.dmg, x64)
+#   - Linux Debian/Ubuntu (.deb, x64)
+#   - Linux generic (.AppImage, x64)
+#
+# Notes:
+#   * macOS DMGs are unsigned (no Apple Developer ID yet). Users get a
+#     gatekeeper warning + must right-click -> Open the first time.
+#     APPLE_* secrets block is left commented; flip on once a cert exists.
+#   * Linux runner is ubuntu-22.04 (matches Tauri 2 deps: webkit2gtk 4.1).
+#     Builds for both .deb and .AppImage on the same runner — Tauri emits
+#     all configured targets in one `tauri build` invocation.
+#   * Linux builds intentionally skip the PyInstaller frozen-Python step
+#     (and Discord bot bundle). The current frozen Python build script is
+#     PowerShell-only (`build_python.ps1`); the Linux runner just builds
+#     the Tauri shell so non-meeting features (memory viewer, AI tools
+#     sidebar, settings) work. Discord meeting capture remains
+#     Windows-only until `build_python.sh` is dogfooded on Linux/macOS.
+#     This is honest about scope — the Linux artifact is a "shell preview"
+#     not a complete app. Same constraint applies to macOS for v1.10.x.
+#   * fail-fast: false — if macOS Intel build dies, Apple Silicon + Linux
+#     should still publish. We'd rather ship 4/5 than 0/5.
+# === end wave 17 ===
+
 jobs:
-  build-windows:
-    name: Build Windows installer
-    runs-on: windows-latest
+  build:
+    name: Build ${{ matrix.label }}
+    runs-on: ${{ matrix.runner }}
     permissions:
       contents: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # === wave 17 === Windows — full build (Python + bot + Tauri NSIS).
+          - runner: windows-latest
+            target: x86_64-pc-windows-msvc
+            label: windows-x64
+            full_build: true
+            bundle_glob: "app/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe"
+          # === wave 17 === macOS arm64 (M1/M2). Shell preview only — no Python/bot.
+          - runner: macos-14
+            target: aarch64-apple-darwin
+            label: macos-aarch64
+            full_build: false
+            bundle_glob: "app/src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg"
+          # === wave 17 === macOS Intel. Shell preview only.
+          - runner: macos-13
+            target: x86_64-apple-darwin
+            label: macos-x64
+            full_build: false
+            bundle_glob: "app/src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg"
+          # === wave 17 === Linux .deb (Ubuntu/Debian). Shell preview only.
+          - runner: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            label: linux-deb
+            full_build: false
+            bundle_glob: "app/src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/deb/*.deb"
+          # === wave 17 === Linux .AppImage (any glibc-based distro).
+          - runner: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            label: linux-appimage
+            full_build: false
+            bundle_glob: "app/src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage"
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Setup Python 3.11
+        if: matrix.full_build == true
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -31,7 +97,7 @@ jobs:
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: 1.89.0
-          targets: x86_64-pc-windows-msvc
+          targets: ${{ matrix.target }}
           components: rustfmt, clippy
 
       - name: Cache cargo registry + target
@@ -41,11 +107,28 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             app/src-tauri/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('app/src-tauri/Cargo.lock') }}
+          key: ${{ runner.os }}-${{ matrix.target }}-cargo-${{ hashFiles('app/src-tauri/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-
+            ${{ runner.os }}-${{ matrix.target }}-cargo-
+
+      # === wave 17 === Linux WebKit + GTK system libs (Tauri 2 requirement).
+      - name: Install Linux deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libssl-dev \
+            libgtk-3-dev \
+            libsoup-3.0-dev \
+            libjavascriptcoregtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            file \
+            libfuse2
 
       - name: Install Python deps + PyInstaller
+        if: matrix.full_build == true
         shell: pwsh
         run: |
           python -m pip install --upgrade pip
@@ -53,12 +136,14 @@ jobs:
           pip install pyinstaller==6.6.0
 
       - name: Build frozen Python (PyInstaller --onedir)
+        if: matrix.full_build == true
         shell: pwsh
         working-directory: app/scripts
         run: |
           .\build_python.ps1
 
       - name: Verify Python bundle
+        if: matrix.full_build == true
         shell: pwsh
         run: |
           if (-not (Test-Path "app/resources/python/python.exe")) {
@@ -68,6 +153,7 @@ jobs:
           Get-ChildItem app/resources/python | Select-Object -First 20
 
       - name: Install bot deps + build TypeScript
+        if: matrix.full_build == true
         shell: pwsh
         working-directory: bot
         run: |
@@ -75,12 +161,14 @@ jobs:
           npm run build
 
       - name: Build bot bundle (directory-mode)
+        if: matrix.full_build == true
         shell: pwsh
         working-directory: app/scripts
         run: |
           .\build_bot.ps1
 
       - name: Verify bot bundle
+        if: matrix.full_build == true
         shell: pwsh
         run: |
           if (-not (Test-Path "app/resources/bot/dist/index.js")) {
@@ -97,56 +185,108 @@ jobs:
           }
           Get-ChildItem app/resources/bot
 
+      # === wave 17 === Stub the Python + bot resource dirs on non-Windows so
+      # the Tauri bundler doesn't fail on missing required resources.
+      # The shell preview will lack meeting capture (no python/bot at runtime)
+      # but the rest of the app boots and the bundler is happy.
+      - name: Stub Python + bot resources (non-Windows shell preview)
+        if: matrix.full_build != true
+        shell: bash
+        run: |
+          mkdir -p app/resources/python
+          mkdir -p app/resources/bot/dist
+          mkdir -p app/resources/bot/node_modules
+          # placeholder file so the dir is non-empty (Tauri resource scan
+          # walks it; an empty dir would still bundle but produce a useless
+          # artifact — leave a README so users opening the bundle understand
+          # why meeting features show "not installed")
+          echo "# Tangerine AI Teams — non-Windows preview" > app/resources/python/README.txt
+          echo "" >> app/resources/python/README.txt
+          echo "This build is the desktop shell + memory viewer only." >> app/resources/python/README.txt
+          echo "Discord meeting capture (which requires bundled Python +" >> app/resources/python/README.txt
+          echo "Whisper) will be enabled in a future release once the" >> app/resources/python/README.txt
+          echo "non-Windows bundling pipeline is dogfooded." >> app/resources/python/README.txt
+          cp app/resources/python/README.txt app/resources/bot/README.txt
+          # bot/dist needs an index.js for the path-resolver smoke test
+          echo "// non-Windows preview — bot disabled" > app/resources/bot/dist/index.js
+          echo '{"name":"tangerine-bot-stub","version":"0.0.0","main":"dist/index.js"}' > app/resources/bot/package.json
+
       - name: Install app deps
-        shell: pwsh
+        shell: bash
         working-directory: app
         run: npm ci
 
-      - name: Build Tauri app + NSIS installer
-        shell: pwsh
+      # === wave 17 === Tauri build picks up matrix.target so the bundler
+      # emits to target/<triple>/release/bundle/{nsis,dmg,deb,appimage}/.
+      # Same `npm run tauri -- build` invocation as the previous Windows-only
+      # job — Tauri 2 cross-compiles per the rust toolchain we set above.
+      - name: Build Tauri app + installer
+        shell: bash
         working-directory: app
-        run: npm run tauri -- build
+        # === wave 17 === Use npx so flags pass cleanly across runners
+        # (npm script forwarding through `--` is finicky on Windows runner).
+        run: npx tauri build --target ${{ matrix.target }}
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # === wave 17 === macOS code signing — left blank for v1.10.x.
+          # When CEO has Apple Developer ID ($99/yr), populate these in repo
+          # secrets and uncomment the references below. Without them the
+          # DMG ships unsigned and users will see a gatekeeper warning.
+          #
+          # APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          # APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          # APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          # APPLE_ID: ${{ secrets.APPLE_ID }}
+          # APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          # APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
       - name: List bundle artifacts (debug)
         if: always()
-        shell: pwsh
+        shell: bash
         run: |
-          if (Test-Path app/src-tauri/target/release/bundle) {
-            Get-ChildItem -Recurse app/src-tauri/target/release/bundle
-          } else {
-            Write-Host "No bundle directory produced"
-          }
+          if [ -d "app/src-tauri/target/${{ matrix.target }}/release/bundle" ]; then
+            find "app/src-tauri/target/${{ matrix.target }}/release/bundle" -type f
+          else
+            echo "No bundle directory produced for ${{ matrix.target }}"
+          fi
 
+      # === wave 17 === Find first artifact matching the per-platform glob.
       - name: Find installer artifact
         id: find_installer
-        shell: pwsh
+        shell: bash
         run: |
-          $installer = Get-ChildItem -Recurse app/src-tauri/target/release/bundle/nsis -Filter "*.exe" -ErrorAction Stop | Select-Object -First 1
-          if (-not $installer) {
-            Write-Error "No NSIS installer found"
+          # Use shell glob; quote-protect against zero matches.
+          shopt -s nullglob
+          matches=( ${{ matrix.bundle_glob }} )
+          if [ ${#matches[@]} -eq 0 ]; then
+            echo "ERROR: no artifact matched glob ${{ matrix.bundle_glob }}"
             exit 1
-          }
-          Write-Host "Found installer: $($installer.FullName)"
-          "INSTALLER_PATH=$($installer.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-          "INSTALLER_NAME=$($installer.Name)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          fi
+          installer="${matches[0]}"
+          echo "Found installer: $installer"
+          echo "INSTALLER_PATH=$installer" >> "$GITHUB_OUTPUT"
+          echo "INSTALLER_NAME=$(basename "$installer")" >> "$GITHUB_OUTPUT"
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
         with:
-          name: tangerine-ai-teams-installer-windows
+          name: tangerine-ai-teams-installer-${{ matrix.label }}
           path: ${{ steps.find_installer.outputs.INSTALLER_PATH }}
           retention-days: 30
 
-      - name: Create GitHub Release
+      # === wave 17 === softprops/action-gh-release supports concurrent
+      # uploads — each matrix job appends its asset to the same release tag.
+      # We let the FIRST job (Windows, since matrix order is preserved) own
+      # the release body; subsequent jobs just attach files via append.
+      - name: Attach installer to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           name: Tangerine AI Teams ${{ github.ref_name }}
           tag_name: ${{ github.ref_name }}
           prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'alpha') || contains(github.ref_name, 'rc') }}
           files: ${{ steps.find_installer.outputs.INSTALLER_PATH }}
+          fail_on_unmatched_files: false
           generate_release_notes: true
           body: |
             # Tangerine AI Teams ${{ github.ref_name }}
@@ -155,26 +295,55 @@ jobs:
 
             ## Download
 
-            Click the installer below to download. Run it. Follow the 5-step setup wizard.
+            | Platform | Architecture | Notes |
+            |---|---|---|
+            | Windows 10/11 | x64 | Full feature set incl. meeting capture |
+            | macOS 11+ | Apple Silicon (arm64) | Unsigned beta — right-click .dmg → Open first time |
+            | macOS 11+ | Intel (x64) | Unsigned beta — right-click .dmg → Open first time |
+            | Ubuntu 22.04+ / Debian | x64 .deb | Shell preview (no meeting capture yet) |
+            | Any Linux distro | x64 .AppImage | Shell preview (no meeting capture yet) |
 
-            **Beta — unsigned**: Windows SmartScreen may flag this. Right-click the .exe → Properties → Unblock, then run.
+            **Beta — unsigned**: Windows SmartScreen / macOS Gatekeeper may flag this. On Windows: right-click .exe → Properties → Unblock. On macOS: right-click .dmg → Open.
 
             ## Setup time
 
-            ~15 minutes for first meeting (Discord bot creation + API keys + team config).
+            ~15 minutes for first meeting on Windows (Discord bot creation + API keys + team config). macOS / Linux can install + browse memory immediately; meeting capture comes in a future release.
 
             See [SETUP.md](https://github.com/${{ github.repository }}/blob/main/SETUP.md) for full walkthrough.
 
             ## What's in this beta
 
-            - **Tangerine Meeting** skill — Discord meeting capture → Claude Code memory diff
+            - **Tangerine Meeting** skill — Discord meeting capture → Claude Code memory diff (Windows only this release)
+            - **Memory viewer** — co-thinker.md, atoms timeline, decisions log (all platforms)
+            - **AI tools sidebar** — auto-detects Cursor / Claude Code / Codex / Windsurf / Copilot / Ollama (all platforms)
             - Setup wizard: Discord bot + local Whisper download (~244 MB, OpenAI optional) + Claude detection + team members
             - Apache-2.0 licensed
 
             ## Known limitations
 
-            - Windows-only (Mac/Linux pending)
-            - Unsigned (warning on first run is expected)
+            - macOS / Linux: meeting capture not yet bundled (PyInstaller pipeline is Windows-only this release)
+            - Unsigned (warning on first run is expected on every platform)
             - 9 more skills (Wiki / Track / Review / Schedule / Loom / Hire / Voice / Survey / Chat) coming v1.6+
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # === wave 17 ===
+  # After matrix completes, mark the release as the latest. softprops/action-gh-release
+  # creates with `prerelease` flag set per-job but doesn't always promote to "latest"
+  # if the user's repo defaults differ. This explicit step is idempotent — if the
+  # release is already latest it's a no-op.
+  finalize:
+    name: Finalize release (mark latest)
+    needs: [build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    if: ${{ !contains(github.ref_name, 'beta') && !contains(github.ref_name, 'alpha') && !contains(github.ref_name, 'rc') }}
+    steps:
+      - name: Mark as latest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release edit ${{ github.ref_name }} \
+            --repo ${{ github.repository }} \
+            --latest || echo "release edit failed (likely already latest); not fatal"

@@ -24,7 +24,7 @@
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
-use tauri::State;
+use tauri::{AppHandle, Runtime, State};
 
 use crate::commands::{AppError, AppState};
 use crate::memory_paths::{resolve_atom_dir, AtomScope};
@@ -216,7 +216,8 @@ fn resolve_dest_root(_state: &AppState, current_user: Option<&str>) -> PathBuf {
 }
 
 #[tauri::command]
-pub async fn personal_agents_capture_cursor(
+pub async fn personal_agents_capture_cursor<R: Runtime>(
+    app: AppHandle<R>,
     args: Option<CaptureArgs>,
     state: State<'_, AppState>,
 ) -> Result<PersonalAgentCaptureResult, AppError> {
@@ -226,11 +227,19 @@ pub async fn personal_agents_capture_cursor(
         .await
         .map_err(|e| AppError::internal("personal_agents_cursor_join", e.to_string()))?;
     update_last_sync(&state).ok();
+    // === wave 16 ===
+    // The parser pushed each newly-written conversation onto the activity
+    // ring. Walk the most recent N events that look like cursor-vendor
+    // entries and re-fire them through the Tauri event channel so the
+    // React `<ActivityFeed/>` listener prepends without polling.
+    wave16_replay_recent_to_emit(&app, "cursor", result.written);
+    // === end wave 16 ===
     Ok(result)
 }
 
 #[tauri::command]
-pub async fn personal_agents_capture_claude_code(
+pub async fn personal_agents_capture_claude_code<R: Runtime>(
+    app: AppHandle<R>,
     args: Option<CaptureArgs>,
     state: State<'_, AppState>,
 ) -> Result<PersonalAgentCaptureResult, AppError> {
@@ -240,8 +249,35 @@ pub async fn personal_agents_capture_claude_code(
         .await
         .map_err(|e| AppError::internal("personal_agents_cc_join", e.to_string()))?;
     update_last_sync(&state).ok();
+    // === wave 16 ===
+    wave16_replay_recent_to_emit(&app, "claude-code", result.written);
+    // === end wave 16 ===
     Ok(result)
 }
+
+// === wave 16 ===
+/// After a personal-agent capture completes, walk the activity ring and
+/// re-fire the newest `count` events for the matching vendor as Tauri
+/// `activity:atom_written` events. Defensive: emit failures swallowed.
+fn wave16_replay_recent_to_emit<R: Runtime>(
+    app: &AppHandle<R>,
+    vendor: &str,
+    count: usize,
+) {
+    if count == 0 {
+        return;
+    }
+    use tauri::Emitter;
+    let snap = crate::activity::snapshot(Some(count.min(50)));
+    for ev in snap
+        .into_iter()
+        .filter(|e| e.vendor.as_deref() == Some(vendor))
+        .take(count)
+    {
+        let _ = app.emit("activity:atom_written", &ev);
+    }
+}
+// === end wave 16 ===
 
 #[tauri::command]
 pub async fn personal_agents_capture_codex(

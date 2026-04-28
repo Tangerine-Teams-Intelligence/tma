@@ -78,9 +78,22 @@ Cursor / Claude Code / Codex / Windsurf / ChatGPT / Devin / Replit / Apple Intel
 
 ## Quick start (30 seconds from install)
 
-1. Download installer for your OS:
-   - **Windows**: [Tangerine-Teams-App-1.9.1-x64.msi](https://github.com/Tangerine-Teams-Intelligence/tangerine-teams-app/releases/latest)
-   - macOS / Linux: coming v1.9.x (Tauri 2 builds clean, just needs CI runner)
+1. Download installer for your OS from the [latest release](https://github.com/Tangerine-Teams-Intelligence/tangerine-teams-app/releases/latest):
+
+   <!-- === wave 17 === cross-platform installer matrix shipped v1.10.4 -->
+
+   | Platform | Architecture | Asset | Notes |
+   |---|---|---|---|
+   | Windows 10/11 | x64 | `Tangerine.AI.Teams_<v>_x64-setup.exe` | Full feature set incl. meeting capture |
+   | macOS 11+ | Apple Silicon | `Tangerine.AI.Teams_<v>_aarch64.dmg` | Unsigned beta — **right-click → Open** the first time to bypass Gatekeeper |
+   | macOS 11+ | Intel | `Tangerine.AI.Teams_<v>_x64.dmg` | Unsigned beta — **right-click → Open** the first time |
+   | Ubuntu 22.04+ / Debian | x64 | `tangerine-ai-teams_<v>_amd64.deb` | Shell preview — meeting capture comes in a future release |
+   | Any glibc Linux | x64 | `Tangerine.AI.Teams_<v>_amd64.AppImage` | Shell preview — `chmod +x` then run |
+
+   Replace `<v>` with the current release version. Cross-platform parity status:
+   - Windows: full app (Discord meeting capture + memory + AI sidebar)
+   - macOS / Linux: shell preview (memory viewer + AI sidebar work; Discord meeting capture pending — bundled-Python pipeline is Windows-only this release)
+
 2. Install + launch
 3. WelcomeOverlay walks you through 4 cards in ~30 seconds
 4. Click "Get started" → auto-detects installed AI tools and surfaces one-click MCP config snippets
