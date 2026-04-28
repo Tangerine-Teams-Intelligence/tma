@@ -92,6 +92,14 @@ export type TelemetryEventName =
   //                                            | "timeout" }
   | "suggestion_enriched"
   | "suggestion_enrichment_failed"
+  // === v1.13.1 Round 1 fix — missing telemetry event names that broke build ===
+  // Added by various waves but never registered in the union.
+  | "demo_banner_connect_clicked"      // Wave 13 — DemoModeBanner.tsx
+  | "demo_banner_hidden"                // Wave 13 — DemoModeBanner.tsx
+  | "onboarding_scope_picked"           // Wave 1.13-A — OnboardingChat.tsx solo/team picker
+  | "setup_wizard_sample_query_clicked" // Wave 13 — SetupWizard.tsx sample chips
+  | "welcome_card_cta"                  // Wave 1.13-A — WelcomeOverlay card 5 CTA
+  // === end v1.13.1 ===
   // Wave 4-C — first-run welcome tour + AI tool auto-configure.
   // Lets analytics see how many users see the overlay vs. start the tour
   // vs. skip, and how often auto-configure beats the manual flow.

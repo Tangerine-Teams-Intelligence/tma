@@ -103,8 +103,8 @@ describe("Wave 14 — /today ChatGPT-style hero", () => {
     vi.spyOn(tauri, "coThinkerDispatch").mockImplementation(
       () =>
         new Promise((r) => {
-          resolve = r;
-        }),
+          resolve = r as (v: unknown) => void;
+        }) as unknown as Promise<tauri.LlmResponse>,
     );
 
     render(
@@ -130,7 +130,8 @@ describe("Wave 14 — /today ChatGPT-style hero", () => {
     ).not.toBeInTheDocument();
 
     // Resolve the dispatch so the test doesn't hang on the open promise.
-    resolve?.({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (resolve as any)?.({
       text: "ok",
       channel_used: "mcp_sampling",
       tool_id: "cursor",

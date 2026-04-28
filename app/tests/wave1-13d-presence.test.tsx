@@ -114,7 +114,8 @@ describe("Wave 1.13-D — PresenceProvider", () => {
       expect(tauriMocks.presenceEmit).toHaveBeenCalled();
     });
     // First emit carries the current route + currentUser.
-    const firstCall = tauriMocks.presenceEmit.mock.calls[0]?.[0] as {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const firstCall = (tauriMocks.presenceEmit.mock.calls as any[])[0]?.[0] as {
       user: string;
       currentRoute: string;
     };
@@ -127,7 +128,8 @@ describe("Wave 1.13-D — PresenceProvider", () => {
     });
 
     // Reader was invoked with our currentUser as the exclude filter.
-    const lastReadCall = tauriMocks.presenceListActive.mock.calls.at(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const lastReadCall = (tauriMocks.presenceListActive.mock.calls as any[]).at(
       -1,
     )?.[0] as { excludeUser?: string | null; ttlSeconds?: number };
     expect(lastReadCall?.excludeUser).toBe("daizhe");
@@ -165,7 +167,8 @@ describe("Wave 1.13-D — PresenceProvider", () => {
       );
     });
     // Latest call carries the new route.
-    const lastCall = tauriMocks.presenceEmit.mock.calls.at(-1)?.[0] as {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const lastCall = (tauriMocks.presenceEmit.mock.calls as any[]).at(-1)?.[0] as {
       currentRoute: string;
     };
     expect(lastCall.currentRoute).toBe("/memory");
