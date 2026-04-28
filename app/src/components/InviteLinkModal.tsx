@@ -30,7 +30,13 @@ export function InviteLinkModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-stretch justify-center bg-[var(--ti-paper-100)] dark:bg-stone-950">
+    <div
+      className="fixed inset-0 z-50 flex items-stretch justify-center bg-[var(--ti-paper-100)] dark:bg-stone-950"
+      // === v1.14.0 round-1 === — testid for the cold-start E2E test so
+      // the funnel suite can assert the modal mounted with the right URI.
+      data-testid="invite-link-modal"
+      // === end v1.14.0 round-1 ===
+    >
       <div className="flex w-full max-w-xl flex-col justify-center p-8">
         <h1 className="font-display text-2xl tracking-tight text-stone-900 dark:text-stone-100">
           Your team's memory is live
@@ -40,16 +46,34 @@ export function InviteLinkModal({
           copy of the memory automatically.
         </p>
         <div className="mt-6 rounded-md border border-stone-300 bg-stone-100 px-4 py-3 dark:border-stone-700 dark:bg-stone-900">
-          <p className="break-all font-mono text-[11px] text-stone-700 dark:text-stone-300">
+          <p
+            className="break-all font-mono text-[11px] text-stone-700 dark:text-stone-300"
+            // === v1.14.0 round-1 === — pin the URI element so the funnel
+            // test can verify the user can paste it manually if the
+            // clipboard write fails (Wayland / locked-down kiosk modes).
+            data-testid="invite-link-uri"
+            // === end v1.14.0 round-1 ===
+          >
             {uri}
           </p>
         </div>
         <div className="mt-4 flex gap-3">
-          <Button onClick={copy}>
+          <Button
+            onClick={copy}
+            // === v1.14.0 round-1 ===
+            data-testid="invite-link-copy"
+            // === end v1.14.0 round-1 ===
+          >
             {copied ? <Check size={14} /> : <Copy size={14} />}
             {copied ? "Copied" : "Copy invite"}
           </Button>
-          <Button variant="outline" onClick={onDone}>
+          <Button
+            variant="outline"
+            onClick={onDone}
+            // === v1.14.0 round-1 ===
+            data-testid="invite-link-done"
+            // === end v1.14.0 round-1 ===
+          >
             Done
           </Button>
         </div>
