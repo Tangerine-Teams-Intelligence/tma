@@ -772,6 +772,50 @@ export function AppShell() {
   }, [pushToast]);
   // === end wave 1.13-A ===
 
+  // === v1.13.5 round-5 ===
+  // Round 5 Tauri-event-parity audit found two emit-without-listener bugs:
+  //   * `writeback:event` — fires from sources/watcher.rs every time a
+  //     GitHub/Linear writeback completes, but no React subscriber. The
+  //     decision-trail UI in /reviews can't tell when a writeback lands.
+  //   * `config-changed` — fires from commands/config.rs after set_config,
+  //     but the Settings panel doesn't auto-refresh on external edits.
+  // Both are wired here as lightweight listeners that log telemetry so we
+  // have observability + a hook point for v1.14 UI surfaces. The actual
+  // refresh/toast UI is intentionally NOT added — that's a v1.14 surface
+  // decision. This unblocks future wires without keeping the events dead.
+  useEffect(() => {
+    let unWb: (() => void) | null = null;
+    let unCfg: (() => void) | null = null;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { listen } = await import("@tauri-apps/api/event");
+        const { logEvent } = await import("@/lib/telemetry");
+        if (cancelled) return;
+        unWb = await listen<unknown>("writeback:event", (e) => {
+          // Best-effort; an unknown payload shape mustn't break logging.
+          const outcome = (e.payload ?? {}) as Record<string, unknown>;
+          void logEvent("writeback_event_observed" as unknown as never, {
+            ok: outcome["ok"] ?? null,
+            kind: outcome["kind"] ?? null,
+          });
+        });
+        if (cancelled) return;
+        unCfg = await listen<unknown>("config-changed", () => {
+          void logEvent("config_changed_observed" as unknown as never, {});
+        });
+      } catch {
+        // Browser / vitest — no Tauri bridge; silently no-op.
+      }
+    })();
+    return () => {
+      cancelled = true;
+      if (unWb) unWb();
+      if (unCfg) unCfg();
+    };
+  }, []);
+  // === end v1.13.5 round-5 ===
+
   return (
     // v1.8 Phase 4 — the AmbientInputObserver wraps the whole shell so a
     // single delegated input listener sees every textarea / contenteditable

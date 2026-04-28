@@ -192,8 +192,19 @@ export type TelemetryEventName =
   | "coachmark_step_shown"
   | "coachmark_dismissed"
   | "try_this_clicked"
-  | "tour_completed";
+  | "tour_completed"
   // === end wave 22 ===
+  // === v1.13.5 round-5 ===
+  // Fired by `applyReviewDecisions` (tauri.ts) when the user clicks Apply
+  // in /meetings/:id/review. The actual write happens via the immediately-
+  // following `tmi apply` subcommand call; this event is the analytics
+  // record so we know how many blocks were approved/rejected/edited per
+  // meeting. Replaces the old dead `apply_review_decisions` Tauri invoke
+  // that silently fell back to a console.info mock.
+  // Payload: { meeting_id: string, approved_count: number,
+  //            rejected_count: number, edited_count: number }
+  | "review_decisions_submitted";
+  // === end v1.13.5 round-5 ===
 // === end wave 5-β discoverability ===
 
 /** One telemetry record. Mirrors `app/src-tauri/src/agi/telemetry.rs::TelemetryEvent`. */

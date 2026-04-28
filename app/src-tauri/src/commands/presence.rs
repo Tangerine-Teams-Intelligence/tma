@@ -25,6 +25,7 @@ use std::path::PathBuf;
 
 use chrono::{Duration, Utc};
 use serde::{Deserialize, Serialize};
+use tauri::{AppHandle, Emitter, Runtime};
 
 use crate::agi::presence::{self, PresenceInfo};
 use crate::agi::telemetry::{self as agi_telemetry, TelemetryEvent};
@@ -62,8 +63,19 @@ pub struct PresenceListResult {
 /// that calling it back-to-back with the same payload simply overwrites
 /// the same file with a fresh `last_active` timestamp — the file always
 /// holds exactly one snapshot.
+///
+/// === v1.13.5 round-5 === — also fires the `presence:update` Tauri event
+/// the React `PresenceProvider` already subscribes to via
+/// `listenPresenceUpdates`. Round 4 wired the React side; Round 5 found
+/// the Rust side never emitted, so the listener sat idle and the polling
+/// fallback was the only live path. Now: every successful emit fan-outs
+/// to all windows so multi-window setups (main + popout) and any future
+/// daemon-driven git-pull-detected presence refresh share one channel.
 #[tauri::command]
-pub async fn presence_emit(args: PresenceEmitArgs) -> Result<(), AppError> {
+pub async fn presence_emit<R: Runtime>(
+    app: AppHandle<R>,
+    args: PresenceEmitArgs,
+) -> Result<(), AppError> {
     let root = resolve_memory_root()?;
 
     // Defensive: a missing user string would land us writing to a `.json`
@@ -104,6 +116,13 @@ pub async fn presence_emit(args: PresenceEmitArgs) -> Result<(), AppError> {
     };
     if let Err(e) = agi_telemetry::append_event(&root, event).await {
         tracing::warn!(error = %e, "presence_emit: telemetry append failed");
+    }
+
+    // === v1.13.5 round-5 === — fan out to listeners. Best-effort: an emit
+    // failure should never bubble up because the on-disk write already
+    // succeeded and the polling path will pick up the same snapshot.
+    if let Err(e) = app.emit("presence:update", &info) {
+        tracing::warn!(error = ?e, "presence_emit: tauri emit failed");
     }
 
     Ok(())

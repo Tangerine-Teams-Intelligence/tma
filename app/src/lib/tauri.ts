@@ -809,18 +809,35 @@ export async function getReviewJson(meetingId: string): Promise<ReviewJson> {
   );
 }
 
+// === v1.13.5 round-5 ===
+// `apply_review_decisions` was registered in tauri.ts as a thin pass-through
+// invoke since v1.0 but the Rust handler was NEVER added to the
+// `tmi_invoke_handler!` macro — every call silently fell into the mock
+// console.info branch via safeInvoke's catch path. Round 5 audit caught it.
+//
+// The actual decision write happens in the very next call from ReviewView
+// (`applyMeeting` → `tmi apply` subcommand reads the per-meeting state files
+// the React UI already wrote to disk). So this function isn't load-bearing
+// for correctness — but the silent invoke-failure logged a noisy console
+// error in production every Approve click. Drop the dead invoke and log a
+// telemetry event so analytics still sees the decision counts.
 export async function applyReviewDecisions(
   meetingId: string,
   decisions: { approved: number[]; rejected: number[]; edited: Record<number, string> }
 ): Promise<void> {
-  return safeInvoke(
-    "apply_review_decisions",
-    { meeting_id: meetingId, decisions },
-    () => {
-      console.info("[mock] apply_review_decisions", meetingId, decisions);
-    }
-  );
+  try {
+    const { logEvent } = await import("./telemetry");
+    await logEvent("review_decisions_submitted", {
+      meeting_id: meetingId,
+      approved_count: decisions.approved.length,
+      rejected_count: decisions.rejected.length,
+      edited_count: Object.keys(decisions.edited).length,
+    });
+  } catch {
+    // Telemetry failure must never block the apply pipeline.
+  }
 }
+// === end v1.13.5 round-5 ===
 
 export async function applyMeeting(meetingId: string): Promise<{ commit_sha: string; written: number }> {
   return safeInvoke(

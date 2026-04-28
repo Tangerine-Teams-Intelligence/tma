@@ -800,6 +800,13 @@ macro_rules! tmi_invoke_handler {
             // off to when the user pastes Lark / Zoom / Teams / Slack /
             // GitHub credentials inline. Privacy panel reads presence-only
             // (never the token value) via secret_store_get_oauth.
+            //
+            // === v1.13.5 round-5 === — Round 5 audit confirmed the FRONTEND
+            // never invokes these directly; all frontend keychain access
+            // routes through `onboarding_chat_turn` which then calls these
+            // as in-process Rust functions (see onboarding_chat.rs). Kept
+            // registered for v1.14 chat-bypass OAuth UI (paste-token modal
+            // in Settings → Sources). Don't delete.
             $crate::commands::secret_store::secret_store_set_oauth,
             $crate::commands::secret_store::secret_store_get_oauth,
             $crate::commands::secret_store::secret_store_delete_oauth,
