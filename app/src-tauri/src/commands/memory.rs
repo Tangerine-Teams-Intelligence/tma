@@ -350,6 +350,464 @@ fn collect_atoms_into(
     }
 }
 
+// === wave 21 ===
+// ---------------------------------------------------------------------------
+// Wave 21 — `memory_tree` + `compute_backlinks` for the Obsidian-style
+// /memory file browser and /brain editor.
+//
+// `memory_tree` returns a hierarchical tree of the memory dir bounded by an
+// optional depth. The React side uses it to render the left-pane tree
+// recursively. We bound the walk at MAX_NODES = 5000 nodes total so a 1000+
+// file vault doesn't lock the UI thread on the IPC boundary.
+//
+// `compute_backlinks` scans every atom for references to a target atom path
+// or title and returns the list of citing atoms. Used by both /memory
+// preview and /brain backlinks section.
+// ---------------------------------------------------------------------------
+
+/// Hard cap on tree nodes returned in a single `memory_tree` call. The React
+/// tree component renders lazily (folders collapsed by default) so there's
+/// no DOM cost beyond the top level on first paint, but we still cap to
+/// avoid pathological JSON payloads.
+pub const MAX_TREE_NODES: usize = 5000;
+
+#[derive(Debug, Deserialize, Default)]
+pub struct MemoryTreeArgs {
+    /// Subdir relative to memory root to start walking from. Empty/None →
+    /// walk from the resolved memory root.
+    #[serde(default)]
+    pub root: Option<String>,
+    /// Max depth to recurse. None → unbounded (capped by MAX_TREE_NODES).
+    /// 0 → only the root entries (no recursion).
+    #[serde(default)]
+    pub depth: Option<u32>,
+}
+
+#[derive(Debug, Serialize, Clone, PartialEq, Eq)]
+pub struct MemoryTreeNode {
+    /// Path relative to the memory root, with forward slashes.
+    pub path: String,
+    /// Filename or directory name.
+    pub name: String,
+    /// "dir" or "file".
+    pub kind: String,
+    /// Inferred scope: "team" / "personal" / null.
+    pub scope: Option<String>,
+    /// Children, only populated for dir nodes. Sorted dirs-first then alpha.
+    #[serde(default)]
+    pub children: Vec<MemoryTreeNode>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct MemoryTreeResult {
+    pub root: String,
+    pub nodes: Vec<MemoryTreeNode>,
+    /// Total file + dir nodes returned. The React side uses this for the
+    /// header "Memory · {atom_count} atoms across {thread_count} threads".
+    pub total_nodes: u32,
+    pub file_count: u32,
+    pub dir_count: u32,
+    /// True when the walk hit MAX_TREE_NODES and stopped early. The
+    /// React side can render a "+ N more files" hint in that case.
+    pub truncated: bool,
+}
+
+/// Walk the memory dir and return a hierarchical tree. Reuses the same
+/// "dirs first, then alpha" sort + the same skip rules (hidden dotfiles,
+/// non-markdown files at file level) as the JS-side reader so the two
+/// surfaces stay consistent.
+#[tauri::command(rename_all = "snake_case")]
+pub async fn memory_tree(
+    args: Option<MemoryTreeArgs>,
+) -> Result<MemoryTreeResult, AppError> {
+    let args = args.unwrap_or_default();
+    let root = memory_root()?;
+    let start_dir = match args.root.as_deref().filter(|s| !s.is_empty()) {
+        Some(rel) => root.join(rel),
+        None => root.clone(),
+    };
+
+    let mut budget = MAX_TREE_NODES;
+    let mut file_count: u32 = 0;
+    let mut dir_count: u32 = 0;
+    let mut truncated = false;
+    let nodes = walk_tree(
+        &root,
+        &start_dir,
+        "",
+        args.depth,
+        0,
+        &mut budget,
+        &mut file_count,
+        &mut dir_count,
+        &mut truncated,
+    );
+
+    let total_nodes = file_count.saturating_add(dir_count);
+    Ok(MemoryTreeResult {
+        root: root.to_string_lossy().to_string(),
+        nodes,
+        total_nodes,
+        file_count,
+        dir_count,
+        truncated,
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn walk_tree(
+    memory_root: &Path,
+    abs_dir: &Path,
+    rel_prefix: &str,
+    max_depth: Option<u32>,
+    cur_depth: u32,
+    budget: &mut usize,
+    files: &mut u32,
+    dirs: &mut u32,
+    truncated: &mut bool,
+) -> Vec<MemoryTreeNode> {
+    if !abs_dir.is_dir() {
+        return Vec::new();
+    }
+    if let Some(max) = max_depth {
+        if cur_depth > max {
+            return Vec::new();
+        }
+    }
+    let entries = match std::fs::read_dir(abs_dir) {
+        Ok(e) => e,
+        Err(_) => return Vec::new(),
+    };
+    let mut nodes: Vec<MemoryTreeNode> = Vec::new();
+    for entry in entries.flatten() {
+        if *budget == 0 {
+            *truncated = true;
+            break;
+        }
+        let name = match entry.file_name().to_str() {
+            Some(n) => n.to_string(),
+            None => continue,
+        };
+        if name.starts_with('.') {
+            continue;
+        }
+        let path = entry.path();
+        let rel = if rel_prefix.is_empty() {
+            name.clone()
+        } else {
+            format!("{}/{}", rel_prefix, name)
+        };
+        let scope = infer_scope(&rel);
+        if path.is_dir() {
+            *budget = budget.saturating_sub(1);
+            *dirs = dirs.saturating_add(1);
+            let children = if max_depth.is_some_and(|m| cur_depth >= m) {
+                Vec::new()
+            } else {
+                walk_tree(
+                    memory_root,
+                    &path,
+                    &rel,
+                    max_depth,
+                    cur_depth + 1,
+                    budget,
+                    files,
+                    dirs,
+                    truncated,
+                )
+            };
+            nodes.push(MemoryTreeNode {
+                path: rel,
+                name,
+                kind: "dir".into(),
+                scope,
+                children,
+            });
+        } else if path.is_file() {
+            // Only include markdown files — match the JS reader's filter.
+            let lower = name.to_lowercase();
+            if !(lower.ends_with(".md") || lower.ends_with(".markdown") || lower.ends_with(".mdx")) {
+                continue;
+            }
+            *budget = budget.saturating_sub(1);
+            *files = files.saturating_add(1);
+            nodes.push(MemoryTreeNode {
+                path: rel,
+                name,
+                kind: "file".into(),
+                scope,
+                children: Vec::new(),
+            });
+        }
+    }
+    nodes.sort_by(|a, b| {
+        if a.kind != b.kind {
+            return if a.kind == "dir" { std::cmp::Ordering::Less } else { std::cmp::Ordering::Greater };
+        }
+        a.name.cmp(&b.name)
+    });
+    nodes
+}
+
+fn infer_scope(rel: &str) -> Option<String> {
+    let head = rel.split('/').next().unwrap_or("");
+    match head {
+        "team" => Some("team".to_string()),
+        "personal" => Some("personal".to_string()),
+        _ => None,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Backlinks computation
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Deserialize)]
+pub struct BacklinksArgs {
+    /// Path of the target atom relative to memory root (e.g.
+    /// `team/decisions/foo.md`). Either this OR `title` must be supplied.
+    #[serde(default)]
+    pub atom_path: Option<String>,
+    /// Optional title to also match (used when scanning [[Title]] wiki-style
+    /// references). Falls back to deriving a title from `atom_path` (basename
+    /// without `.md`) when omitted.
+    #[serde(default)]
+    pub title: Option<String>,
+}
+
+#[derive(Debug, Serialize, Clone, PartialEq, Eq)]
+pub struct BacklinkHit {
+    /// Path of the citing atom (rel to memory root).
+    pub path: String,
+    /// Title of the citing atom — frontmatter `title:` if present, else
+    /// the basename without `.md`.
+    pub title: String,
+    /// ~120 chars around the first match, whitespace flattened.
+    pub snippet: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct BacklinksResult {
+    pub target_path: Option<String>,
+    pub target_title: Option<String>,
+    pub hits: Vec<BacklinkHit>,
+}
+
+/// Walk every .md file under the memory root and return atoms that cite the
+/// target atom. We match three reference shapes:
+///
+///   1. Bare path mention (e.g. `team/decisions/foo.md`)
+///   2. `/memory/...` citation (e.g. `/memory/team/decisions/foo.md`)
+///   3. `[[Title]]` wiki link (case-insensitive title match)
+///
+/// Bounded at 1000 files walked to match search.rs. The target atom itself
+/// is always excluded from the result.
+#[tauri::command(rename_all = "snake_case")]
+pub async fn compute_backlinks(
+    args: Option<BacklinksArgs>,
+) -> Result<BacklinksResult, AppError> {
+    let args = args.unwrap_or(BacklinksArgs {
+        atom_path: None,
+        title: None,
+    });
+    let root = memory_root()?;
+    let target_path = args
+        .atom_path
+        .as_deref()
+        .map(|s| s.trim_start_matches('/').to_string());
+    let derived_title = target_path
+        .as_deref()
+        .map(|p| derive_title_from_path(p));
+    let target_title = args.title.clone().or(derived_title);
+
+    if target_path.is_none() && target_title.is_none() {
+        return Ok(BacklinksResult {
+            target_path: None,
+            target_title: None,
+            hits: Vec::new(),
+        });
+    }
+
+    let mut hits: Vec<BacklinkHit> = Vec::new();
+    let mut files_seen: usize = 0;
+    walk_for_backlinks(
+        &root,
+        &root,
+        "",
+        target_path.as_deref(),
+        target_title.as_deref(),
+        &mut hits,
+        &mut files_seen,
+    );
+
+    Ok(BacklinksResult {
+        target_path,
+        target_title,
+        hits,
+    })
+}
+
+fn derive_title_from_path(rel: &str) -> String {
+    let basename = rel.rsplit('/').next().unwrap_or(rel);
+    basename
+        .trim_end_matches(".md")
+        .trim_end_matches(".markdown")
+        .trim_end_matches(".mdx")
+        .to_string()
+}
+
+const BACKLINKS_MAX_FILES: usize = 1000;
+const BACKLINKS_MAX_HITS: usize = 50;
+
+fn walk_for_backlinks(
+    memory_root: &Path,
+    abs_dir: &Path,
+    rel_prefix: &str,
+    target_path: Option<&str>,
+    target_title: Option<&str>,
+    hits: &mut Vec<BacklinkHit>,
+    files_seen: &mut usize,
+) {
+    if hits.len() >= BACKLINKS_MAX_HITS || *files_seen >= BACKLINKS_MAX_FILES {
+        return;
+    }
+    let entries = match std::fs::read_dir(abs_dir) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+    for entry in entries.flatten() {
+        if hits.len() >= BACKLINKS_MAX_HITS || *files_seen >= BACKLINKS_MAX_FILES {
+            return;
+        }
+        let name = match entry.file_name().to_str() {
+            Some(n) => n.to_string(),
+            None => continue,
+        };
+        if name.starts_with('.') {
+            continue;
+        }
+        let path = entry.path();
+        let rel = if rel_prefix.is_empty() {
+            name.clone()
+        } else {
+            format!("{}/{}", rel_prefix, name)
+        };
+        if path.is_dir() {
+            walk_for_backlinks(
+                memory_root,
+                &path,
+                &rel,
+                target_path,
+                target_title,
+                hits,
+                files_seen,
+            );
+            continue;
+        }
+        let lower = name.to_lowercase();
+        if !(lower.ends_with(".md") || lower.ends_with(".markdown") || lower.ends_with(".mdx")) {
+            continue;
+        }
+        // Skip the target atom itself.
+        if let Some(tp) = target_path {
+            if rel == tp {
+                continue;
+            }
+        }
+        *files_seen += 1;
+        let raw = match std::fs::read_to_string(&path) {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
+        let snippet = match find_backlink_match(&raw, target_path, target_title) {
+            Some(s) => s,
+            None => continue,
+        };
+        let title = parse_title(&raw).unwrap_or_else(|| derive_title_from_path(&rel));
+        hits.push(BacklinkHit {
+            path: rel,
+            title,
+            snippet,
+        });
+    }
+}
+
+/// Return a snippet around the first backlink reference found in `body`,
+/// or None if none match.
+fn find_backlink_match(
+    body: &str,
+    target_path: Option<&str>,
+    target_title: Option<&str>,
+) -> Option<String> {
+    let lower = body.to_lowercase();
+    let mut match_idx: Option<usize> = None;
+
+    if let Some(tp) = target_path {
+        let needle = tp.to_lowercase();
+        if let Some(i) = lower.find(&needle) {
+            match_idx = Some(i);
+        }
+    }
+    if match_idx.is_none() {
+        if let Some(tt) = target_title {
+            // Look for [[Title]] wiki-link (case-insensitive).
+            let wiki = format!("[[{}]]", tt.to_lowercase());
+            if let Some(i) = lower.find(&wiki) {
+                match_idx = Some(i);
+            }
+        }
+    }
+    let i = match_idx?;
+    Some(snippet_around(body, i, 120))
+}
+
+fn snippet_around(body: &str, idx: usize, window: usize) -> String {
+    let start = idx.saturating_sub(window / 2);
+    // Walk forward to a UTF-8 safe boundary if needed.
+    let safe_start = (start..body.len())
+        .find(|&i| body.is_char_boundary(i))
+        .unwrap_or(body.len());
+    let end = (idx + window).min(body.len());
+    let safe_end = (end..=body.len())
+        .find(|&i| body.is_char_boundary(i))
+        .unwrap_or(body.len());
+    let cut = &body[safe_start..safe_end];
+    let flat: String = cut
+        .chars()
+        .map(|c| if c.is_whitespace() { ' ' } else { c })
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    let mut out = String::new();
+    if safe_start > 0 {
+        out.push('…');
+    }
+    out.push_str(&flat);
+    if safe_end < body.len() {
+        out.push('…');
+    }
+    out
+}
+
+/// Read frontmatter `title:` field from the head of `raw`. Returns None when
+/// no frontmatter or no title is found.
+fn parse_title(raw: &str) -> Option<String> {
+    let m = raw.strip_prefix("---")?;
+    let end = m.find("\n---")?;
+    let frontmatter = &m[..end];
+    for line in frontmatter.lines() {
+        if let Some(rest) = line.strip_prefix("title:") {
+            let t = rest.trim().trim_matches('"').trim_matches('\'');
+            if !t.is_empty() {
+                return Some(t.to_string());
+            }
+        }
+    }
+    None
+}
+// === end wave 21 ===
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -401,6 +859,189 @@ mod tests {
         assert!(atoms.is_empty());
         let _ = std::fs::remove_dir_all(&root);
     }
+
+    // === wave 21 ===
+    #[test]
+    fn walk_tree_returns_nodes_sorted_dirs_first() {
+        let root = fresh_root();
+        let team_decisions = root.join("team/decisions");
+        let personal = root.join("personal/me/threads");
+        std::fs::create_dir_all(&team_decisions).unwrap();
+        std::fs::create_dir_all(&personal).unwrap();
+        std::fs::write(team_decisions.join("a.md"), "x").unwrap();
+        std::fs::write(team_decisions.join("b.md"), "x").unwrap();
+        std::fs::write(personal.join("c.md"), "x").unwrap();
+        std::fs::write(root.join("zz.md"), "x").unwrap();
+
+        let mut budget = MAX_TREE_NODES;
+        let mut files = 0;
+        let mut dirs = 0;
+        let mut truncated = false;
+        let nodes = walk_tree(
+            &root,
+            &root,
+            "",
+            None,
+            0,
+            &mut budget,
+            &mut files,
+            &mut dirs,
+            &mut truncated,
+        );
+        // Top-level: personal (dir), team (dir), zz.md (file).
+        // Dirs come first.
+        assert!(nodes.len() >= 3);
+        assert_eq!(nodes[0].kind, "dir");
+        assert_eq!(nodes[1].kind, "dir");
+        assert!(files >= 3, "files counted: {}", files);
+        assert!(dirs >= 4, "dirs counted: {}", dirs);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn walk_tree_skips_dotfiles_and_non_md() {
+        let root = fresh_root();
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("readme.md"), "x").unwrap();
+        std::fs::write(root.join("config.json"), "x").unwrap();
+        std::fs::write(root.join(".hidden.md"), "x").unwrap();
+
+        let mut budget = MAX_TREE_NODES;
+        let mut files = 0;
+        let mut dirs = 0;
+        let mut truncated = false;
+        let nodes = walk_tree(
+            &root,
+            &root,
+            "",
+            None,
+            0,
+            &mut budget,
+            &mut files,
+            &mut dirs,
+            &mut truncated,
+        );
+        // Only readme.md should surface.
+        assert_eq!(files, 1);
+        assert_eq!(nodes.len(), 1);
+        assert_eq!(nodes[0].name, "readme.md");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn walk_tree_respects_depth_limit() {
+        let root = fresh_root();
+        let nested = root.join("a/b/c");
+        std::fs::create_dir_all(&nested).unwrap();
+        std::fs::write(nested.join("deep.md"), "x").unwrap();
+        std::fs::write(root.join("top.md"), "x").unwrap();
+
+        let mut budget = MAX_TREE_NODES;
+        let mut files = 0;
+        let mut dirs = 0;
+        let mut truncated = false;
+        let nodes = walk_tree(
+            &root,
+            &root,
+            "",
+            Some(0),
+            0,
+            &mut budget,
+            &mut files,
+            &mut dirs,
+            &mut truncated,
+        );
+        // Depth 0 → don't recurse into a/. We see a (dir, no children) + top.md.
+        assert_eq!(files, 1);
+        let dir_node = nodes.iter().find(|n| n.kind == "dir").unwrap();
+        assert!(dir_node.children.is_empty());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn walk_tree_truncates_at_max_nodes() {
+        let root = fresh_root();
+        std::fs::create_dir_all(&root).unwrap();
+        // Tiny budget to force truncation.
+        let mut budget = 2;
+        let mut files = 0;
+        let mut dirs = 0;
+        let mut truncated = false;
+        for i in 0..10 {
+            std::fs::write(root.join(format!("f{}.md", i)), "x").unwrap();
+        }
+        let _ = walk_tree(
+            &root,
+            &root,
+            "",
+            None,
+            0,
+            &mut budget,
+            &mut files,
+            &mut dirs,
+            &mut truncated,
+        );
+        assert!(truncated, "should have truncated, files={}", files);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn infer_scope_recognizes_team_and_personal() {
+        assert_eq!(infer_scope("team/decisions/foo.md"), Some("team".into()));
+        assert_eq!(
+            infer_scope("personal/me/threads/cursor/x.md"),
+            Some("personal".into())
+        );
+        assert_eq!(infer_scope("flat-legacy.md"), None);
+    }
+
+    #[test]
+    fn parse_title_reads_frontmatter() {
+        let raw = "---\ntitle: My Decision\nauthor: alex\n---\nbody";
+        assert_eq!(parse_title(raw), Some("My Decision".into()));
+    }
+
+    #[test]
+    fn parse_title_returns_none_without_frontmatter() {
+        assert!(parse_title("# Heading\nbody").is_none());
+    }
+
+    #[test]
+    fn derive_title_strips_md_extension() {
+        assert_eq!(derive_title_from_path("team/decisions/foo.md"), "foo");
+        assert_eq!(derive_title_from_path("foo.markdown"), "foo");
+    }
+
+    #[test]
+    fn find_backlink_match_finds_path_reference() {
+        let body = "Some text mentioning team/decisions/foo.md somewhere here.";
+        let snippet = find_backlink_match(body, Some("team/decisions/foo.md"), None);
+        assert!(snippet.is_some());
+        let s = snippet.unwrap();
+        assert!(s.contains("team/decisions/foo.md"));
+    }
+
+    #[test]
+    fn find_backlink_match_finds_wiki_link() {
+        let body = "See also [[Decision-Title]] for more.";
+        let snippet = find_backlink_match(body, None, Some("Decision-Title"));
+        assert!(snippet.is_some());
+    }
+
+    #[test]
+    fn find_backlink_match_returns_none_when_absent() {
+        let body = "Nothing relevant here at all.";
+        let snippet = find_backlink_match(body, Some("team/decisions/foo.md"), Some("Foo"));
+        assert!(snippet.is_none());
+    }
+
+    #[test]
+    fn snippet_around_handles_short_body() {
+        let body = "abc";
+        let s = snippet_around(body, 0, 50);
+        assert_eq!(s, "abc");
+    }
+    // === end wave 21 ===
 
     #[test]
     fn collect_atoms_recurses_into_subdirs() {

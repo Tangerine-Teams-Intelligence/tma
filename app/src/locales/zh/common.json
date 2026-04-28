@@ -36,7 +36,9 @@
     "statusOff": "已断",
     "statusSoon": "待发布",
     "statusReady": "可用",
-    "statusBeta": "测试"
+    "statusBeta": "测试",
+    "brain": "大脑",
+    "subtitleBrand": "你团队的 AI 记忆"
   },
   "auth": {
     "brand": "Tangerine AI Teams",
@@ -357,6 +359,7 @@
     "tabs": {
       "general": "常规",
       "aiTools": "AI 工具",
+      "sources": "数据源",
       "agi": "大脑",
       "team": "团队",
       "adapters": "适配器",

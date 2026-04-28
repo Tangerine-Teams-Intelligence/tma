@@ -332,6 +332,70 @@ pub async fn git_sync_history(args: GitSyncHistoryArgs) -> Result<Vec<CommitInfo
     Ok(out)
 }
 
+// === wave 21 ===
+// ---------- per-file git log ----------
+
+#[derive(Debug, Deserialize)]
+pub struct GitLogForFileArgs {
+    /// Path relative to the memory root, e.g. `team/co-thinker.md`.
+    pub path: String,
+    /// Max number of commits to return. Clamped to [1, 50].
+    #[serde(default = "default_file_log_limit")]
+    pub limit: u32,
+}
+fn default_file_log_limit() -> u32 {
+    5
+}
+
+/// Per-file git log so the /brain editor can render an inline history strip
+/// ("• 2m ago: brain refreshed (cursor)"). Soft-fails — when the memory dir
+/// isn't a git repo, the file doesn't exist, or git binary is missing, we
+/// return an empty list rather than erroring (the React side renders an
+/// "no history yet" placeholder in that case).
+#[tauri::command(rename_all = "snake_case")]
+pub async fn git_log_for_file(
+    args: GitLogForFileArgs,
+) -> Result<Vec<CommitInfo>, AppError> {
+    let dir = match resolve_memory_dir() {
+        Some(d) if is_git_repo(&d) => d,
+        _ => return Ok(Vec::new()),
+    };
+    let git = match which_git() {
+        Some(g) => g,
+        None => return Ok(Vec::new()),
+    };
+    let limit = args.limit.clamp(1, 50).to_string();
+    let fmt = "--pretty=format:%H%x1f%s%x1f%cI%x1f%an";
+    // `git log -n <N> --pretty=... -- <path>` scopes to a single file.
+    let (s, stdout, _e) = oneshot(
+        &git,
+        &["log", "-n", &limit, fmt, "--", args.path.as_str()],
+        Some(&dir),
+    )
+    .await?;
+    if !s.success() {
+        return Ok(Vec::new());
+    }
+    let mut out = Vec::new();
+    for line in stdout.lines() {
+        let mut parts = line.split('\u{1f}');
+        let sha = parts.next().unwrap_or("").to_string();
+        let message = parts.next().unwrap_or("").to_string();
+        let ts = parts.next().unwrap_or("").to_string();
+        let author = parts.next().unwrap_or("").to_string();
+        if !sha.is_empty() {
+            out.push(CommitInfo {
+                sha,
+                message,
+                ts,
+                author,
+            });
+        }
+    }
+    Ok(out)
+}
+// === end wave 21 ===
+
 // ---------- public helpers consumed by the heartbeat + daemon ----------
 
 /// Stage everything in the memory dir and create a single auto-commit with

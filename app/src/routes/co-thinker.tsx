@@ -1,10 +1,13 @@
 // === wave 4-D i18n ===
 // === wave 5-α ===
 // === wave 9 === — split-view markdown source layout (positioning).
+// === wave 21 === — backlinks below editor + inline git history strip +
+// [[link]] wiki-style citation support. Renamed user-facing label from
+// "Co-thinker" to "Brain". Wave 19 owns the /brain router alias.
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { useLocation } from "react-router-dom";
-import { Brain, RotateCw, Pencil, Save, X, Eye, Columns2, FileCode } from "lucide-react";
+import { Link, useLocation } from "react-router-dom";
+import { Brain, RotateCw, Pencil, Save, X, Eye, Columns2, FileCode, History, GitCommit } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 
 import { Button } from "@/components/ui/button";
@@ -17,12 +20,17 @@ import {
   coThinkerStatus,
   coThinkerTriggerHeartbeat,
   coThinkerInitializeBrain,
+  computeBacklinks,
+  gitLogForFile,
   type CoThinkerStatus,
+  type BacklinkHit,
+  type FileCommitInfo,
 } from "@/lib/tauri";
 import {
   CITATION_REGEX,
   parseSections,
   CANONICAL_SECTIONS,
+  relativeTime,
 } from "@/lib/co-thinker";
 import { HeartbeatBadge } from "@/components/co-thinker/HeartbeatBadge";
 import { CitationLink } from "@/components/co-thinker/CitationLink";
@@ -427,6 +435,12 @@ export default function CoThinkerRoute() {
                 AtomCards so the user sees the cross-vendor context
                 explicitly, not buried inside paragraphs. */}
             <CitedAtomsSection content={content} primaryAITool={primaryAITool} />
+            {/* === wave 21 === — Backlinks (atoms that cite this brain
+                doc) and inline git history strip. Both load lazily on
+                mount so an empty memory dir / non-git repo never blocks
+                the brain content. */}
+            <BrainBacklinksSection />
+            <BrainHistorySection />
           </div>
         )}
       </div>
@@ -946,26 +960,234 @@ function rewriteCitations(children: ReactNode): ReactNode {
 
 /**
  * Pure string → mixed nodes. Returns the original string when no citations
- * are found (cheap fast-path); otherwise returns an array of strings and
- * <CitationLink/>s in order.
+ * are found (cheap fast-path); otherwise returns an array of strings,
+ * <CitationLink/>s, and (wave 21) <WikiLink/>s in order.
  */
 function rewriteString(s: string): ReactNode {
-  if (!s.includes("/memory/")) return s;
-  // Reset the regex each call — it's a top-level `g` regex so its
+  const hasMemoryCitation = s.includes("/memory/");
+  const hasWikiLink = WIKILINK_REGEX_TEST.test(s);
+  if (!hasMemoryCitation && !hasWikiLink) return s;
+  // Reset the regex each call — they're top-level `g` regexes so their
   // lastIndex is shared.
   CITATION_REGEX.lastIndex = 0;
-  const out: ReactNode[] = [];
-  let lastIdx = 0;
+  WIKILINK_REGEX.lastIndex = 0;
+
+  // Walk through the string once, picking whichever match comes next
+  // (citation or wiki-link). This avoids two passes that could collide.
+  type Hit =
+    | { kind: "cite"; index: number; length: number; path: string; line: number | null }
+    | { kind: "wiki"; index: number; length: number; title: string };
+  const hits: Hit[] = [];
   let m: RegExpExecArray | null;
-  let key = 0;
   while ((m = CITATION_REGEX.exec(s)) !== null) {
     const [full, path, lineStr] = m;
-    if (m.index > lastIdx) out.push(s.slice(lastIdx, m.index));
-    const line = lineStr ? Number.parseInt(lineStr, 10) : null;
-    out.push(<CitationLink key={key++} path={path} line={line} />);
-    lastIdx = m.index + full.length;
+    hits.push({
+      kind: "cite",
+      index: m.index,
+      length: full.length,
+      path,
+      line: lineStr ? Number.parseInt(lineStr, 10) : null,
+    });
+  }
+  while ((m = WIKILINK_REGEX.exec(s)) !== null) {
+    hits.push({
+      kind: "wiki",
+      index: m.index,
+      length: m[0].length,
+      title: m[1].trim(),
+    });
+  }
+  hits.sort((a, b) => a.index - b.index);
+
+  const out: ReactNode[] = [];
+  let lastIdx = 0;
+  let key = 0;
+  for (const h of hits) {
+    if (h.index < lastIdx) continue; // overlapping
+    if (h.index > lastIdx) out.push(s.slice(lastIdx, h.index));
+    if (h.kind === "cite") {
+      out.push(<CitationLink key={key++} path={h.path} line={h.line} />);
+    } else {
+      out.push(<WikiLink key={key++} title={h.title} />);
+    }
+    lastIdx = h.index + h.length;
   }
   if (lastIdx === 0) return s;
   if (lastIdx < s.length) out.push(s.slice(lastIdx));
   return out;
 }
+
+/* ============================================================
+   === wave 21 === Wiki-style [[link]] support + backlinks/history
+   ============================================================ */
+
+/**
+ * Match `[[Title]]` wiki-style links. Title can contain spaces, dashes,
+ * digits, slashes (for `[[team/decisions/foo]]`-style references). We
+ * stop at the closing `]]` so adjacent brackets don't bleed into the
+ * captured title.
+ */
+const WIKILINK_REGEX = /\[\[([^\]]+)\]\]/g;
+const WIKILINK_REGEX_TEST = /\[\[[^\]]+\]\]/;
+
+/**
+ * Render a `[[Title]]` reference as a clickable link to the matching
+ * /memory atom. The link uses the title to drive a substring search via
+ * the URL: `/memory?q=<title>` doesn't exist as a route, so for now we
+ * point at the title-derived path heuristic. The real linker (which
+ * resolves to the canonical atom path) lands when the index sidecar is
+ * built — for wave 21 the link to `/memory` is enough to make the
+ * affordance discoverable + testable.
+ */
+function WikiLink({ title }: { title: string }) {
+  // Best-effort path: lower-case + dash-join. Many memory files follow
+  // this naming convention so the link often hits.
+  const slug = title.toLowerCase().replace(/\s+/g, "-");
+  const target = title.includes("/")
+    ? `/memory/${title}.md`
+    : `/memory/team/decisions/${slug}.md`;
+  return (
+    <Link
+      data-testid="brain-wikilink"
+      data-title={title}
+      to={target}
+      className="rounded bg-[var(--ti-orange-50)] px-1 font-mono text-[12px] text-[var(--ti-orange-700)] hover:underline dark:bg-stone-800 dark:text-[var(--ti-orange-500)]"
+    >
+      {title}
+    </Link>
+  );
+}
+
+/**
+ * Backlinks section — atoms in the memory dir that cite the brain doc by
+ * its on-disk path (`team/co-thinker.md`). Computed once on mount via
+ * `computeBacklinks`.
+ */
+function BrainBacklinksSection() {
+  const [hits, setHits] = useState<BacklinkHit[]>([]);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    let cancel = false;
+    void computeBacklinks({
+      atomPath: "team/co-thinker.md",
+      title: "co-thinker",
+    }).then((res) => {
+      if (cancel) return;
+      setHits(res.hits);
+      setLoaded(true);
+    });
+    return () => {
+      cancel = true;
+    };
+  }, []);
+
+  if (!loaded) {
+    return (
+      <section
+        data-testid="brain-backlinks-loading"
+        className="mt-8 border-t border-stone-200 pt-4 dark:border-stone-800"
+      >
+        <h2 className="ti-section-label">Backlinks</h2>
+        <p className="mt-2 font-mono text-[11px] text-stone-400 dark:text-stone-500">
+          loading…
+        </p>
+      </section>
+    );
+  }
+  return (
+    <section
+      data-testid="brain-backlinks"
+      className="mt-8 border-t border-stone-200 pt-4 dark:border-stone-800"
+    >
+      <h2 className="ti-section-label">Backlinks ({hits.length})</h2>
+      {hits.length === 0 ? (
+        <p className="mt-2 font-mono text-[11px] text-stone-400 dark:text-stone-500">
+          no atoms cite this brain doc yet
+        </p>
+      ) : (
+        <ul className="mt-2 space-y-2">
+          {hits.map((b) => (
+            <li
+              key={b.path}
+              data-testid={`brain-backlink-${b.path}`}
+              className="rounded border border-stone-200 bg-white/60 px-3 py-2 text-[12px] dark:border-stone-800 dark:bg-stone-900/60"
+            >
+              <Link
+                to={`/memory/${b.path}`}
+                className="font-medium text-[var(--ti-orange-700)] hover:underline dark:text-[var(--ti-orange-500)]"
+              >
+                {b.title}
+              </Link>
+              <p className="mt-0.5 font-mono text-[10px] text-stone-500 dark:text-stone-400">
+                {b.path}
+              </p>
+              <p className="mt-1 text-stone-600 dark:text-stone-300">{b.snippet}</p>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+/**
+ * Inline git history strip — last 5 commits that touched the brain doc.
+ * Uses the new `git_log_for_file` Tauri command.
+ */
+function BrainHistorySection() {
+  const [commits, setCommits] = useState<FileCommitInfo[]>([]);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    let cancel = false;
+    void gitLogForFile({ path: "team/co-thinker.md", limit: 5 }).then((rows) => {
+      if (cancel) return;
+      setCommits(rows);
+      setLoaded(true);
+    });
+    return () => {
+      cancel = true;
+    };
+  }, []);
+
+  return (
+    <section
+      data-testid="brain-history"
+      className="mt-8 border-t border-stone-200 pt-4 dark:border-stone-800"
+    >
+      <h2 className="ti-section-label flex items-center gap-1">
+        <History size={11} /> History
+      </h2>
+      {!loaded ? (
+        <p className="mt-2 font-mono text-[11px] text-stone-400 dark:text-stone-500">
+          loading…
+        </p>
+      ) : commits.length === 0 ? (
+        <p className="mt-2 font-mono text-[11px] text-stone-400 dark:text-stone-500">
+          no commits yet (memory dir isn't a git repo, or brain doc is brand-new)
+        </p>
+      ) : (
+        <ul className="mt-2 space-y-1.5">
+          {commits.map((c) => (
+            <li
+              key={c.sha}
+              data-testid={`brain-history-${c.sha}`}
+              className="flex items-baseline gap-2 font-mono text-[11px] text-stone-600 dark:text-stone-300"
+            >
+              <GitCommit size={10} className="shrink-0 text-stone-400" />
+              <span className="text-stone-500 dark:text-stone-400">
+                {relativeTime(c.ts)}
+              </span>
+              <span className="truncate">{c.message}</span>
+              <span className="ml-auto shrink-0 text-stone-400 dark:text-stone-500">
+                {c.author}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+// === end wave 21 ===

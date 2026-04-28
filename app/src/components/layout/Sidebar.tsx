@@ -1,4 +1,36 @@
-import { useEffect, useState } from "react";
+// === wave 19 ===
+// Wave 19 Information Architecture redesign — Tangerine = team's AI memory app
+// (Linear + Obsidian style, NOT chat-only). UI is read-mostly:
+// 80% scanning, 15% querying, 3% writing, 2% configuring.
+//
+// Sidebar drastically reduced from ~30 items across 5+ sections to 5 nav items
+// + footer system actions. Everything else (Sources, AI tools, Active agents,
+// Advanced, extra views, graphs) is reachable via Cmd+K and Settings, just no
+// longer clutters the rail.
+//
+// Final shape:
+//   ┌──────────────────┐
+//   │ [T] Tangerine    │  ← brand mark + Cmd+K trigger
+//   │  Your team's     │
+//   │   AI memory      │
+//   ├──────────────────┤
+//   │ ▣ Today          │
+//   │ ▤ Memory         │
+//   │ ◈ Brain          │  ← was /co-thinker, /brain alias added
+//   │ ◇ Canvas         │
+//   ├──────────────────┤
+//   │ ⚙ Settings       │
+//   │ 🌙 Theme         │
+//   │ ↪ Sign out       │
+//   └──────────────────┘
+//
+// Wave 18 fully delegated all dispatcher / collapse / count-chip logic to
+// Sidebar; wave 19 yanks all of that out. No more collapsible sections, no
+// "Show advanced" toggle, no SOURCES / AI TOOLS / ACTIVE AGENTS sections.
+// Everything not in the 5-item primary nav is reachable via Cmd+K (Wave 5-β +
+// Wave 15 already index every route + per-source / per-AI-tool route).
+// === end wave 19 ===
+
 import { useTranslation } from "react-i18next";
 import { NavLink, useNavigate } from "react-router-dom";
 import {
@@ -7,39 +39,16 @@ import {
   Sun,
   Moon,
   Monitor,
-  Inbox,
-  Activity,
   Calendar,
-  CalendarRange,
-  Users,
   FolderKanban,
-  MessageCircle,
-  Layers,
   Brain,
-  GitPullRequest,
-  Store,
-  // === v2.0-beta.1 graphs ===
-  Diamond,
-  Network,
-  Workflow,
-  // === end v2.0-beta.1 graphs ===
-  // === wave 8 === — collapsible-section chevrons.
-  ChevronDown,
-  ChevronRight,
+  Layers,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { signOut } from "@/lib/auth";
 import { useStore } from "@/lib/store";
-import { SOURCES, type SourceDef, type SourceStatus } from "@/lib/sources";
-import { SINKS, type SinkDef, type SinkStatus } from "@/lib/sinks";
-import {
-  readFrontmatterTitle,
-  readMemoryTree,
-  type MemoryNode,
-} from "@/lib/memory";
-import { MemoryTree } from "@/components/MemoryTree";
 import { SyncStatusIndicator } from "@/components/SyncStatusIndicator";
-// === wave 10 === — v1.10 git auto-sync indicator (above Solo / Settings).
+// === wave 10 === — v1.10 git auto-sync indicator (above Settings).
 import { GitSyncIndicatorContainer } from "@/components/GitSyncIndicatorContainer";
 // === end wave 10 ===
 // === wave 10.1 hotfix === — defensive boundary around the wave-10 mount.
@@ -48,108 +57,24 @@ import { GitSyncIndicatorContainer } from "@/components/GitSyncIndicatorContaine
 // not just the dot itself.
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 // === end wave 10.1 hotfix ===
-import { AIToolsSection } from "@/components/ai-tools/AIToolsSection";
-// === v2.0-beta.2 ACTIVE AGENTS section ===
-import { ActiveAgentsSection } from "@/components/layout/ActiveAgentsSection";
-// === end v2.0-beta.2 ACTIVE AGENTS section ===
-import { MEMORY_REFRESHED_EVENT } from "@/components/layout/AppShell";
 import { kbdShortcut } from "@/lib/platform";
 
 /**
- * Always-visible left rail (~240px). v1.8 Phase 1 layout:
+ * Always-visible left rail (~240px).
  *
- *   VIEWS     — Today / Week / People / Projects / Threads / Alignment / Inbox
- *               + new Canvas (Phase 4) + Co-thinker (Phase 3) entries.
- *   MEMORY    — file tree of the user's memory dir.
- *   SOURCES   — 10 connectors that write to memory (Discord, Slack, GitHub,
- *               Linear, Notion, Calendar, Loom, Zoom, Email, Voice notes).
- *   AI TOOLS  — first-class section: Cursor / Claude Code / ChatGPT etc with
- *               live install-status detected via the Rust `detect_ai_tools`
- *               command. ⭐ marks the user's primary tool.
- *   ADVANCED  — formerly SINKS: Browser ext, MCP server, Local WS server.
- *               These are mechanism, not a user-facing feature — demoted from
- *               the user's mental model in v1.8.
- *
- * Bottom: settings, theme toggle, lock, Cmd+K hint.
+ * === wave 19 === — drastic IA reduction. The rail now hosts a single
+ * 5-item primary nav (Today / Memory / Brain / Canvas + Settings in
+ * the footer) plus a brand mark and the system-action footer. Every
+ * other surface (sources, AI tools, alignment, inbox, this-week, people,
+ * projects, threads, reviews, marketplace, graphs, sinks) still lives
+ * at the same routes — they're just no longer in the rail. Power users
+ * reach them via Cmd+K (CommandPalette already indexes all of them) or
+ * Settings → Sources / AI tools tabs.
  */
 export function Sidebar() {
   const navigate = useNavigate();
   const { t } = useTranslation();
-  const memoryRoot = useStore((s) => s.ui.memoryRoot);
-  const samplesSeeded = useStore((s) => s.ui.samplesSeeded);
   const togglePalette = useStore((s) => s.ui.togglePalette);
-  // === wave 8 === — per-section collapse state from store.
-  const sidebarSections = useStore((s) => s.ui.sidebarSections);
-  const toggleSidebarSection = useStore((s) => s.ui.toggleSidebarSection);
-  // === wave 14 === — gates the Active Agents / Advanced / Memory tree /
-  // extra Views sections on the rail. Reuses the same flag that
-  // Settings.tsx uses (Wave 5-α) so a user who flips it on the
-  // Settings page also sees the expanded rail, and vice versa.
-  const showAdvanced = useStore((s) => s.ui.showAdvancedSettings);
-  const setShowAdvanced = useStore((s) => s.ui.setShowAdvancedSettings);
-  const [tree, setTree] = useState<MemoryNode[]>([]);
-  const [titles, setTitles] = useState<Record<string, string>>({});
-
-  useEffect(() => {
-    let cancel = false;
-    let cancelled = false;
-    const refresh = () =>
-      readMemoryTree(memoryRoot).then((t) => {
-        if (!cancel && !cancelled) setTree(t);
-      });
-    void refresh();
-    // Re-walk when window regains focus so files written by sources outside
-    // the app (Discord bot writing to memory/meetings/) show up automatically.
-    const onFocus = () => void refresh();
-    // AppShell dispatches MEMORY_REFRESHED_EVENT after a sample-seed so the
-    // tree picks up the new files immediately without waiting for focus.
-    const onRefreshed = () => void refresh();
-    if (typeof window !== "undefined") {
-      window.addEventListener("focus", onFocus);
-      window.addEventListener(MEMORY_REFRESHED_EVENT, onRefreshed);
-    }
-    return () => {
-      cancel = true;
-      cancelled = true;
-      if (typeof window !== "undefined") {
-        window.removeEventListener("focus", onFocus);
-        window.removeEventListener(MEMORY_REFRESHED_EVENT, onRefreshed);
-      }
-    };
-    // samplesSeeded is in deps so the tree refreshes once Rust finishes the
-    // first-launch sample copy.
-  }, [memoryRoot, samplesSeeded]);
-
-  // Whenever the tree changes, fetch frontmatter `title` for every file in
-  // parallel so the tree shows human-readable names instead of truncated
-  // filenames like `sample-postgres-over-mongo...`. Misses (no title field,
-  // file gone, parse failure) silently fall back to the filename.
-  useEffect(() => {
-    let cancel = false;
-    const paths: string[] = [];
-    const collect = (nodes: MemoryNode[]): void => {
-      for (const n of nodes) {
-        if (n.kind === "file") paths.push(n.path);
-        else if (n.kind === "dir") collect(n.children ?? []);
-      }
-    };
-    collect(tree);
-    if (paths.length === 0) {
-      setTitles({});
-      return;
-    }
-    void Promise.all(
-      paths.map(async (p) => [p, await readFrontmatterTitle(memoryRoot, p)] as const),
-    ).then((rows) => {
-      if (cancel) return;
-      const next: Record<string, string> = {};
-      for (const [p, t] of rows) if (t) next[p] = t;
-      setTitles(next);
-    });
-    return () => {
-      cancel = true;
-    };
-  }, [memoryRoot, tree]);
 
   async function handleLock() {
     await signOut();
@@ -158,15 +83,21 @@ export function Sidebar() {
 
   return (
     <aside className="ti-no-select flex h-full w-[240px] shrink-0 flex-col border-r border-stone-200 bg-stone-50 dark:border-stone-800 dark:bg-stone-950">
-      {/* Header — === wave 8 === bigger, more recognizable Tangerine
-          mark. The 5×5 orange square is replaced by a 22×22 rounded
-          tile with a typeset T in display serif so the brand reads at
-          a glance instead of looking like a randomly placed dot. */}
-      <div className="flex items-center justify-between border-b border-stone-200 px-3 py-3 dark:border-stone-800">
-        <NavLink to="/memory" className="flex items-center gap-2" aria-label="Memory">
+      {/* === wave 19 === — Brand header. Larger than the wave-8 22×22 chip:
+          a 28×28 rounded tile + display-serif "Tangerine" wordmark + a
+          subtitle ("Your team's AI memory") that hammers the team-memory
+          positioning every time the rail loads. Click → /today.
+          Cmd+K trigger sits to the right of the wordmark. */}
+      <div className="flex items-start justify-between gap-2 border-b border-stone-200 px-3 py-3 dark:border-stone-800">
+        <NavLink
+          to="/today"
+          className="flex min-w-0 flex-1 items-center gap-2"
+          aria-label="Tangerine — Today"
+          data-testid="sidebar-brand"
+        >
           <div
             data-testid="tangerine-logo"
-            className="flex h-[22px] w-[22px] items-center justify-center rounded-md text-[14px] font-semibold text-white shadow-sm"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[15px] font-semibold text-white shadow-sm"
             style={{
               background:
                 "linear-gradient(135deg, var(--ti-orange-500) 0%, var(--ti-orange-700) 100%)",
@@ -177,217 +108,80 @@ export function Sidebar() {
           >
             T
           </div>
-          <span
-            className="text-[14px] font-semibold tracking-tight text-[var(--ti-ink-900)] dark:text-[var(--ti-ink-900)]"
-            style={{ fontFamily: "var(--ti-font-display)" }}
-          >
-            Tangerine
-          </span>
+          <div className="flex min-w-0 flex-col">
+            <span
+              className="truncate text-[14px] font-semibold leading-tight tracking-tight text-[var(--ti-ink-900)] dark:text-[var(--ti-ink-900)]"
+              style={{ fontFamily: "var(--ti-font-display)" }}
+            >
+              Tangerine
+            </span>
+            <span
+              className="truncate text-[10px] leading-tight text-[var(--ti-ink-500)]"
+              data-testid="sidebar-brand-subtitle"
+            >
+              {t("sidebar.subtitleBrand", {
+                defaultValue: "Your team's AI memory",
+              })}
+            </span>
+          </div>
         </NavLink>
         <button
           type="button"
           onClick={togglePalette}
-          className="rounded border border-stone-200 px-1.5 py-0.5 font-mono text-[10px] text-stone-500 hover:bg-stone-100 dark:border-stone-800 dark:text-stone-400 dark:hover:bg-stone-900"
+          className="mt-0.5 shrink-0 rounded border border-stone-200 px-1.5 py-0.5 font-mono text-[10px] text-stone-500 hover:bg-stone-100 dark:border-stone-800 dark:text-stone-400 dark:hover:bg-stone-900"
           aria-label="Open command palette"
-          title="Search memory"
+          title="Search memory · Cmd+K"
         >
           {kbdShortcut("k")}
         </button>
       </div>
 
-      {/* Scrollable middle */}
-      {/* === wave 4-D i18n === */}
-      {/* === wave 14 === — DRASTIC SIMPLIFICATION:
-          v1.10.3 had 6 sections (AI tools / Views / Memory / Sources /
-          Active Agents / Advanced) and ~30+ items overall — overwhelming
-          for new users. Wave 14 collapses the rail to 3 default
-          sections:
-            1. Brain    — /today, /co-thinker, /canvas, /memory (4 items)
-            2. Sources  — collapsed by default, count chip "Sources (11)"
-            3. AI tools — collapsed by default, count chip "AI tools (10)"
-          Active Agents + Advanced live behind the "Show advanced"
-          toggle (settings link in the footer). System actions (Settings,
-          Theme, Sign out) stay at the bottom. */}
-      <div className="flex-1 overflow-y-auto">
-        {/* === wave 14 === — BRAIN section (always-visible, primary
-            CTA). Four items only: Today / Co-thinker / Canvas / Memory.
-            All other prior view links (This week, People, Projects,
-            Threads, Alignment, Inbox, Reviews, Marketplace, Graphs)
-            now live behind the "Show advanced" toggle to keep the
-            default view scannable. */}
-        <Section
+      {/* === wave 19 === — Primary nav. Five items max. Always visible,
+          no collapse toggle, no count chips. The intent is a clean
+          Linear-style left rail where every visible item is a primary
+          surface, not a setting or a connector page. */}
+      <nav
+        className="flex-1 overflow-y-auto px-2 py-3"
+        data-testid="sidebar-primary-nav"
+      >
+        <ViewLink
+          to="/today"
+          icon={Calendar}
+          label={t("sidebar.today")}
+          testId="sidebar-nav-today"
+        />
+        <ViewLink
+          to="/memory"
+          icon={FolderKanban}
+          label={t("sidebar.memory")}
+          testId="sidebar-nav-memory"
+        />
+        {/* /brain is a wave-19 alias to the existing /co-thinker route.
+            Both render the same component; bookmarks to /co-thinker still
+            work. Active state matches either path so the highlight
+            survives on the legacy URL too. */}
+        <ViewLink
+          to="/brain"
+          icon={Brain}
           label={t("sidebar.brain", { defaultValue: "Brain" })}
-          subtitle={t("sidebar.subtitleBrain", {
-            defaultValue: "Your team's AI memory",
-          })}
-          collapsible
-          expanded={sidebarSections.brain}
-          onToggle={() => toggleSidebarSection("brain")}
-          headerStyle="elevated"
-        >
-          {/* === wave 14 wrap-needed === — labels reuse existing keys
-              (sidebar.today / sidebar.coThinker / sidebar.canvas /
-              sidebar.memory) which Wave 12 has already wrapped. */}
-          <ViewLink to="/today" icon={Calendar} label={t("sidebar.today")} />
-          <ViewLink to="/co-thinker" icon={Brain} label={t("sidebar.coThinker")} />
-          <ViewLink to="/canvas" icon={Layers} label={t("sidebar.canvas")} />
-          <ViewLink to="/memory" icon={FolderKanban} label={t("sidebar.memory")} />
-        </Section>
-
-        {/* SOURCES section — === wave 8 === collapsible with count chip.
-            === wave 14 === — kept as the second default section. */}
-        <Section
-          label={t("sidebar.sources")}
-          subtitle={t("sidebar.subtitleSources")}
-          collapsible
-          expanded={sidebarSections.sources}
-          onToggle={() => toggleSidebarSection("sources")}
-          count={SOURCES.length}
-        >
-          <ul>
-            {SOURCES.map((s) => (
-              <li key={s.id}>
-                <SourceLink def={s} />
-              </li>
-            ))}
-          </ul>
-        </Section>
-
-        {/* === wave 14 === — AI TOOLS demoted to a count-chipped
-            collapsible (was the elevated top section in v1.10.3).
-            Wave 14's vendor-color removal in AIToolsSection means this
-            section now reads as plain neutral icons (no vendor rings). */}
-        <Section
-          label={t("sidebar.aiTools")}
-          subtitle={t("sidebar.subtitleAITools")}
-          collapsible
-          expanded={sidebarSections.aiTools}
-          onToggle={() => toggleSidebarSection("aiTools")}
-          count={10}
-        >
-          <AIToolsSection />
-        </Section>
-
-        {/* === wave 14 === — MEMORY tree demoted under "Show advanced".
-            The /memory route itself is in the Brain section above; this
-            is the file-tree drill-down which power users still want. */}
-        {showAdvanced && (
-          <Section
-            label={t("sidebar.memory")}
-            rightHint=""
-            data-testid="sidebar-section-memory-advanced"
-          >
-            <NavLink
-              to="/memory"
-              end
-              className={({ isActive }) =>
-                cn(
-                  "block rounded px-2 py-1 text-[11px] font-mono",
-                  isActive
-                    ? "bg-[var(--ti-orange-50)] text-[var(--ti-orange-700)] dark:bg-stone-800 dark:text-[var(--ti-orange-500)]"
-                    : "text-stone-700 hover:bg-stone-100 dark:text-stone-300 dark:hover:bg-stone-900",
-                )
-              }
-            >
-              ~ /memory
-            </NavLink>
-            <div className="mt-1">
-              <MemoryTree
-                tree={tree}
-                titles={titles}
-                showNewFile
-                onNewFile={() => navigate("/memory")}
-              />
-            </div>
-          </Section>
-        )}
-
-        {/* === wave 14 === — Extra views (This week, People, Projects,
-            Threads, Alignment, Inbox, Reviews, Marketplace, Graphs)
-            live behind the "Show advanced" toggle — they were
-            overwhelming as a default. */}
-        {showAdvanced && (
-          <Section
-            label={t("sidebar.views")}
-            subtitle={t("sidebar.subtitleViews")}
-          >
-            <ViewLink to="/this-week" icon={CalendarRange} label={t("sidebar.thisWeek")} />
-            <ViewLink to="/people" icon={Users} label={t("sidebar.people")} />
-            <ViewLink to="/projects" icon={FolderKanban} label={t("sidebar.projects")} />
-            <ViewLink to="/threads" icon={MessageCircle} label={t("sidebar.threads")} />
-            <ViewLink to="/alignment" icon={Activity} label={t("sidebar.alignment")} />
-            <ViewLink to="/inbox" icon={Inbox} label={t("sidebar.inbox")} />
-            <ViewLink to="/reviews" icon={GitPullRequest} label={t("sidebar.reviews")} />
-            <ViewLink to="/marketplace" icon={Store} label={t("sidebar.marketplace")} />
-            <p className="mb-1 mt-3 px-2 text-[10px] uppercase tracking-wide text-stone-400 dark:text-stone-500">
-              {t("sidebar.graphs")}
-            </p>
-            <ViewLink to="/decisions/lineage" icon={Diamond} label={t("sidebar.lineage")} />
-            <ViewLink to="/people/social" icon={Network} label={t("sidebar.social")} />
-            <ViewLink to="/projects/topology" icon={Workflow} label={t("sidebar.topology")} />
-          </Section>
-        )}
-
-        {/* === wave 14 === — Active Agents hidden until real captures
-            land. Was always-visible-empty in v1.10.3. */}
-        {showAdvanced && (
-          <Section
-            label={t("sidebar.activeAgents")}
-            subtitle={t("sidebar.subtitleActiveAgents")}
-            collapsible
-            expanded={sidebarSections.activeAgents}
-            onToggle={() => toggleSidebarSection("activeAgents")}
-          >
-            <ActiveAgentsSection />
-          </Section>
-        )}
-
-        {/* === wave 14 === — Advanced (browser-ext / mcp-server /
-            local-ws) hidden behind the toggle. Mechanism, not feature. */}
-        {showAdvanced && (
-          <Section
-            label={t("sidebar.advanced")}
-            subtitle={t("sidebar.subtitleAdvanced")}
-            collapsible
-            expanded={sidebarSections.advanced}
-            onToggle={() => toggleSidebarSection("advanced")}
-            count={SINKS.length}
-          >
-            <ul>
-              {SINKS.map((s) => (
-                <li key={s.id}>
-                  <SinkLink def={s} />
-                </li>
-              ))}
-            </ul>
-          </Section>
-        )}
-
-        {/* === wave 14 === — "Show advanced" toggle. Mono 11px so it
-            reads as a power-user affordance, not a primary action. */}
-        <button
-          type="button"
-          onClick={() => setShowAdvanced(!showAdvanced)}
-          data-testid="sidebar-show-advanced"
-          className="mt-2 flex w-full items-center gap-1.5 px-3 py-1.5 text-left font-mono text-[10px] uppercase tracking-wider text-[var(--ti-ink-500)] transition-colors hover:text-[var(--ti-orange-600)]"
-        >
-          {showAdvanced ? (
-            <ChevronDown size={11} />
-          ) : (
-            <ChevronRight size={11} />
-          )}
-          {/* === wave 14 wrap-needed === */}
-          <span>
-            {showAdvanced
-              ? t("sidebar.hideAdvanced", { defaultValue: "Hide advanced" })
-              : t("sidebar.showAdvanced", { defaultValue: "Show advanced" })}
-          </span>
-        </button>
-      </div>
+          testId="sidebar-nav-brain"
+          activeMatchPaths={["/brain", "/co-thinker"]}
+        />
+        <ViewLink
+          to="/canvas"
+          icon={Layers}
+          label={t("sidebar.canvas")}
+          testId="sidebar-nav-canvas"
+        />
+      </nav>
 
       {/* Footer — === wave 8 === subtle warm tint zone groups the
           system controls (sync / settings / theme / sign-out) so the
-          eye reads them as a cluster rather than four floating items. */}
+          eye reads them as a cluster rather than four floating items.
+          === wave 19 === — footer keeps these three system actions plus
+          the git-sync + team-sync indicators (no item changes vs. wave 14
+          footer). The "Show advanced" toggle is gone — there's no longer
+          anything to reveal in the rail. */}
       <div className="ti-zone-quiet border-t border-stone-200 px-2 py-2 dark:border-stone-800">
         {/* === wave 10 === — git auto-sync dot, above the v1.6 team-mode
             SyncStatusIndicator. The two coexist: the v1.6 indicator surfaces
@@ -404,6 +198,7 @@ export function Sidebar() {
         <SyncStatusIndicator />
         <NavLink
           to="/settings"
+          data-testid="sidebar-footer-settings"
           className={({ isActive }) =>
             cn(
               "flex items-center gap-2 rounded px-2 py-1 text-[12px]",
@@ -420,252 +215,69 @@ export function Sidebar() {
         <button
           type="button"
           onClick={handleLock}
+          data-testid="sidebar-footer-signout"
           className="mt-0.5 flex w-full items-center gap-2 rounded px-2 py-1 text-left text-[12px] text-stone-600 hover:bg-stone-100 dark:text-stone-400 dark:hover:bg-stone-900"
         >
           <Lock size={12} className="shrink-0" />
           <span>{t("sidebar.signOut")}</span>
         </button>
       </div>
-      {/* === end wave 4-D i18n === */}
     </aside>
   );
 }
 
-function Section({
-  label,
-  children,
-  rightHint,
-  subtitle,
-  collapsible,
-  expanded,
-  onToggle,
-  count,
-  headerStyle = "default",
-}: {
-  label: string;
-  children: React.ReactNode;
-  rightHint?: string;
-  /** Tiny gray one-liner under the section label, used to explain CoS roles. */
-  subtitle?: string;
-  // === wave 8 === — collapsibility props. When collapsible=true, the
-  // header becomes a button that toggles `expanded`. The count chip
-  // shows when collapsed so the user knows how many items hide below.
-  collapsible?: boolean;
-  expanded?: boolean;
-  onToggle?: () => void;
-  count?: number;
-  // === wave 9 === — `elevated` swaps the all-caps tracked sans label
-  // for the display-serif treatment so the AI Tools section reads as
-  // first-class while every other section keeps the prior subtle style.
-  headerStyle?: "default" | "elevated";
-}) {
-  const isExpanded = !collapsible || expanded;
-  // === wave 8 === — bumped section header to font-bold (700) from the
-  // prior 600 in `.ti-section-label`. The class still anchors tracking
-  // and color; we override weight inline to keep the global utility
-  // unchanged for non-sidebar use.
-  // === wave 9 === — elevated label uses ti-section-elevated (display
-  // serif, ti-orange-700, no caps).
-  const isElevated = headerStyle === "elevated";
-  const headerInner = (
-    <>
-      <span className="flex items-center gap-1.5">
-        {collapsible && (
-          isExpanded ? (
-            <ChevronDown size={11} className="text-[var(--ti-ink-400)]" />
-          ) : (
-            <ChevronRight size={11} className="text-[var(--ti-ink-400)]" />
-          )
-        )}
-        {isElevated ? (
-          <span className="ti-section-elevated" data-testid="sidebar-section-elevated">
-            {label}
-          </span>
-        ) : (
-          <span
-            className="ti-section-label"
-            style={{ fontWeight: 700 }}
-          >
-            {label}
-          </span>
-        )}
-        {collapsible && !isExpanded && typeof count === "number" && (
-          <span className="font-mono text-[10px] text-[var(--ti-ink-400)]">
-            ({count})
-          </span>
-        )}
-      </span>
-      {rightHint && (
-        <span className="font-mono text-[10px] text-stone-400 dark:text-stone-500">
-          {rightHint}
-        </span>
-      )}
-    </>
-  );
-  // === wave 9 === — elevated section gets a soft warm wash so the AI
-  // Tools zone reads as the first-class surface in the rail. Keeps the
-  // ordinary border/padding for the default treatment so non-elevated
-  // sections look unchanged from wave 8.
-  const wrapperClass = isElevated
-    ? "ti-zone-warm border-b border-stone-200/60 px-2 py-3 dark:border-stone-800/60"
-    : "border-b border-stone-200/60 px-2 py-2.5 dark:border-stone-800/60";
-  return (
-    <div className={wrapperClass}>
-      {collapsible ? (
-        <button
-          type="button"
-          onClick={onToggle}
-          aria-expanded={isExpanded}
-          data-testid={`sidebar-section-${label.toLowerCase().replace(/\s+/g, "-")}`}
-          className="mb-1 flex w-full items-center justify-between rounded px-1 py-0.5 text-left transition-colors duration-fast hover:bg-stone-100 dark:hover:bg-stone-900"
-        >
-          {headerInner}
-        </button>
-      ) : (
-        <div className="mb-1 flex items-center justify-between px-1">
-          {headerInner}
-        </div>
-      )}
-      {isExpanded && subtitle && (
-        <p className="mb-2 px-1 text-[10px] leading-tight text-stone-400 dark:text-stone-500">
-          {subtitle}
-        </p>
-      )}
-      {isExpanded && children}
-    </div>
-  );
-}
-
+// === wave 19 ===
+// Single ViewLink primitive remains. The Section / SourceLink / SinkLink /
+// StatusChip primitives moved out (wave 19 sidebar has no sub-sections).
+// `activeMatchPaths` accepts an optional list of legacy routes that should
+// also count as "active" for the highlight — used so the new /brain route
+// shows the orange active state when the user lands on the legacy
+// /co-thinker URL via a bookmark or external deep link.
+// === end wave 19 ===
 function ViewLink({
   to,
   icon: Icon,
   label,
+  testId,
+  activeMatchPaths,
 }: {
   to: string;
   icon: React.ComponentType<{ size?: number; className?: string }>;
   label: string;
+  testId?: string;
+  activeMatchPaths?: string[];
 }) {
   return (
     <NavLink
       to={to}
-      className={({ isActive }) =>
-        cn(
-          // === wave 8 === — slightly tighter vertical padding (py-0.5)
-          // to drop per-row height to ~28px so the dense lower sections
-          // don't dominate the rail.
-          "flex items-center gap-2 rounded px-2 py-0.5 text-[12px]",
-          isActive
+      data-testid={testId}
+      className={({ isActive }) => {
+        // === wave 19 === — manual extra-active check so /brain stays
+        // highlighted when the user is sitting on /co-thinker (legacy
+        // bookmark). NavLink's built-in `isActive` only honours `to`.
+        const extraActive =
+          (activeMatchPaths ?? []).some(
+            (p) =>
+              typeof window !== "undefined" &&
+              window.location.pathname.startsWith(p),
+          );
+        const active = isActive || extraActive;
+        return cn(
+          // === wave 19 === — rail items get a touch more breathing room
+          // (py-1 vs. wave-8 py-0.5) since there are only 4 of them; the
+          // dense vertical rhythm only made sense when 30+ items competed.
+          "flex items-center gap-2 rounded px-2 py-1 text-[13px]",
+          active
             ? "bg-[var(--ti-orange-50)] text-[var(--ti-orange-700)] dark:bg-stone-800 dark:text-[var(--ti-orange-500)]"
             : "text-stone-700 hover:bg-stone-100 dark:text-stone-300 dark:hover:bg-stone-900",
-        )
-      }
+        );
+      }}
     >
-      <Icon size={12} className="shrink-0" />
+      <Icon size={14} className="shrink-0" />
       <span className="truncate">{label}</span>
     </NavLink>
   );
 }
-
-function SourceLink({ def }: { def: SourceDef }) {
-  const Icon = def.icon;
-  return (
-    <NavLink
-      to={`/sources/${def.id}`}
-      className={({ isActive }) =>
-        cn(
-          // === wave 8 === — slightly tighter vertical padding (py-0.5)
-          // to drop per-row height to ~28px so the dense lower sections
-          // don't dominate the rail.
-          "flex items-center gap-2 rounded px-2 py-0.5 text-[12px]",
-          isActive
-            ? "bg-[var(--ti-orange-50)] text-[var(--ti-orange-700)] dark:bg-stone-800 dark:text-[var(--ti-orange-500)]"
-            : "text-stone-700 hover:bg-stone-100 dark:text-stone-300 dark:hover:bg-stone-900",
-        )
-      }
-    >
-      <Icon size={12} className="shrink-0" />
-      <span className="truncate">{def.title}</span>
-      <StatusChip status={def.status} comingIn={def.comingIn} />
-    </NavLink>
-  );
-}
-
-function SinkLink({ def }: { def: SinkDef }) {
-  const Icon = def.icon;
-  return (
-    <NavLink
-      to={`/sinks/${def.id}`}
-      className={({ isActive }) =>
-        cn(
-          // === wave 8 === — slightly tighter vertical padding (py-0.5)
-          // to drop per-row height to ~28px so the dense lower sections
-          // don't dominate the rail.
-          "flex items-center gap-2 rounded px-2 py-0.5 text-[12px]",
-          isActive
-            ? "bg-[var(--ti-orange-50)] text-[var(--ti-orange-700)] dark:bg-stone-800 dark:text-[var(--ti-orange-500)]"
-            : "text-stone-700 hover:bg-stone-100 dark:text-stone-300 dark:hover:bg-stone-900",
-        )
-      }
-    >
-      <Icon size={12} className="shrink-0" />
-      <span className="truncate">{def.title}</span>
-      <StatusChip status={def.status} comingIn={def.comingIn} />
-    </NavLink>
-  );
-}
-
-// === wave 7 ===
-// v1.9.3 honesty pass: the chip used to render green "已连/Connected" for
-// any source whose CATALOG status was "active" — even if the user hadn't
-// configured a single thing on this machine. That was a lie. Now:
-//   - "shipped" → quiet grey "Ready" badge (the page is real, but we make
-//                 NO claim about whether it's been wired up — users can
-//                 check the source detail page to see real config status)
-//   - "beta"    → amber "Beta" badge with tooltip
-//   - "coming"  → grey "Coming v1.X" badge
-function StatusChip({
-  status,
-  comingIn,
-}: {
-  status: SourceStatus | SinkStatus;
-  comingIn?: string;
-}) {
-  const { t } = useTranslation();
-  if (status === "shipped") {
-    return (
-      <span
-        className="ml-auto font-mono text-[10px] text-stone-500 dark:text-stone-400"
-        title="Setup page is live — open it to wire up your account."
-      >
-        {t("sidebar.statusReady")}
-      </span>
-    );
-  }
-  if (status === "beta") {
-    return (
-      <span
-        className="ml-auto font-mono text-[10px] text-amber-600 dark:text-amber-400"
-        title={
-          comingIn
-            ? `Beta — full release ${comingIn}. Try it; report issues.`
-            : "Beta — try it; report issues."
-        }
-      >
-        {t("sidebar.statusBeta")}
-      </span>
-    );
-  }
-  // status === "coming"
-  return (
-    <span
-      className="ml-auto font-mono text-[10px] text-stone-400 dark:text-stone-500"
-      title={comingIn ? `Coming ${comingIn}` : "Coming soon"}
-    >
-      {comingIn ?? t("sidebar.statusSoon")}
-    </span>
-  );
-}
-// === end wave 7 ===
 
 function ThemeToggle() {
   // === wave 4-D i18n ===
@@ -683,6 +295,7 @@ function ThemeToggle() {
     <button
       type="button"
       onClick={cycle}
+      data-testid="sidebar-footer-theme"
       className="mt-0.5 flex w-full items-center gap-2 rounded px-2 py-1 text-left text-[12px] text-stone-600 hover:bg-stone-100 dark:text-stone-400 dark:hover:bg-stone-900"
       title="Cycle theme: system → light → dark"
     >

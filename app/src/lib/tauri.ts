@@ -3638,6 +3638,109 @@ export async function searchAtoms(args: {
 }
 // === end wave 15 ===
 
+// === wave 21 ===
+// Wave 21 — Obsidian-style /memory + /brain helpers.
+//   1. `memoryTree`        — hierarchical walk of the user's memory dir,
+//                           bounded by depth + MAX_TREE_NODES.
+//   2. `computeBacklinks`  — scan every atom for references to a target
+//                           atom path or title.
+//   3. `gitLogForFile`     — per-file commit history for the /brain
+//                           inline history strip.
+//
+// Soft-fail: outside Tauri (vitest, vite dev) every helper returns an
+// empty/safe shape so the React UI renders its placeholder branches
+// rather than crashing.
+
+export interface MemoryTreeNode {
+  path: string;
+  name: string;
+  kind: "dir" | "file";
+  scope: "team" | "personal" | null;
+  children: MemoryTreeNode[];
+}
+
+export interface MemoryTreeResult {
+  root: string;
+  nodes: MemoryTreeNode[];
+  total_nodes: number;
+  file_count: number;
+  dir_count: number;
+  truncated: boolean;
+}
+
+export async function memoryTree(args?: {
+  root?: string;
+  depth?: number;
+}): Promise<MemoryTreeResult> {
+  return safeInvoke<MemoryTreeResult>(
+    "memory_tree",
+    {
+      root: args?.root ?? null,
+      depth: args?.depth ?? null,
+    },
+    () => ({
+      root: "~/.tangerine-memory",
+      nodes: [],
+      total_nodes: 0,
+      file_count: 0,
+      dir_count: 0,
+      truncated: false,
+    }),
+  );
+}
+
+export interface BacklinkHit {
+  path: string;
+  title: string;
+  snippet: string;
+}
+
+export interface BacklinksResult {
+  target_path: string | null;
+  target_title: string | null;
+  hits: BacklinkHit[];
+}
+
+export async function computeBacklinks(args: {
+  atomPath?: string;
+  title?: string;
+}): Promise<BacklinksResult> {
+  return safeInvoke<BacklinksResult>(
+    "compute_backlinks",
+    {
+      atom_path: args.atomPath ?? null,
+      title: args.title ?? null,
+    },
+    () => ({
+      target_path: args.atomPath ?? null,
+      target_title: args.title ?? null,
+      hits: [],
+    }),
+  );
+}
+
+export interface FileCommitInfo {
+  sha: string;
+  message: string;
+  ts: string;
+  author: string;
+}
+
+export async function gitLogForFile(args: {
+  path: string;
+  limit?: number;
+}): Promise<FileCommitInfo[]> {
+  return safeInvoke<FileCommitInfo[]>(
+    "git_log_for_file",
+    {
+      path: args.path,
+      limit: args.limit ?? 5,
+    },
+    () => [],
+  );
+}
+// === end wave 21 ===
+
 // === wave 16 ===
 // Wave 16 — activity event bus. The right-rail ACTIVITY panel uses these
 // two helpers:

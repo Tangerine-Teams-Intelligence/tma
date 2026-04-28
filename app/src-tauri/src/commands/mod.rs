@@ -410,6 +410,10 @@ macro_rules! tmi_invoke_handler {
             $crate::commands::memory::init_memory_with_samples,
             // v2.0-alpha.1 — layered memory listing (team + personal).
             $crate::commands::memory::list_atoms,
+            // === wave 21 === — Obsidian-style /memory tree + backlinks
+            $crate::commands::memory::memory_tree,
+            $crate::commands::memory::compute_backlinks,
+            // === end wave 21 ===
             // v1.6.0 — git ops
             $crate::commands::git::git_check,
             $crate::commands::git::git_clone,
@@ -434,6 +438,9 @@ macro_rules! tmi_invoke_handler {
             $crate::commands::git_sync::git_sync_push,
             $crate::commands::git_sync::git_sync_history,
             // === end wave 10 ===
+            // === wave 21 === — per-file git log for /brain inline history
+            $crate::commands::git_sync::git_log_for_file,
+            // === end wave 21 ===
             // v1.6.0 — invite link codec
             $crate::commands::invite::generate_invite,
             $crate::commands::invite::parse_invite,

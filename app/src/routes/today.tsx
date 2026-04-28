@@ -2,152 +2,106 @@
 // === wave 5-α ===
 // === wave 8 === Polish pass — hero header + heartbeat for /today.
 // === wave 9 === — Brain visualization hero on /today (positioning).
-// === wave 14 === — DRASTIC UX SIMPLIFICATION:
-//   • /today landing leads with a ChatGPT-style search input (not the
-//     200px brain orb). User has zero clear next action with the brain
-//     orb hero — feels like an admin dashboard, not a work tool.
-//   • Hero is now: H1 "Ask anything about your team" + multiline
-//     textarea + orange Send button → calls coThinkerDispatch and renders
-//     the response inline as a chat bubble.
-//   • BrainVizHero is demoted to a small (compact) viz in the top-right
-//     corner — kept as aesthetic / status anchor, not the primary CTA.
-//   • Recent activity stays as AtomCards (now no vendor border-l per
-//     wave-14 vendor-color removal).
-import { useEffect, useMemo, useRef, useState } from "react";
+// === wave 14 === — DRASTIC UX SIMPLIFICATION: chat-first hero.
+// === wave 18 === — Conversational onboarding takes over the hero
+//   while in setup mode (setupWizardChannelReady === false).
+// === wave 20 === — Dashboard rewrite. CEO ratified vision: /today is
+//   the home dashboard with a prominent search hero PLUS widget cards
+//   (Linear-style), not chat-only. Search stays as the hero, but is now
+//   followed by 4 widget cards: Recent decisions / Today's activity /
+//   Team brain status / Connected tools. Setup mode still hides every-
+//   thing under OnboardingChat. The Wave-9 BrainVizHero is removed —
+//   the dashboard widgets carry the cross-vendor signal now, the giant
+//   orb double-anchored the page.
+import { Component, useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router-dom";
-import { Calendar, Inbox, Send, Loader2 } from "lucide-react";
+import { Calendar, Send, Loader2 } from "lucide-react";
+import { useStore } from "@/lib/store";
+import { TangerineNotes } from "@/components/TangerineNotes";
 import {
-  readBrief,
   readTimelineToday,
-  markAtomViewed,
-  markAtomAcked,
-  type BriefData,
   type TimelineSlice,
   type TangerineNote,
 } from "@/lib/views";
-import { useStore } from "@/lib/store";
-import { TangerineNotes } from "@/components/TangerineNotes";
-import { DailyBriefCard } from "@/components/DailyBriefCard";
-import { TimelineEvent } from "@/components/TimelineEvent";
-import { EmptyState } from "@/components/EmptyState";
 import { MEMORY_REFRESHED_EVENT } from "@/components/layout/AppShell";
-// === wave 8 === — hero needs the brain status so the heartbeat dot can
-// be live without a separate route. `coThinkerStatus()` is the same
-// command the HomeStrip uses; cheap to call once on mount + every 30s.
-import { coThinkerStatus, coThinkerDispatch, type CoThinkerStatus, type LlmResponse } from "@/lib/tauri";
-// === v2.0-alpha.2 workflow graph ===
-// Per V2_0_SPEC §1.1 — the graph is the head pillar of the home dashboard.
-// `/today` swaps its chronological event list for `<WorkflowGraph />` as
-// the main content, keeping the daily brief + activity as small secondary
-// cards. The chronological list reachable via /this-week is unchanged.
-import { WorkflowGraph } from "@/components/graphs/WorkflowGraph";
-// === end v2.0-alpha.2 workflow graph ===
-// === wave 9 === — brain visualization hero, vendor logo row for empty
-// state, and AtomCard for recent activity.
-// === wave 14 === — BrainVizHero is rendered in compact mode as a
-// secondary anchor (not the main hero). VendorLogoRow stays for the
-// empty-state hint when no AI tools are wired up yet.
-import { BrainVizHero, BrainVizEmpty } from "@/components/BrainVizHero";
-import { VendorLogoRow } from "@/components/VendorLogoRow";
-import { AtomCard } from "@/components/AtomCard";
+import {
+  coThinkerDispatch,
+  type LlmResponse,
+  activityRecent,
+} from "@/lib/tauri";
 import { loadAITools, type AIToolStatus } from "@/lib/ai-tools";
-// === wave 14 === — light markdown renderer for the chat response
-// bubble. We don't reuse MarkdownView (designed for memory files with
-// frontmatter + provenance footer); ReactMarkdown directly is simpler
-// here.
 import ReactMarkdown from "react-markdown";
-// === wave 18 === — conversational onboarding agent. Replaces the
-// Wave 14 chat input (in setup mode only) so first-run users describe
-// what they want in natural language instead of being walked through a
-// form wizard. Once `setupWizardChannelReady` flips, the OnboardingChat
-// surface returns null and the existing /today chat input takes over
-// for general queries — same DOM slot, mode-switched contents.
 import { OnboardingChat } from "@/components/OnboardingChat";
+// === wave 20 === — dashboard widget cards. Each owns its own data
+// fetch + loading / error / empty state.
+import { DashboardWidget } from "@/components/dashboard/DashboardWidget";
+import { RecentDecisionsWidget } from "@/components/dashboard/RecentDecisionsWidget";
+import { TodaysActivityWidget } from "@/components/dashboard/TodaysActivityWidget";
+import { BrainStatusWidget } from "@/components/dashboard/BrainStatusWidget";
+import { ConnectedToolsWidget } from "@/components/dashboard/ConnectedToolsWidget";
 
 /**
- * /today — default landing surface for the Chief of Staff UX.
+ * /today — the home dashboard.
  *
- * === wave 14 === layout (top to bottom):
+ * === wave 20 === layout (top to bottom):
  *
- *   [BrainVizHero compact, top-right] [TangerineNotes]
- *   H1 "What's on your team's mind?"
- *   <textarea> (autoresize) + orange Send button
- *   <chat bubble inline result> (after submit)
- *   ─────────
- *   Recent team notes (AtomCards, last 3-5)
- *   ─────────
- *   Workflow + Brief + Activity rail (existing v2 layout, demoted)
+ *   ┌──────────────────────────────────────────────┐
+ *   │ Stat strip: date · atoms · watched · tools  │
+ *   ├──────────────────────────────────────────────┤
+ *   │ Hero: "Today" eyebrow + chat input + Send    │
+ *   ├──────────────────────────────────────────────┤
+ *   │ Widget 1 — Recent decisions (3)              │
+ *   │ Widget 2 — Today's activity (10)             │
+ *   │ Widget 3 — Team brain status                 │
+ *   │ Widget 4 — Connected tools                   │
+ *   └──────────────────────────────────────────────┘
  *
- * Reads:
- *   • read_brief(today)         → daily brief markdown
- *   • read_timeline_today(today)→ chronological event list
- *
- * Writes (cursor):
- *   • mark_atom_viewed when an event row is clicked (drill-down)
- *   • mark_atom_acked when "Mark read" on the brief
+ * Setup mode (`setupWizardChannelReady === false`): the stat strip
+ * disappears, the hero + every widget is hidden, and OnboardingChat
+ * takes the full content area. Once setup completes, the dashboard
+ * appears in place.
  */
 export default function TodayRoute() {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const today = todayIso();
-  const currentUser = useStore((s) => s.ui.currentUser);
-  // === wave 8 === — agiParticipation gates the brain-status fetch + the
-  // hero pulse. Pulled here so the hero stays consistent with HomeStrip
-  // (master switch off → no green pulse, no observation count).
-  const agiParticipation = useStore((s) => s.ui.agiParticipation);
   const primaryAITool = useStore((s) => s.ui.primaryAITool);
-  // === wave 18 === — drives the setup-mode-vs-general-mode swap on the
-  // shared /today chat input slot. Setup mode renders OnboardingChat;
-  // general mode renders the Wave 14 ChatGPT-style input below.
   const setupWizardChannelReady = useStore(
     (s) => s.ui.setupWizardChannelReady,
   );
   const onboardingMode = useStore((s) => s.ui.onboardingMode);
   const inSetupMode =
     onboardingMode === "chat" && !setupWizardChannelReady;
-  // === end wave 18 ===
-  const [brief, setBrief] = useState<BriefData | null>(null);
-  const [slice, setSlice] = useState<TimelineSlice | null>(null);
-  const [notes, setNotes] = useState<TangerineNote[]>([]);
-  const [briefAcked, setBriefAcked] = useState(false);
-  const [now, setNow] = useState(() => new Date().toLocaleTimeString());
-  // === wave 8 === — co-thinker brain status for the hero pulse.
-  const [brainStatus, setBrainStatus] = useState<CoThinkerStatus | null>(null);
-  // === wave 9 === — track which AI tools are installed so the brain
-  // particle ring can light up the right vendor colors. Refreshed once
-  // on mount; the sidebar's loadAITools call already polls this on
-  // focus, so we don't need a second poller here.
-  const [installedTools, setInstalledTools] = useState<AIToolStatus[]>([]);
 
-  // === wave 14 === — chat-style hero state. `prompt` is the textarea
-  // input, `response` is the latest LlmResponse rendered as a chat
-  // bubble below the input. `dispatchState` is "idle" | "loading" |
-  // "error" — drives the spinner and the inline error block.
+  // === wave 20 === — stat strip data. Pulled in parallel on mount.
+  const [statAtoms, setStatAtoms] = useState<number>(0);
+  const [statTools, setStatTools] = useState<number>(0);
+  const [statWatched, setStatWatched] = useState<number>(0);
+  const [statError, setStatError] = useState<boolean>(false);
+
+  const [notes, setNotes] = useState<TangerineNote[]>([]);
+  const [now, setNow] = useState(() => new Date().toLocaleTimeString());
+
+  // === wave 14 === chat hero state — kept verbatim except for the
+  // surrounding layout.
   const [prompt, setPrompt] = useState("");
   const [response, setResponse] = useState<LlmResponse | null>(null);
-  const [dispatchState, setDispatchState] = useState<"idle" | "loading" | "error">("idle");
+  const [dispatchState, setDispatchState] = useState<
+    "idle" | "loading" | "error"
+  >("idle");
   const [dispatchError, setDispatchError] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
+  // Hydrate notes (route-bound TangerineNotes) on mount + on memory
+  // refresh events from AppShell.
   useEffect(() => {
     let cancel = false;
     const refresh = () => {
-      void readBrief(today).then((b) => {
-        if (!cancel) setBrief(b);
-      });
-      void readTimelineToday(today).then((s) => {
-        if (!cancel) {
-          setSlice(s);
-          // Stage 2 hook: notes per route. Stage 1 always [].
-          setNotes(s.notes ?? []);
-        }
+      void readTimelineToday(today).then((s: TimelineSlice) => {
+        if (!cancel) setNotes(s.notes ?? []);
       });
     };
     refresh();
-    // AppShell dispatches MEMORY_REFRESHED_EVENT after the first-launch
-    // sample-seed so the timeline + brief surface re-read the just-written
-    // files immediately, no page reload needed.
     const onRefreshed = () => refresh();
     if (typeof window !== "undefined") {
       window.addEventListener(MEMORY_REFRESHED_EVENT, onRefreshed);
@@ -161,94 +115,46 @@ export default function TodayRoute() {
   }, [today]);
 
   useEffect(() => {
-    const id = setInterval(() => setNow(new Date().toLocaleTimeString()), 60_000);
+    const id = setInterval(
+      () => setNow(new Date().toLocaleTimeString()),
+      60_000,
+    );
     return () => clearInterval(id);
   }, []);
 
-  // === wave 9 === — load AI tools once for the brain particle ring.
+  // === wave 20 === — stat strip parallel fetch. Each call has a soft
+  // mock fallback (vitest / browser dev returns []) so this resolves
+  // even outside Tauri.
   useEffect(() => {
-    let cancel = false;
-    void loadAITools().then((t) => {
-      if (!cancel) setInstalledTools(t);
-    });
-    return () => {
-      cancel = true;
-    };
-  }, []);
-
-  // === wave 8 === — hydrate brain status for the hero pulse. Polls every
-  // 30s like HomeStrip so the "X observations" hero number stays fresh.
-  // No-op when AGI participation is off — the master switch unmounts
-  // anything that depends on the AGI being live.
-  useEffect(() => {
-    if (!agiParticipation) {
-      setBrainStatus(null);
-      return;
-    }
-    let cancel = false;
-    const fetchStatus = async () => {
+    if (inSetupMode) return; // Setup mode hides the strip.
+    let cancelled = false;
+    void (async () => {
       try {
-        const s = await coThinkerStatus();
-        if (!cancel) setBrainStatus(s);
+        const [activity, tools] = await Promise.all([
+          activityRecent({ limit: 100 }),
+          loadAITools(),
+        ]);
+        if (cancelled) return;
+        setStatAtoms(activity.length);
+        const installed = tools.filter(
+          (x: AIToolStatus) => x.status === "installed",
+        );
+        setStatTools(installed.length);
+        // "Watched" = unique authors observed in the recent buffer.
+        const authors = new Set<string>();
+        for (const ev of activity) {
+          if (ev.author) authors.add(ev.author);
+        }
+        setStatWatched(authors.size);
+        setStatError(false);
       } catch {
-        // Bridge unavailable (vitest / browser dev) — leave whatever we
-        // had before in place so the hero stays stable.
+        if (!cancelled) setStatError(true);
       }
-    };
-    void fetchStatus();
-    const id = window.setInterval(fetchStatus, 30_000);
+    })();
     return () => {
-      cancel = true;
-      window.clearInterval(id);
+      cancelled = true;
     };
-  }, [agiParticipation]);
-
-  // === wave 8 === — derived hero numbers. Atom count comes from the
-  // timeline slice (events seen today), brain observation count from
-  // status. Both have safe fallbacks when the daemon hasn't fired.
-  const heroNumbers = useMemo(() => {
-    const atomsToday = slice?.events.length ?? 0;
-    const observations = brainStatus?.observations_today ?? 0;
-    const lastBeat = brainStatus?.last_heartbeat_at ?? null;
-    const isAlive =
-      agiParticipation && lastBeat !== null &&
-      Date.now() - new Date(lastBeat).getTime() < 10 * 60 * 1000;
-    return { atomsToday, observations, isAlive };
-  }, [slice, brainStatus, agiParticipation]);
-
-  // === wave 9 === — derive brain state for the hero composition.
-  const brainState: "empty" | "alive" | "idle" = useMemo(() => {
-    const installedCount = installedTools.filter(
-      (t) => t.status === "installed",
-    ).length;
-    if (heroNumbers.atomsToday === 0 && installedCount === 0) return "empty";
-    if (heroNumbers.isAlive) return "alive";
-    return "idle";
-  }, [heroNumbers, installedTools]);
-
-  // === wave 9 === — vendors that are "active" today (the particles
-  // that drift inward).
-  const activeVendors = useMemo(
-    () =>
-      installedTools
-        .filter((t) => t.status === "installed")
-        .map((t) => t.id),
-    [installedTools],
-  );
-
-  // === wave 9 === — the cross-vendor empty-state vendor row.
-  const awakeVendors = activeVendors;
-
-  const onAtomViewed = (atomId: string) => {
-    void markAtomViewed(currentUser, atomId);
-  };
-
-  const onMarkBriefRead = () => {
-    if (briefAcked) return;
-    setBriefAcked(true);
-    const briefAtomId = synthesizeBriefAtomId(today);
-    void markAtomAcked(currentUser, briefAtomId);
-  };
+  }, [inSetupMode]);
 
   // === wave 14 === — submit the chat hero prompt.
   const submitPrompt = async () => {
@@ -275,10 +181,9 @@ export default function TodayRoute() {
     }
   };
 
-  // === wave 14 === — Enter submits, Shift+Enter inserts newline.
-  // Multi-line textarea grows on input (lib/utils not needed — manual
-  // resize via scrollHeight to stay simple).
-  const onTextareaKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+  const onTextareaKeyDown = (
+    e: React.KeyboardEvent<HTMLTextAreaElement>,
+  ) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       void submitPrompt();
@@ -290,266 +195,207 @@ export default function TodayRoute() {
     el.style.height = Math.min(el.scrollHeight, 240) + "px";
   };
 
+  // === wave 18 === — setup-mode early return. OnboardingChat owns the
+  // full content area; widgets / hero / stat strip are not rendered at
+  // all so React doesn't waste a fetch cycle on data the user can't see.
+  if (inSetupMode) {
+    return (
+      <div className="ti-hero-bg">
+        <header
+          className="ti-no-select flex h-9 items-center gap-2 border-b border-stone-200 bg-stone-50/60 px-6 font-mono text-[11px] text-stone-500 backdrop-blur-sm dark:border-stone-800 dark:bg-stone-950/60 dark:text-stone-400"
+          data-testid="today-header"
+        >
+          <span>~ /today</span>
+          <span className="ml-auto">
+            {t("today.now")}{" "}
+            <span className="text-stone-700 dark:text-stone-300">{now}</span>
+          </span>
+        </header>
+        <div className="mx-auto max-w-3xl px-8 py-8" data-testid="today-setup">
+          {/* Smoke-test contract (`findByText(/^Today$/i)`) — keep an
+              h1-shaped element with the literal "Today" text reachable
+              even in setup mode so routes.smoke.test.tsx stays green. */}
+          <p className="ti-section-label flex items-center gap-2">
+            <Calendar size={14} className="text-[var(--ti-orange-500)]" />
+            <span>{t("today.title")}</span>
+          </p>
+          <OnboardingChat />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="ti-hero-bg">
-      <header className="ti-no-select flex h-9 items-center gap-2 border-b border-stone-200 bg-stone-50/60 px-6 font-mono text-[11px] text-stone-500 backdrop-blur-sm dark:border-stone-800 dark:bg-stone-950/60 dark:text-stone-400">
+      <header
+        className="ti-no-select flex h-9 items-center gap-2 border-b border-stone-200 bg-stone-50/60 px-6 font-mono text-[11px] text-stone-500 backdrop-blur-sm dark:border-stone-800 dark:bg-stone-950/60 dark:text-stone-400"
+        data-testid="today-header"
+      >
         <span>~ /today</span>
         <span className="ml-auto">
-          {t("today.now")} <span className="text-stone-700 dark:text-stone-300">{now}</span>
+          {t("today.now")}{" "}
+          <span className="text-stone-700 dark:text-stone-300">{now}</span>
         </span>
       </header>
 
-      <div className="mx-auto max-w-7xl px-8 py-8">
+      <div className="mx-auto max-w-4xl px-8 py-8">
         <TangerineNotes notes={notes} route="today" />
 
-        {/* === wave 14 === — ChatGPT-style hero. Big H1 + multiline
-            textarea + orange Send button. Demoted brain viz floats at
-            top-right as a small status anchor (not the primary CTA).
-            The eyebrow "Today" + date keep the smoke-test contract
-            (`findByText(/^Today$/i)`). */}
+        {/* === wave 20 === — Stat strip. Compact one-row summary at the
+            top: today's date · atoms today · authors watched · tools
+            active. Lives above the search hero so the user sees the
+            shape of "what happened today" before deciding whether to
+            search or scroll. */}
+        <div
+          data-testid="today-stat-strip"
+          className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[11px] text-[var(--ti-ink-500)]"
+        >
+          {/* === wave 20 wrap-needed === */}
+          <span data-testid="today-stat-date">
+            Today, {prettyDate(today)}
+          </span>
+          <span aria-hidden className="text-[var(--ti-ink-400)]">
+            ·
+          </span>
+          <span data-testid="today-stat-atoms">
+            {/* === wave 20 wrap-needed === */}
+            {statAtoms} atoms
+          </span>
+          <span aria-hidden className="text-[var(--ti-ink-400)]">
+            ·
+          </span>
+          <span data-testid="today-stat-watched">
+            {/* === wave 20 wrap-needed === */}
+            {statWatched} watched
+          </span>
+          <span aria-hidden className="text-[var(--ti-ink-400)]">
+            ·
+          </span>
+          <span data-testid="today-stat-tools">
+            {/* === wave 20 wrap-needed === */}
+            {statTools} tools active
+          </span>
+          {statError && (
+            <span
+              data-testid="today-stat-error"
+              className="text-rose-500"
+              title="Couldn't reach the activity bus"
+            >
+              {/* === wave 20 wrap-needed === */}
+              · stats unavailable
+            </span>
+          )}
+        </div>
+
+        {/* === wave 20 === — Hero search. Slimmer than Wave 14: the H1
+            is now an eyebrow + a single-line "Today" anchor (smoke-test
+            contract preserved), and the textarea is the focal point.
+            BrainVizHero is gone — see file-level comment. */}
         <header
           data-testid="today-hero"
-          className="mb-10 animate-ti-rise"
+          className="mb-8 animate-ti-rise"
         >
-          <div className="flex flex-col items-start gap-6 lg:flex-row lg:items-start lg:justify-between">
-            <div className="min-w-0 flex-1">
-              <p className="ti-section-label flex items-center gap-2">
-                <Calendar size={14} className="text-[var(--ti-orange-500)]" />
-                <span>{t("today.title")}</span>
-                {heroNumbers.isAlive && (
-                  <span className="flex items-center gap-1.5 text-[var(--ti-green-500)]">
-                    <span aria-hidden className="ti-alive-dot" />
-                    <span className="font-mono text-[10px] uppercase tracking-wider">live</span>
-                  </span>
-                )}
-                <span className="ml-2 font-mono text-[10px] text-[var(--ti-ink-500)]">
-                  {prettyDate(today)}
-                </span>
-              </p>
-              {/* === wave 14 === — Hero H1. */}
-              <h1
-                data-testid="today-hero-h1"
-                className="mt-3 font-display text-[44px] leading-tight tracking-tight text-[var(--ti-ink-900)] dark:text-[var(--ti-ink-900)]"
-              >
-                {/* === wave 14 wrap-needed === */}
-                Ask anything about your team.
-              </h1>
-              <p className="mt-2 text-[13px] text-[var(--ti-ink-500)]">
-                {/* === wave 14 wrap-needed === */}
-                Tangerine searches every meeting, decision, and thread your
-                team's AI tools have captured.
-              </p>
+          <p className="ti-section-label flex items-center gap-2">
+            <Calendar size={14} className="text-[var(--ti-orange-500)]" />
+            <span>{t("today.title")}</span>
+          </p>
+          <h1
+            data-testid="today-hero-h1"
+            className="mt-2 font-display text-[28px] leading-tight tracking-tight text-[var(--ti-ink-900)]"
+          >
+            {/* === wave 20 wrap-needed === */}
+            Search team memory or ask anything.
+          </h1>
 
-              {/* === wave 18 === — single chat input slot. Setup mode
-                  routes intents to onboarding_chat_turn; general mode
-                  uses the Wave 14 coThinkerDispatch flow. Same visual
-                  position; mode-switched contents. */}
-              {inSetupMode ? (
-                <div className="mt-5">
-                  <OnboardingChat />
-                </div>
-              ) : (
-              <div
-                data-testid="today-chat-input"
-                className="mt-5 flex items-end gap-2 rounded-xl border border-stone-200 bg-white px-3 py-2 shadow-sm dark:border-stone-800 dark:bg-stone-900"
-              >
-                <textarea
-                  ref={textareaRef}
-                  data-testid="today-chat-textarea"
-                  value={prompt}
-                  onChange={(e) => setPrompt(e.target.value)}
-                  onKeyDown={onTextareaKeyDown}
-                  onInput={onTextareaInput}
-                  rows={2}
-                  /* === wave 14 wrap-needed === */
-                  placeholder="Ask your team brain… e.g. 'What did we decide about pricing last week?'"
-                  className="min-h-[52px] flex-1 resize-none bg-transparent text-[14px] leading-relaxed text-[var(--ti-ink-900)] placeholder:text-[var(--ti-ink-500)] focus:outline-none dark:text-[var(--ti-ink-900)]"
-                  aria-label="Ask your team brain"
-                />
-                <button
-                  type="button"
-                  onClick={() => void submitPrompt()}
-                  disabled={dispatchState === "loading" || prompt.trim().length === 0}
-                  data-testid="today-chat-send"
-                  className="flex shrink-0 items-center gap-1.5 rounded-md bg-[var(--ti-orange-500)] px-3 py-2 text-[13px] font-medium text-white transition-colors hover:bg-[var(--ti-orange-600)] disabled:cursor-not-allowed disabled:bg-stone-300 dark:disabled:bg-stone-700"
-                >
-                  {dispatchState === "loading" ? (
-                    <>
-                      <Loader2 size={14} className="animate-spin" />
-                      {/* === wave 14 wrap-needed === */}
-                      <span>Thinking…</span>
-                    </>
-                  ) : (
-                    <>
-                      <Send size={14} />
-                      {/* === wave 14 wrap-needed === */}
-                      <span>Send</span>
-                    </>
-                  )}
-                </button>
-              </div>
-              )}
-              {/* === end wave 18 === */}
-
-              {/* === wave 14 === — Inline result bubble.
-                  === wave 18 === gated on !inSetupMode so the
-                  OnboardingChat owns the bubble area while setup is
-                  in progress. */}
-              {!inSetupMode && response && dispatchState !== "loading" && (
-                <div
-                  data-testid="today-chat-response"
-                  className="mt-4 rounded-xl border border-stone-200 bg-stone-50/80 px-4 py-3 dark:border-stone-800 dark:bg-stone-900/60"
-                >
-                  <div className="mb-2 flex items-center gap-2 font-mono text-[10px] uppercase tracking-wider text-[var(--ti-ink-500)]">
-                    {/* === wave 14 wrap-needed === */}
-                    <span>Tangerine answered via {response.tool_id}</span>
-                    <span className="text-[var(--ti-ink-400)]">·</span>
-                    <span>{response.latency_ms}ms</span>
-                  </div>
-                  <div className="prose prose-sm max-w-none text-[13px] leading-relaxed text-[var(--ti-ink-900)] dark:prose-invert">
-                    <ReactMarkdown>{response.text}</ReactMarkdown>
-                  </div>
-                </div>
-              )}
-              {!inSetupMode && dispatchState === "error" && dispatchError && (
-                <div
-                  data-testid="today-chat-error"
-                  className="mt-4 rounded-xl border border-rose-200 bg-rose-50/80 px-4 py-3 text-[12px] text-rose-700 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-300"
-                >
-                  {/* === wave 14 wrap-needed === */}
-                  <p className="font-medium">Couldn't reach an AI tool.</p>
-                  <p className="mt-1 font-mono text-[11px]">{dispatchError}</p>
-                  <p className="mt-2 text-[11px] text-rose-600 dark:text-rose-400">
-                    {/* === wave 14 wrap-needed === */}
-                    Connect at least one AI tool in the sidebar to enable team
-                    search.
-                  </p>
-                </div>
-              )}
-
-              {brainState === "empty" && (
-                <div
-                  className="mt-6"
-                  data-testid="today-empty-vendor-row"
-                >
-                  <p className="mb-3 text-[12px] leading-relaxed text-[var(--ti-ink-600)] dark:text-[var(--ti-ink-500)]">
-                    {t("today.brainAsleep", {
-                      defaultValue:
-                        "Your team's AGI is sleeping. Connect at least one AI tool to wake it up.",
-                    })}
-                  </p>
-                  <VendorLogoRow awakeVendors={awakeVendors} />
-                </div>
-              )}
-            </div>
-
-            {/* === wave 14 === — Demoted compact brain viz. Lives
-                top-right as a status anchor; doesn't dominate. The
-                BrainVizHero contract is unchanged (still emits the
-                wave-9 testids); only the size is reduced via the new
-                `compact` prop. */}
-            <div
-              className="hidden shrink-0 self-start lg:block"
-              data-testid="today-brain-viz-secondary"
+          <div
+            data-testid="today-chat-input"
+            className="mt-4 flex items-end gap-2 rounded-xl border border-stone-200 bg-white px-3 py-2 shadow-sm dark:border-stone-800 dark:bg-stone-900"
+          >
+            <textarea
+              ref={textareaRef}
+              data-testid="today-chat-textarea"
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              onKeyDown={onTextareaKeyDown}
+              onInput={onTextareaInput}
+              rows={2}
+              /* === wave 14 wrap-needed === */
+              placeholder="Search team memory or ask anything…"
+              className="min-h-[44px] flex-1 resize-none bg-transparent text-[14px] leading-relaxed text-[var(--ti-ink-900)] placeholder:text-[var(--ti-ink-500)] focus:outline-none dark:text-[var(--ti-ink-900)]"
+              aria-label="Search team memory or ask anything"
+            />
+            <button
+              type="button"
+              onClick={() => void submitPrompt()}
+              disabled={
+                dispatchState === "loading" || prompt.trim().length === 0
+              }
+              data-testid="today-chat-send"
+              className="flex shrink-0 items-center gap-1.5 rounded-md bg-[var(--ti-orange-500)] px-3 py-2 text-[13px] font-medium text-white transition-colors hover:bg-[var(--ti-orange-600)] disabled:cursor-not-allowed disabled:bg-stone-300 dark:disabled:bg-stone-700"
             >
-              {brainState === "empty" ? (
-                <BrainVizEmpty />
+              {dispatchState === "loading" ? (
+                <>
+                  <Loader2 size={14} className="animate-spin" />
+                  {/* === wave 14 wrap-needed === */}
+                  <span>Thinking…</span>
+                </>
               ) : (
-                <BrainVizHero
-                  state={brainState}
-                  activeVendors={activeVendors}
-                  atomsToday={heroNumbers.atomsToday}
-                  compact
-                />
+                <>
+                  <Send size={14} />
+                  {/* === wave 14 wrap-needed === */}
+                  <span>Send</span>
+                </>
               )}
-            </div>
+            </button>
           </div>
+
+          {response && dispatchState !== "loading" && (
+            <div
+              data-testid="today-chat-response"
+              className="mt-4 rounded-xl border border-stone-200 bg-stone-50/80 px-4 py-3 dark:border-stone-800 dark:bg-stone-900/60"
+            >
+              <div className="mb-2 flex items-center gap-2 font-mono text-[10px] uppercase tracking-wider text-[var(--ti-ink-500)]">
+                {/* === wave 14 wrap-needed === */}
+                <span>Tangerine answered via {response.tool_id}</span>
+                <span className="text-[var(--ti-ink-400)]">·</span>
+                <span>{response.latency_ms}ms</span>
+              </div>
+              <div className="prose prose-sm max-w-none text-[13px] leading-relaxed text-[var(--ti-ink-900)] dark:prose-invert">
+                <ReactMarkdown>{response.text}</ReactMarkdown>
+              </div>
+            </div>
+          )}
+          {dispatchState === "error" && dispatchError && (
+            <div
+              data-testid="today-chat-error"
+              className="mt-4 rounded-xl border border-rose-200 bg-rose-50/80 px-4 py-3 text-[12px] text-rose-700 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-300"
+            >
+              {/* === wave 14 wrap-needed === */}
+              <p className="font-medium">Couldn't reach an AI tool.</p>
+              <p className="mt-1 font-mono text-[11px]">{dispatchError}</p>
+            </div>
+          )}
         </header>
 
-        {/* === wave 14 === — Recent team notes (renamed from "Cross-vendor
-            activity"). User-language label per Wave 12 spec. Cards now
-            render without vendor border-l (showVendorColor=false default). */}
-        {slice && slice.events.length > 0 && (
-          <section
-            data-testid="today-recent-notes"
-            className="mt-6"
-            aria-label="Recent team notes"
-          >
-            <p className="ti-section-label">
-              {/* === wave 14 wrap-needed === */}
-              {t("today.recentNotes", {
-                defaultValue: "Recent team notes",
-              })}
-            </p>
-            <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {slice.events.slice(0, 5).map((ev) => (
-                <AtomCard
-                  key={`atom-${ev.id}`}
-                  vendor={inferVendorFromSource(ev.source, ev.actor)}
-                  title={(ev.body ?? "").split("\n")[0] || ev.kind}
-                  body={ev.body}
-                  sourcePath={ev.file ?? null}
-                  timestamp={ev.ts}
-                  linkTo={ev.file ? `/memory/${ev.file}` : null}
-                  onClick={() => onAtomViewed(ev.id)}
-                  testId={`today-atom-${ev.id}`}
-                />
-              ))}
-            </div>
-          </section>
-        )}
-
-        {/* Existing v2 workflow + brief + activity rail demoted below
-            the new chat hero. Kept intact so /this-week + brief flows
-            don't regress; just no longer the first thing users see. */}
-        <div className="mt-10 grid grid-cols-1 gap-6 lg:grid-cols-[2fr_1fr]">
-          <section aria-label={t("today.workflowAria")}>
-            <p className="ti-section-label">{t("today.workflow")}</p>
-            <div className="mt-3">
-              <WorkflowGraph />
-            </div>
-          </section>
-
-          <aside className="space-y-4" aria-label={t("today.summaryAria")}>
-            <div>
-              <p className="ti-section-label">{t("today.dailyBrief")}</p>
-              <div className="mt-3">
-                <DailyBriefCard
-                  date={today}
-                  markdown={brief?.markdown ?? null}
-                  exists={brief?.exists ?? false}
-                  acked={briefAcked}
-                  onMarkRead={onMarkBriefRead}
-                />
-              </div>
-            </div>
-
-            <div>
-              <p className="ti-section-label">{t("today.activity")}</p>
-              {slice && slice.events.length === 0 ? (
-                <div className="mt-3">
-                  <EmptyState
-                    icon={<Inbox size={28} />}
-                    title={t("today.nothingToday")}
-                    description={t("memory.noSourceCta")}
-                    primaryAction={{
-                      label: t("sidebar.sources"),
-                      onClick: () => navigate("/sources/external"),
-                    }}
-                    testId="today-empty"
-                  />
-                </div>
-              ) : (
-                <ul className="mt-3 max-h-[420px] divide-y divide-stone-200 overflow-y-auto pr-1 dark:divide-stone-800">
-                  {slice?.events.slice(0, 8).map((ev) => (
-                    <li key={ev.id}>
-                      <TimelineEvent event={ev} onView={onAtomViewed} compact />
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </aside>
+        {/* === wave 20 === — Widget stack. Single column, full-width
+            within the page padding. Order top → bottom: decisions,
+            activity, brain, tools — most actionable first. */}
+        <div
+          data-testid="today-widget-stack"
+          className="space-y-4"
+        >
+          <ErrorBoundaryShell label="Recent decisions">
+            <RecentDecisionsWidget />
+          </ErrorBoundaryShell>
+          <ErrorBoundaryShell label="Today's activity">
+            <TodaysActivityWidget />
+          </ErrorBoundaryShell>
+          <ErrorBoundaryShell label="Team brain status">
+            <BrainStatusWidget />
+          </ErrorBoundaryShell>
+          <ErrorBoundaryShell label="Connected tools">
+            <ConnectedToolsWidget />
+          </ErrorBoundaryShell>
         </div>
 
         <p className="mt-12 text-center font-mono text-[10px] text-stone-400 dark:text-stone-500">
@@ -559,6 +405,50 @@ export default function TodayRoute() {
     </div>
   );
 }
+
+// === wave 20 ===
+/**
+ * Per-widget render guard. We keep this tiny + local — the global
+ * ErrorBoundary covers the whole route, but a widget that crashes during
+ * render (e.g. a bad fetch result shape) shouldn't take down the dashboard.
+ * One render-throw → inline message via DashboardWidget's errorMessage
+ * shape, the other three widgets keep mounting.
+ */
+interface ErrorBoundaryShellProps {
+  label: string;
+  children: ReactNode;
+}
+interface ErrorBoundaryShellState {
+  message: string | null;
+}
+class ErrorBoundaryShell extends Component<
+  ErrorBoundaryShellProps,
+  ErrorBoundaryShellState
+> {
+  state: ErrorBoundaryShellState = { message: null };
+  static getDerivedStateFromError(err: unknown): ErrorBoundaryShellState {
+    return { message: err instanceof Error ? err.message : String(err) };
+  }
+  render() {
+    if (this.state.message !== null) {
+      return (
+        <DashboardWidget
+          testId={`today-widget-fallback-${slug(this.props.label)}`}
+          title={this.props.label}
+          errorMessage={this.state.message}
+        >
+          {null}
+        </DashboardWidget>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+function slug(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+}
+// === end wave 20 ===
 
 function todayIso(): string {
   // YYYY-MM-DD in local time so the brief lookup matches the daemon's
@@ -574,71 +464,7 @@ function prettyDate(iso: string): string {
   const d = new Date(`${iso}T00:00:00`);
   if (Number.isNaN(d.getTime())) return iso;
   return d.toLocaleDateString(undefined, {
-    weekday: "long",
     month: "short",
     day: "numeric",
   });
-}
-
-// === wave 9 ===
-/**
- * Best-effort vendor inference for AtomCards on /today.
- *
- * The TimelineEvent shape doesn't yet carry a `vendor` field — atoms
- * come from many sources (cursor, claude code, discord, github, etc.)
- * and the existing `source` string is the only signal. We look at both
- * `source` and `actor` for keywords matching our known vendor ids; if
- * nothing matches we return null and the card falls back to the
- * default-grey vendor color. This is a placeholder until v3.0 adds
- * per-atom vendor metadata to the timeline.
- */
-function inferVendorFromSource(
-  source: string,
-  actor: string,
-): string | null {
-  const haystack = `${source ?? ""} ${actor ?? ""}`.toLowerCase();
-  const candidates = [
-    "cursor",
-    "claude-code",
-    "claude_code",
-    "claude.ai",
-    "claude",
-    "chatgpt",
-    "gpt",
-    "codex",
-    "windsurf",
-    "gemini",
-    "copilot",
-    "ollama",
-    "v0",
-    "devin",
-    "replit",
-  ];
-  for (const c of candidates) {
-    if (haystack.includes(c)) {
-      // Normalize aliases.
-      if (c === "claude_code") return "claude-code";
-      if (c === "claude.ai") return "claude-ai";
-      if (c === "claude") return "claude-ai";
-      if (c === "gpt") return "chatgpt";
-      return c;
-    }
-  }
-  return null;
-}
-// === end wave 9 ===
-
-/** Synthesize a stable atom-id-shaped value for today's brief so cursor
- *  acks have something to write against even before the brief generator
- *  emits a real atom. Stage 2 will read these atoms_acked entries to
- *  learn the user's reading cadence. */
-function synthesizeBriefAtomId(date: string): string {
-  // 10 hex chars from the date string — deterministic so re-acks land
-  // on the same id.
-  let h = 0;
-  for (const c of `brief|${date}`) {
-    h = (h * 31 + c.charCodeAt(0)) >>> 0;
-  }
-  const hex = h.toString(16).padStart(10, "0").slice(0, 10);
-  return `evt-${date}-${hex}`;
 }

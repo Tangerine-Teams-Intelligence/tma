@@ -36,7 +36,9 @@
     "statusOff": "off",
     "statusSoon": "soon",
     "statusReady": "ready",
-    "statusBeta": "beta"
+    "statusBeta": "beta",
+    "brain": "Brain",
+    "subtitleBrand": "Your team's AI memory"
   },
   "auth": {
     "brand": "Tangerine AI Teams",
@@ -357,6 +359,7 @@
     "tabs": {
       "general": "General",
       "aiTools": "AI tools",
+      "sources": "Sources",
       "agi": "Brain",
       "team": "Team",
       "adapters": "Adapters",

@@ -29,6 +29,11 @@ import { AGISettings } from "./AGISettings";
 // v3.0 §1 — Personal Agents tab. Strict opt-in capture for Cursor / Claude
 // Code / Codex / Windsurf logs into the personal vault.
 import { PersonalAgentsSettings } from "./PersonalAgentsSettings";
+// === wave 19 ===
+// Wave 19 IA — Sources tab (was a sidebar section pre-wave-19). Lives in
+// the default tab band so connectors are still one click away.
+import { SourcesSettings } from "./SourcesSettings";
+// === end wave 19 ===
 
 // === wave 5-α ===
 // Tab classification:
@@ -41,9 +46,13 @@ import { PersonalAgentsSettings } from "./PersonalAgentsSettings";
 // two opinionated controls (general prefs + AI tool detection); the
 // dev-grade tabs (sensitivity sliders, parser configs, adapter wiring)
 // are one click away, not in their face.
+// === wave 19 === — Sources joins the default tab band (was a sidebar
+// section pre-wave-19). Connectors are user-facing config — they belong
+// alongside General / AI tools, not behind the advanced toggle.
 const DEFAULT_TABS = [
   { id: "general", label: "General" },
   { id: "ai-tools", label: "AI tools" },
+  { id: "sources", label: "Sources" },
 ] as const;
 
 const ADVANCED_TABS = [
@@ -137,6 +146,9 @@ export default function Settings() {
   const tabLabelKey: Record<TabId, string> = {
     general: "settings.tabs.general",
     "ai-tools": "settings.tabs.aiTools",
+    // === wave 19 === — Sources tab i18n key.
+    sources: "settings.tabs.sources",
+    // === end wave 19 ===
     agi: "settings.tabs.agi",
     "personal-agents": "settings.tabs.personalAgents",
     team: "settings.tabs.team",
@@ -204,6 +216,9 @@ export default function Settings() {
           />
         )}
         {tab === "ai-tools" && <AIToolsSettings />}
+        {/* === wave 19 === — Sources directory tab. */}
+        {tab === "sources" && <SourcesSettings />}
+        {/* === end wave 19 === */}
         {tab === "agi" && <AGISettings />}
         {tab === "personal-agents" && <PersonalAgentsSettings />}
         {tab === "team" && <TeamSettings draft={draft} update={update} />}

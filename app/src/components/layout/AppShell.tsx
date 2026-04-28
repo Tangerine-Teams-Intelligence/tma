@@ -2,7 +2,18 @@ import { useEffect, useRef, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { CommandPalette } from "@/components/CommandPalette";
-import { ActivityFeed } from "@/components/ActivityFeed";
+// === wave 19 ===
+// AppShell no longer mounts ActivityFeed at the right rail. Wave 20 will
+// re-add the activity widget INSIDE /today's dashboard, so the activity
+// signal still reaches the user — just not as a global right rail that
+// steals horizontal space on every route. /memory, /brain, /canvas, etc.
+// now get the full content width they need for file-tree, brain-viz, and
+// sticky-board surfaces.
+//
+// The ActivityFeed component itself is intentionally not deleted — Wave
+// 20 will import it directly and embed inside the today dashboard. The
+// wave-16 ActivityFeed test still drives the component standalone.
+// === end wave 19 ===
 import { WhatsNewBanner } from "@/components/WhatsNewBanner";
 import { LicenseTransitionBanner } from "@/components/LicenseTransitionBanner";
 // === wave 5-β ===
@@ -124,10 +135,14 @@ interface TemplateMatchPayload {
 /**
  * Always-visible shell.
  *
- * Three vertical bands:
- *   • left   — Sidebar (240px)            : memory tree + sources/sinks/views
- *   • center — main content (flex-1)      : route Outlet
- *   • right  — ActivityFeed (300px, lg+)  : reverse-chrono atom rail
+ * === wave 19 === — two vertical bands (was three before wave 19).
+ *   • left   — Sidebar (240px)            : 5-item primary nav + footer
+ *   • center — main content (flex-1)      : route Outlet (full-width)
+ *
+ * The right ActivityFeed rail was removed in wave 19 so non-/today routes
+ * (memory file tree, brain viz, canvas board) get the full horizontal
+ * space they need. Wave 20 will re-mount the activity widget INSIDE
+ * /today as a dashboard card.
  *
  * The Cmd+K palette is mounted globally so it works from any route. The
  * yellow "what's new since you looked" banner is mounted at the very top
@@ -736,7 +751,11 @@ export function AppShell() {
           </main>
         </div>
 
-        <ActivityFeed />
+        {/* === wave 19 === — ActivityFeed right-rail mount removed.
+            Wave 20 re-embeds the widget inside /today's dashboard so
+            the activity signal stays visible on the home surface where
+            users expect it (and where it doesn't crowd /memory or
+            /canvas). The component itself is unchanged. */}
 
         <CommandPalette open={paletteOpen} onClose={() => setPalette(false)} />
 

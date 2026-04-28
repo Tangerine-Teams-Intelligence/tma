@@ -208,6 +208,13 @@ export default function App() {
         <Route path="canvas" element={<CanvasRoute />} />
         <Route path="canvas/:project" element={<CanvasRoute />} />
         <Route path="co-thinker" element={<CoThinkerRoute />} />
+        {/* === wave 19 === — /brain alias to the existing /co-thinker
+            route. Wave 19 sidebar shows "Brain" as the primary label;
+            the /co-thinker URL stays alive forever so existing
+            bookmarks + deep links keep working. Same component on
+            both paths — no fork in the route handler. */}
+        <Route path="brain" element={<CoThinkerRoute />} />
+        {/* === end wave 19 === */}
 
         {/* === v2.5 reviews route === */}
         <Route path="reviews" element={<ReviewsRoute />} />

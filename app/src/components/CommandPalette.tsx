@@ -116,15 +116,27 @@ interface RouteEntry {
 //     redirect-to-/today).
 //   - Added /sinks/{browser,mcp,local-ws} since those are real routes
 //     with detail pages.
+// === wave 19 === — palette catalog refresh.
+//   - /brain entry added as the wave-19 primary alias for /co-thinker;
+//     /co-thinker entry kept so legacy bookmarks still type-complete.
+//   - Source rows get clearer descriptions ("Connector — wired to memory/...")
+//     so users searching "discord" understand they're opening the connector
+//     setup, not a chat window.
+//   - AI tool rows expanded below get the same treatment via aiTools.map.
+//   - All routes that wave 19 yanked from the sidebar (/inbox /alignment
+//     /this-week /people /projects /threads /reviews /marketplace /sources
+//     /sinks /ai-tools /graphs) MUST stay in this catalog so Cmd+K is the
+//     fallback navigation surface.
 const ROUTE_CATALOG: RouteEntry[] = [
-  { path: "/today", label: "Today", aliases: ["daily", "home", "brief"] },
-  { path: "/this-week", label: "This Week", aliases: ["weekly", "7 days"] },
-  { path: "/memory", label: "Memory", aliases: ["files", "tree", "markdown"] },
-  { path: "/co-thinker", label: "Co-thinker", aliases: ["agi", "brain", "thinker"] },
+  { path: "/today", label: "Today", aliases: ["daily", "home", "brief", "dashboard"] },
+  { path: "/memory", label: "Memory", aliases: ["files", "tree", "markdown", "vault"] },
+  { path: "/brain", label: "Brain", aliases: ["agi", "co-thinker", "thinker", "team brain"] },
+  { path: "/co-thinker", label: "Co-thinker (legacy)", aliases: ["agi", "brain", "thinker"] },
   { path: "/canvas", label: "Canvas", aliases: ["board", "stickies"] },
-  { path: "/reviews", label: "Reviews", aliases: ["meeting reviews"] },
-  { path: "/marketplace", label: "Marketplace", aliases: ["shop", "store"] },
-  { path: "/inbox", label: "Inbox", aliases: ["pending", "tasks"] },
+  { path: "/this-week", label: "This Week", aliases: ["weekly", "7 days"] },
+  { path: "/reviews", label: "Reviews", aliases: ["meeting reviews", "decisions only"] },
+  { path: "/marketplace", label: "Marketplace", aliases: ["shop", "store", "templates"] },
+  { path: "/inbox", label: "Inbox", aliases: ["pending", "tasks", "alerts"] },
   { path: "/alignment", label: "Alignment", aliases: ["bars", "team alignment"] },
   { path: "/people", label: "People", aliases: ["team members", "directory"] },
   { path: "/people/social", label: "Social Graph", aliases: ["network", "graph people"] },
@@ -133,25 +145,28 @@ const ROUTE_CATALOG: RouteEntry[] = [
   { path: "/threads", label: "Threads", aliases: ["topics", "conversations"] },
   { path: "/decisions/lineage", label: "Decision Lineage", aliases: ["graph decisions"] },
   // Sources — every id matches the SourceId catalog in lib/sources.ts.
-  { path: "/sources/discord", label: "Discord Source", aliases: ["meetings", "discord"] },
-  { path: "/sources/github", label: "GitHub Source", aliases: ["pr", "issues"] },
-  { path: "/sources/linear", label: "Linear Source", aliases: ["tickets"] },
-  { path: "/sources/slack", label: "Slack Source", aliases: ["chat"] },
+  // Wave 19 description: every label now leads with "Source · " so the
+  // intent (open a connector setup page) is clear at a glance.
+  { path: "/sources/discord", label: "Source · Discord", aliases: ["meetings", "discord", "voice"] },
+  { path: "/sources/github", label: "Source · GitHub", aliases: ["pr", "issues", "git"] },
+  { path: "/sources/linear", label: "Source · Linear", aliases: ["tickets", "issues"] },
+  { path: "/sources/slack", label: "Source · Slack", aliases: ["chat", "workspace"] },
   // The route id is `cal` (matching SourceId), not `calendar`.
-  { path: "/sources/cal", label: "Calendar Source", aliases: ["calendar", "events"] },
-  { path: "/sources/notion", label: "Notion Source", aliases: ["docs", "wiki"] },
-  { path: "/sources/loom", label: "Loom Source", aliases: ["video", "loom"] },
-  { path: "/sources/zoom", label: "Zoom Source", aliases: ["zoom", "calls"] },
-  { path: "/sources/email", label: "Email Source", aliases: ["imap", "mail"] },
-  { path: "/sources/voice-notes", label: "Voice notes Source", aliases: ["voice", "audio"] },
-  { path: "/sources/external", label: "External world", aliases: ["rss", "podcasts", "youtube"] },
+  { path: "/sources/cal", label: "Source · Calendar", aliases: ["calendar", "events", "gcal"] },
+  { path: "/sources/notion", label: "Source · Notion", aliases: ["docs", "wiki"] },
+  { path: "/sources/loom", label: "Source · Loom", aliases: ["video", "loom"] },
+  { path: "/sources/zoom", label: "Source · Zoom", aliases: ["zoom", "calls"] },
+  { path: "/sources/email", label: "Source · Email", aliases: ["imap", "mail", "gmail"] },
+  { path: "/sources/voice-notes", label: "Source · Voice notes", aliases: ["voice", "audio", "mic"] },
+  { path: "/sources/external", label: "Source · External world", aliases: ["rss", "podcasts", "youtube", "articles"] },
   // Sinks — corresponds to /sinks/:id.
-  { path: "/sinks/browser", label: "Browser extension", aliases: ["chrome", "ext"] },
-  { path: "/sinks/mcp", label: "MCP server", aliases: ["mcp"] },
-  { path: "/sinks/local-ws", label: "Local WS server", aliases: ["websocket"] },
+  { path: "/sinks/browser", label: "Sink · Browser extension", aliases: ["chrome", "ext"] },
+  { path: "/sinks/mcp", label: "Sink · MCP server", aliases: ["mcp"] },
+  { path: "/sinks/local-ws", label: "Sink · Local WS server", aliases: ["websocket", "ws"] },
   { path: "/billing", label: "Billing", aliases: ["subscription", "payment"] },
   { path: "/settings", label: "Settings", aliases: ["preferences", "config"] },
 ];
+// === end wave 19 ===
 
 // v1.9.3 honesty pass: only AI tool IDs that have a real config in
 // lib/ai-tools-config.ts. `devin` / `replit` / `apple-intelligence` /
@@ -264,11 +279,15 @@ export function CommandPalette({ open, onClose }: Props) {
       },
     }));
 
+    // === wave 19 === — AI tool labels keep the "AI Tool · <id>" prefix so
+    // a user typing "cursor" / "claude" lands on the per-tool setup page.
+    // The hint reads "/ai-tools/<id>" so the destination is unambiguous
+    // (these used to live in the sidebar's AI tools section pre-wave-19).
     const aiTools: PaletteItem[] = AI_TOOL_IDS.map((id) => ({
       id: `route:/ai-tools/${id}`,
       kind: "route" as const,
       label: `AI Tool · ${id}`,
-      search: `ai-tools ${id} ${id.replace(/-/g, " ")}`,
+      search: `ai-tools ${id} ${id.replace(/-/g, " ")} setup configure`,
       hint: `/ai-tools/${id}`,
       icon: Compass,
       onSelect: () => {
@@ -276,6 +295,7 @@ export function CommandPalette({ open, onClose }: Props) {
         close();
       },
     }));
+    // === end wave 19 ===
 
     const actions: PaletteItem[] = [
       {
@@ -650,7 +670,11 @@ export function CommandPalette({ open, onClose }: Props) {
   // Group items by kind for the section dividers when no query is typed.
   // When the user is searching, we keep ranked order — no grouping.
   function kindLabel(k: ItemKind): string {
-    if (k === "route") return "navigate";
+    // === wave 19 === — "navigate" → "pages" (matches Linear / Notion
+    // command-palette idiom; users now think of routes as named pages,
+    // not navigation actions).
+    if (k === "route") return "pages";
+    // === end wave 19 ===
     if (k === "action") return "actions";
     if (k === "hit") return "memory";
     // === wave 15 === — Scored atom rows live under the i18n'd
