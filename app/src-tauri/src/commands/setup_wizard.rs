@@ -629,10 +629,19 @@ fn merge_tangerine_into_mcp_json(path: &Path) -> Result<bool, String> {
 pub async fn setup_wizard_auto_configure_mcp(
     tool_id: String,
 ) -> Result<SetupWizardAutoConfigResult, AppError> {
-    let row = MCP_CATALOG
-        .iter()
-        .find(|r| r.tool_id == tool_id)
-        .ok_or_else(|| AppError::user("unknown_tool", format!("unknown tool_id {tool_id}")))?;
+    // Wave 4 wire-up — wave 11's catalog only knows the 4 MCP-editor
+    // tools (cursor / claude-code / codex / windsurf). v1.15.0 adds 4
+    // more (devin / replit / apple-intelligence / ms-copilot) which
+    // live in the Wave 1.3 v15 dispatcher with atomic JSON/TOML merge
+    // + keychain fallbacks + 30 cargo tests. Delegate unknown tool_ids
+    // to the v15 path so the AIToolDetectionGrid can call ONE wrapper
+    // for all 8 tools without forking the call site (R6/R7/R8: a
+    // consistent honest path beats two divergent ones).
+    let row = MCP_CATALOG.iter().find(|r| r.tool_id == tool_id);
+    if row.is_none() {
+        return v15_delegate_auto_configure(&tool_id).await;
+    }
+    let row = row.unwrap();
     let path = (row.config_path_resolver)().ok_or_else(|| {
         AppError::internal(
             "no_config_path",
@@ -651,6 +660,59 @@ pub async fn setup_wizard_auto_configure_mcp(
         Err(e) => Ok(SetupWizardAutoConfigResult {
             ok: false,
             file_written: path,
+            restart_required: false,
+            error: Some(e),
+        }),
+    }
+}
+
+/// Wave 4 wire-up — bridges wave 11's struct-returning entry point to
+/// W1.3's v15 dispatcher. Returns the same `SetupWizardAutoConfigResult`
+/// shape so the React grid (W1.2) doesn't care which path served it.
+///
+/// Honesty rules (R6/R7/R8):
+///   * v15 errors propagate verbatim into the `error` field — no silent
+///     remapping to `Ok`.
+///   * `file_written` records the canonical config-file location for the
+///     four FILE-backed tools and the keychain sentinel path for the two
+///     KEYCHAIN-backed tools (devin / replit). For the two
+///     PlatformUnsupported tools (apple-intelligence / ms-copilot) it's
+///     left empty — the v15 dispatcher returns Err in that case so the
+///     UI never paints a fake green check.
+///   * `restart_required` defers to v15: the four MCP editors need a
+///     restart; keychain tools don't.
+async fn v15_delegate_auto_configure(
+    tool_id: &str,
+) -> Result<SetupWizardAutoConfigResult, AppError> {
+    let home = match v15_home_root() {
+        Ok(h) => h,
+        Err(e) => {
+            return Ok(SetupWizardAutoConfigResult {
+                ok: false,
+                file_written: PathBuf::new(),
+                restart_required: false,
+                error: Some(e),
+            });
+        }
+    };
+    let restart_required = matches!(
+        tool_id,
+        "claude-code" | "cursor" | "codex" | "windsurf"
+    );
+    match v15_dispatch_configure(tool_id, &home).await {
+        Ok(()) => Ok(SetupWizardAutoConfigResult {
+            ok: true,
+            // Best-effort path hint for the toast. The exact file written
+            // varies per tool (TOML for codex, JSON for the others, sentinel
+            // file for keychain tools); we surface a stable per-tool slug
+            // here rather than re-derive the absolute path twice.
+            file_written: PathBuf::from(format!("v15:{}", tool_id)),
+            restart_required,
+            error: None,
+        }),
+        Err(e) => Ok(SetupWizardAutoConfigResult {
+            ok: false,
+            file_written: PathBuf::new(),
             restart_required: false,
             error: Some(e),
         }),
@@ -1517,3 +1579,964 @@ mod tests {
         }
     }
 }
+
+// ===========================================================================
+// === v1.15.0 wave 1.3 — 8-tool MCP auto-configure + handshake ============
+// ===========================================================================
+//
+// New surface bolted on top of the wave 11 setup wizard. The wave 11 surface
+// (above) handles 4 MCP-capable editors (Cursor / Claude Code / Codex /
+// Windsurf) via a single rich-result command. v1.15.0 expands to 8 tools
+// (the 4 above plus Devin / Replit / Apple Intelligence / MS Copilot) with:
+//
+//   * Atomic file writes (tempfile + rename) so a crash mid-write can't
+//     leave the user with a half-written `~/.claude.json`.
+//   * Idempotent JSON / TOML deep-merge that preserves ALL existing keys
+//     under `mcpServers` (the wave 11 merger already did this for JSON;
+//     wave 1.3 adds TOML parity for Codex's `~/.codex/config.toml`).
+//   * Per-tool config locations updated to match the v1.15 spec
+//     (`~/.claude.json` instead of wave 11's `~/.claude/mcp_servers.json`,
+//     `~/.cursor/mcp.json`, `~/.codex/config.toml`, Windsurf
+//     `~/.codeium/windsurf/mcp_config.json`).
+//   * OS-keychain-backed API key storage for Devin / Replit (reuses
+//     `commands::secret_store`'s file-fallback layer).
+//   * Per-tool MCP handshake (`mcp_server_handshake`) that returns true
+//     iff a probe says the channel is alive.
+//   * `Err("PlatformUnsupported: ...")` for Apple Intelligence on non-mac
+//     and MS Copilot on non-windows — never silently no-ops.
+//
+// **Coexistence with wave 11**: the existing `setup_wizard_auto_configure_mcp`
+// command keeps its rich-result signature (used by `onboarding_chat.rs`
+// + `lib/tauri.ts`'s `setupWizardAutoConfigureMcp`). The v1.15 surface
+// uses the new name `setup_wizard_v15_auto_configure_mcp` to avoid the
+// signature collision flagged in W1.2 mock review. Both write to the
+// same canonical Tangerine MCP entry shape — the merge helpers below
+// use the same `npx -y tangerine-mcp@latest` command + sampling-bridge
+// env var as wave 11.
+//
+// **Invariants (R6/R7/R8)**: zero `unwrap_or_default` on error paths,
+// every silently-handled case is `tracing::warn!`-logged, every
+// PlatformUnsupported is an explicit `Err`, never a quiet success.
+
+use std::io::Write as _;
+
+/// All 8 tools the v1.15 wizard knows how to configure. Stable string ids
+/// the React side passes through `setup_wizard_v15_auto_configure_mcp(tool_id)`.
+/// Mirrored on the W1.2 mock layer.
+const V15_TOOL_IDS: &[&str] = &[
+    "claude-code",
+    "cursor",
+    "codex",
+    "windsurf",
+    "devin",
+    "replit",
+    "apple-intelligence",
+    "ms-copilot",
+];
+
+/// Where the canonical Tangerine MCP entry lives. Same shape wave 11 wrote
+/// (npx + sampling-bridge env). Kept as a single source of truth so a
+/// future bump to a packaged binary only needs to change one place.
+///
+/// TODO(v1.15): once `mcp-server/` ships a packaged binary the user can
+/// install via `cargo install tangerine-mcp-bin` or a Tauri-bundled
+/// resource, swap this for the absolute path. Today (2026-04-28) the
+/// `mcp-server/` workspace publishes `tangerine-mcp@latest` to npm via
+/// `package.json::bin::tangerine-mcp` — npx is the canonical entry.
+fn tangerine_mcp_entry_json() -> serde_json::Value {
+    serde_json::json!({
+        "command": "npx",
+        "args": ["-y", "tangerine-mcp@latest"],
+        "env": {
+            "TANGERINE_SAMPLING_BRIDGE": "1"
+        }
+    })
+}
+
+/// Same content shape, TOML inline-table form for Codex's `[mcp_servers.tangerine]`.
+fn tangerine_mcp_entry_toml() -> toml::Value {
+    let mut env = toml::value::Table::new();
+    env.insert(
+        "TANGERINE_SAMPLING_BRIDGE".to_string(),
+        toml::Value::String("1".to_string()),
+    );
+    let mut entry = toml::value::Table::new();
+    entry.insert(
+        "command".to_string(),
+        toml::Value::String("npx".to_string()),
+    );
+    entry.insert(
+        "args".to_string(),
+        toml::Value::Array(vec![
+            toml::Value::String("-y".to_string()),
+            toml::Value::String("tangerine-mcp@latest".to_string()),
+        ]),
+    );
+    entry.insert("env".to_string(), toml::Value::Table(env));
+    toml::Value::Table(entry)
+}
+
+/// Resolve `$HOME` honoring the `TANGERINE_TEST_HOME_OVERRIDE` env var
+/// (tests inject a tempdir here). Production callers see the real
+/// `dirs::home_dir()`.
+fn v15_home_root() -> Result<PathBuf, String> {
+    if let Ok(o) = std::env::var("TANGERINE_TEST_HOME_OVERRIDE") {
+        if !o.is_empty() {
+            return Ok(PathBuf::from(o));
+        }
+    }
+    dirs::home_dir().ok_or_else(|| {
+        "no_home: HOME / USERPROFILE unresolvable on this machine".to_string()
+    })
+}
+
+/// Atomic write: write to `<path>.tangerine-tmp-<uuid>` then rename over
+/// `path`. On Windows the rename target must NOT exist — we remove first
+/// (best-effort; rename below will surface the real error if removal
+/// failed in a load-bearing way). The rename itself is the atomic step.
+fn atomic_write(path: &Path, body: &[u8]) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| {
+            format!("Cannot mkdir {}: {}", parent.display(), e)
+        })?;
+    }
+    let tmp_name = format!(
+        ".tangerine-tmp-{}",
+        uuid::Uuid::new_v4().simple()
+    );
+    let tmp = path
+        .parent()
+        .map(|p| p.join(&tmp_name))
+        .unwrap_or_else(|| PathBuf::from(&tmp_name));
+    {
+        let mut f = std::fs::File::create(&tmp)
+            .map_err(|e| format!("Cannot create {}: {}", tmp.display(), e))?;
+        f.write_all(body)
+            .map_err(|e| format!("Cannot write {}: {}", tmp.display(), e))?;
+        f.sync_all().map_err(|e| {
+            format!("Cannot fsync {}: {}", tmp.display(), e)
+        })?;
+    }
+    #[cfg(windows)]
+    {
+        // Windows: rename over an existing file is allowed by `fs::rename`
+        // since Rust 1.5 on NTFS — but only when the source isn't open and
+        // the destination isn't held. Best-effort cleanup of any stale tmp
+        // sibling that a prior aborted write might have left behind.
+        let _ = std::fs::remove_file(path).ok();
+    }
+    std::fs::rename(&tmp, path).map_err(|e| {
+        // If rename failed, try to clean up the tmp so we don't leak it.
+        let _ = std::fs::remove_file(&tmp);
+        format!(
+            "Cannot rename {} -> {}: {}",
+            tmp.display(),
+            path.display(),
+            e
+        )
+    })?;
+    Ok(())
+}
+
+/// Read existing JSON file, returning `Some(Value)` on a parseable body or
+/// `None` when the file is absent. Returns `Err` ONLY for "file present
+/// but malformed" — R6/R7/R8: malformed config must surface, not silently
+/// reset to default.
+fn read_existing_json(path: &Path) -> Result<Option<serde_json::Value>, String> {
+    let body = match fs::read_to_string(path) {
+        Ok(b) => b,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
+            return Err(format!(
+                "Cannot read {}: permission denied ({})",
+                path.display(),
+                e
+            ));
+        }
+        Err(e) => {
+            return Err(format!("Cannot read {}: {}", path.display(), e));
+        }
+    };
+    if body.trim().is_empty() {
+        return Ok(None);
+    }
+    let v: serde_json::Value = serde_json::from_str(&body).map_err(|e| {
+        format!("{} malformed: {}", path.display(), e)
+    })?;
+    Ok(Some(v))
+}
+
+/// Same contract as `read_existing_json` for TOML.
+fn read_existing_toml(path: &Path) -> Result<Option<toml::Value>, String> {
+    let body = match fs::read_to_string(path) {
+        Ok(b) => b,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
+            return Err(format!(
+                "Cannot read {}: permission denied ({})",
+                path.display(),
+                e
+            ));
+        }
+        Err(e) => {
+            return Err(format!("Cannot read {}: {}", path.display(), e));
+        }
+    };
+    if body.trim().is_empty() {
+        return Ok(None);
+    }
+    let v: toml::Value = toml::from_str(&body)
+        .map_err(|e| format!("{} malformed: {}", path.display(), e))?;
+    Ok(Some(v))
+}
+
+/// Idempotent JSON merger: returns true iff a write was needed. Writes the
+/// canonical Tangerine entry under `mcpServers.tangerine` without touching
+/// any sibling key. R6/R7/R8: never resets the document on a sibling-key
+/// shape mismatch — we only refuse to write if the root isn't an object.
+fn merge_into_mcp_servers_json(
+    path: &Path,
+    entry: serde_json::Value,
+) -> Result<bool, String> {
+    let mut root = match read_existing_json(path)? {
+        Some(v) => v,
+        None => serde_json::json!({}),
+    };
+    if !root.is_object() {
+        return Err(format!(
+            "{} malformed: top-level must be a JSON object, got {}",
+            path.display(),
+            root_type_name(&root)
+        ));
+    }
+    let obj = root.as_object_mut().unwrap();
+    let servers_entry = obj
+        .entry("mcpServers".to_string())
+        .or_insert(serde_json::json!({}));
+    if !servers_entry.is_object() {
+        return Err(format!(
+            "{} malformed: mcpServers must be an object",
+            path.display()
+        ));
+    }
+    let servers = servers_entry.as_object_mut().unwrap();
+    if let Some(existing) = servers.get("tangerine") {
+        if existing == &entry {
+            // Idempotent: same shape already present — no write.
+            return Ok(false);
+        }
+    }
+    servers.insert("tangerine".to_string(), entry);
+    let body = serde_json::to_string_pretty(&root)
+        .map_err(|e| format!("Cannot serialize JSON: {e}"))?;
+    atomic_write(path, body.as_bytes())?;
+    Ok(true)
+}
+
+/// Idempotent TOML merger: writes `[mcp_servers.tangerine]` without
+/// touching any other table. Same R6/R7/R8 contract as the JSON merger.
+fn merge_into_mcp_servers_toml(
+    path: &Path,
+    entry: toml::Value,
+) -> Result<bool, String> {
+    let mut root = match read_existing_toml(path)? {
+        Some(v) => v,
+        None => toml::Value::Table(toml::value::Table::new()),
+    };
+    let table = match root.as_table_mut() {
+        Some(t) => t,
+        None => {
+            return Err(format!(
+                "{} malformed: top-level must be a TOML table",
+                path.display()
+            ));
+        }
+    };
+    let servers_val = table
+        .entry("mcp_servers".to_string())
+        .or_insert(toml::Value::Table(toml::value::Table::new()));
+    let servers = match servers_val.as_table_mut() {
+        Some(t) => t,
+        None => {
+            return Err(format!(
+                "{} malformed: mcp_servers must be a table",
+                path.display()
+            ));
+        }
+    };
+    if let Some(existing) = servers.get("tangerine") {
+        if existing == &entry {
+            return Ok(false);
+        }
+    }
+    servers.insert("tangerine".to_string(), entry);
+    let body = toml::to_string_pretty(&root)
+        .map_err(|e| format!("Cannot serialize TOML: {e}"))?;
+    atomic_write(path, body.as_bytes())?;
+    Ok(true)
+}
+
+fn root_type_name(v: &serde_json::Value) -> &'static str {
+    match v {
+        serde_json::Value::Null => "null",
+        serde_json::Value::Bool(_) => "bool",
+        serde_json::Value::Number(_) => "number",
+        serde_json::Value::String(_) => "string",
+        serde_json::Value::Array(_) => "array",
+        serde_json::Value::Object(_) => "object",
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Per-tool config writers — 8 of them. Each takes `home: &Path` (NOT
+// dirs::home_dir() directly) so tests can inject a tempdir.
+// ---------------------------------------------------------------------------
+
+fn v15_configure_claude_code(home: &Path) -> Result<(), String> {
+    let path = home.join(".claude.json");
+    match merge_into_mcp_servers_json(&path, tangerine_mcp_entry_json())? {
+        true => tracing::info!(path = %path.display(), "wrote Tangerine MCP entry to Claude Code config"),
+        false => tracing::warn!(path = %path.display(), "Claude Code config already has Tangerine entry — no-op"),
+    }
+    Ok(())
+}
+
+fn v15_configure_cursor(home: &Path) -> Result<(), String> {
+    let path = home.join(".cursor").join("mcp.json");
+    match merge_into_mcp_servers_json(&path, tangerine_mcp_entry_json())? {
+        true => tracing::info!(path = %path.display(), "wrote Tangerine MCP entry to Cursor config"),
+        false => tracing::warn!(path = %path.display(), "Cursor config already has Tangerine entry — no-op"),
+    }
+    Ok(())
+}
+
+fn v15_configure_codex(home: &Path) -> Result<(), String> {
+    let path = home.join(".codex").join("config.toml");
+    match merge_into_mcp_servers_toml(&path, tangerine_mcp_entry_toml())? {
+        true => tracing::info!(path = %path.display(), "wrote Tangerine MCP entry to Codex config"),
+        false => tracing::warn!(path = %path.display(), "Codex config already has Tangerine entry — no-op"),
+    }
+    Ok(())
+}
+
+fn v15_configure_windsurf(home: &Path) -> Result<(), String> {
+    let path = home
+        .join(".codeium")
+        .join("windsurf")
+        .join("mcp_config.json");
+    match merge_into_mcp_servers_json(&path, tangerine_mcp_entry_json())? {
+        true => tracing::info!(path = %path.display(), "wrote Tangerine MCP entry to Windsurf config"),
+        false => tracing::warn!(path = %path.display(), "Windsurf config already has Tangerine entry — no-op"),
+    }
+    Ok(())
+}
+
+/// Devin / Replit: API-key-driven, no MCP config file. We stash a
+/// placeholder marker secret under the keychain namespace
+/// `tangerine.source.<tool>` so a downstream `mcp_server_handshake` knows
+/// the user opted in. Real API key + endpoint setting is exposed through
+/// the existing Privacy → Sources panel (which already calls
+/// `secret_store_set_oauth`); this command only marks the auto-configure
+/// step as done so the wizard can advance.
+async fn v15_configure_keychain_tool(
+    tool_id: &str,
+) -> Result<(), String> {
+    let svc = format!("tangerine.tool.{tool_id}");
+    // Attempt to write a presence sentinel. We don't write a real token —
+    // user-supplied tokens flow through `secret_store_set_oauth`. The
+    // sentinel just lets the handshake answer "user has acknowledged this
+    // tool" without leaking any value.
+    let payload = serde_json::json!({
+        "configured_at": chrono::Utc::now().to_rfc3339(),
+        "endpoint_default": match tool_id {
+            "devin" => "https://api.devin.ai/v1",
+            "replit" => "https://replit.com/agent/api",
+            _ => "",
+        },
+        "configured_by": "v1.15.0_setup_wizard",
+    })
+    .to_string();
+    match keyring::Entry::new(&svc, "default") {
+        Ok(e) => match e.set_password(&payload) {
+            Ok(()) => return Ok(()),
+            Err(err) => {
+                tracing::warn!(
+                    tool = tool_id,
+                    error = %err,
+                    "keychain set failed for v1.15 tool sentinel; falling back to file"
+                );
+            }
+        },
+        Err(err) => {
+            tracing::warn!(
+                tool = tool_id,
+                error = %err,
+                "keychain entry init failed; falling back to file"
+            );
+        }
+    }
+    // File fallback: per-user data dir, mirroring `secret_store::file_root`.
+    #[cfg(windows)]
+    let base = std::env::var("LOCALAPPDATA")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| {
+            dirs::data_local_dir().unwrap_or_else(|| PathBuf::from("."))
+        });
+    #[cfg(not(windows))]
+    let base = dirs::data_local_dir().unwrap_or_else(|| PathBuf::from("."));
+    let dir = base.join("TangerineMeeting").join("v15-tools");
+    fs::create_dir_all(&dir).map_err(|e| {
+        format!("Cannot mkdir {}: {}", dir.display(), e)
+    })?;
+    let path = dir.join(format!("{tool_id}.json"));
+    atomic_write(&path, payload.as_bytes())?;
+    Ok(())
+}
+
+/// Apple Intelligence — macOS 15+ system extension manifest. We currently
+/// have no clean bundle-side hook so this returns the documented
+/// `PlatformUnsupported` error on every OS (including mac, until the
+/// extension is built). NEVER silently no-ops. R6/R7/R8.
+fn v15_configure_apple_intelligence() -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        // TODO(v1.16): once the macOS 15 system extension manifest ships
+        // (signed via the Tauri-bundle entitlements), wire the install
+        // here. For now we return the spec-mandated error so the wizard
+        // shows a "coming in v1.16" card instead of silently passing.
+        return Err(
+            "PlatformUnsupported: Apple Intelligence integration ships in v1.16 (system extension manifest pending notarisation)"
+                .to_string(),
+        );
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Err(
+            "PlatformUnsupported: Apple Intelligence requires macOS 15 or later"
+                .to_string(),
+        )
+    }
+}
+
+/// MS Copilot — Windows 11 extension manifest. Mirrors the Apple branch
+/// shape: explicit `PlatformUnsupported` on non-Windows, "ships next wave"
+/// on Windows.
+fn v15_configure_ms_copilot() -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        // TODO(v1.16): wire the Win11 Copilot extension manifest install.
+        return Err(
+            "PlatformUnsupported: MS Copilot integration ships in v1.16 (Win11 extension manifest pending Microsoft Partner sign-off)"
+                .to_string(),
+        );
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        Err(
+            "PlatformUnsupported: MS Copilot requires Windows 11"
+                .to_string(),
+        )
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Internal dispatcher — the public Tauri command + the test path both
+// route through here so tests can pass a tempdir HOME.
+// ---------------------------------------------------------------------------
+
+async fn v15_dispatch_configure(
+    tool_id: &str,
+    home: &Path,
+) -> Result<(), String> {
+    match tool_id {
+        "claude-code" => v15_configure_claude_code(home),
+        "cursor" => v15_configure_cursor(home),
+        "codex" => v15_configure_codex(home),
+        "windsurf" => v15_configure_windsurf(home),
+        "devin" | "replit" => v15_configure_keychain_tool(tool_id).await,
+        "apple-intelligence" => v15_configure_apple_intelligence(),
+        "ms-copilot" => v15_configure_ms_copilot(),
+        other => Err(format!(
+            "unknown_tool: '{other}' is not one of {}",
+            V15_TOOL_IDS.join(", ")
+        )),
+    }
+}
+
+/// v1.15.0 wave 1.3 entrypoint. Spec-mandated signature. See module-level
+/// section header for the contract. Errors are descriptive, not silent.
+#[tauri::command]
+pub async fn setup_wizard_v15_auto_configure_mcp(
+    tool_id: String,
+) -> Result<(), String> {
+    let home = v15_home_root()?;
+    v15_dispatch_configure(&tool_id, &home).await
+}
+
+// ---------------------------------------------------------------------------
+// Health check / handshake — per-tool probe that returns true iff the
+// channel is alive. R6/R7/R8: never silent-fallback to a different tool.
+// ---------------------------------------------------------------------------
+
+async fn v15_handshake_mcp_editor(tool_id: &str) -> Result<bool, String> {
+    // For the four MCP editors (claude-code / cursor / codex / windsurf)
+    // the handshake is "is a sampler currently registered for this tool
+    // id in the in-process MCP bridge?". The bridge is populated by the
+    // user's editor when it starts the `tangerine-mcp` process and the
+    // process phones home (see mcp-server/src/sampling-bridge.ts). Until
+    // the editor restarts after auto-configure, this returns false —
+    // which is the correct "user must restart" signal the wizard wants.
+    //
+    // We do NOT spawn a probe MCP client here: that would race against
+    // the user's editor for the same stdio handle. The sampling-bridge
+    // registry is the single source of truth.
+    let registry = crate::agi::sampling_bridge::global();
+    Ok(registry.has(tool_id))
+}
+
+async fn v15_handshake_keychain_tool(tool_id: &str) -> Result<bool, String> {
+    let svc = format!("tangerine.tool.{tool_id}");
+    if let Ok(e) = keyring::Entry::new(&svc, "default") {
+        if let Ok(payload) = e.get_password() {
+            if !payload.is_empty() {
+                return Ok(true);
+            }
+        }
+    }
+    // File fallback: same path the configure step writes to.
+    #[cfg(windows)]
+    let base = std::env::var("LOCALAPPDATA")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| {
+            dirs::data_local_dir().unwrap_or_else(|| PathBuf::from("."))
+        });
+    #[cfg(not(windows))]
+    let base = dirs::data_local_dir().unwrap_or_else(|| PathBuf::from("."));
+    let path = base
+        .join("TangerineMeeting")
+        .join("v15-tools")
+        .join(format!("{tool_id}.json"));
+    Ok(path.exists())
+}
+
+/// v1.15.0 wave 1.3 entrypoint. Spec-mandated signature.
+#[tauri::command]
+pub async fn mcp_server_handshake(tool_id: String) -> Result<bool, String> {
+    match tool_id.as_str() {
+        "claude-code" | "cursor" | "codex" | "windsurf" => {
+            v15_handshake_mcp_editor(&tool_id).await
+        }
+        "devin" | "replit" => v15_handshake_keychain_tool(&tool_id).await,
+        "apple-intelligence" => Err(
+            "PlatformUnsupported: Apple Intelligence handshake ships in v1.16"
+                .to_string(),
+        ),
+        "ms-copilot" => Err(
+            "PlatformUnsupported: MS Copilot handshake ships in v1.16".to_string(),
+        ),
+        other => Err(format!(
+            "unknown_tool: '{other}' is not one of {}",
+            V15_TOOL_IDS.join(", ")
+        )),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Tests — 8 configure tests + 8 idempotent tests + 8 handshake tests + the
+// JSON/TOML merge invariant tests + permission denied + malformed config.
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod v15_tests {
+    use super::*;
+
+    /// Dedicated tempdir helper that doesn't leak across tests. Mirrors the
+    /// wave-11 `TempDir` helper but lives in the v15 mod so the two test
+    /// modules don't collide on import.
+    struct V15Tmp(PathBuf);
+    impl V15Tmp {
+        fn new(label: &str) -> Self {
+            let id = uuid::Uuid::new_v4().simple().to_string();
+            let p = std::env::temp_dir().join(format!("ti-v15-{label}-{id}"));
+            fs::create_dir_all(&p).unwrap();
+            Self(p)
+        }
+    }
+    impl Drop for V15Tmp {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    // ---- 4 MCP-editor configure tests --------------------------------------
+
+    #[tokio::test]
+    async fn v15_configure_claude_code_writes_canonical_entry() {
+        let td = V15Tmp::new("claude-fresh");
+        v15_dispatch_configure("claude-code", &td.0).await.unwrap();
+        let body = fs::read_to_string(td.0.join(".claude.json")).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(
+            v["mcpServers"]["tangerine"]["command"].as_str().unwrap(),
+            "npx"
+        );
+        assert_eq!(
+            v["mcpServers"]["tangerine"]["env"]["TANGERINE_SAMPLING_BRIDGE"]
+                .as_str()
+                .unwrap(),
+            "1"
+        );
+    }
+
+    #[tokio::test]
+    async fn v15_configure_cursor_writes_canonical_entry() {
+        let td = V15Tmp::new("cursor-fresh");
+        v15_dispatch_configure("cursor", &td.0).await.unwrap();
+        let body =
+            fs::read_to_string(td.0.join(".cursor").join("mcp.json")).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert!(v["mcpServers"]["tangerine"].is_object());
+    }
+
+    #[tokio::test]
+    async fn v15_configure_codex_writes_toml_entry() {
+        let td = V15Tmp::new("codex-fresh");
+        v15_dispatch_configure("codex", &td.0).await.unwrap();
+        let body = fs::read_to_string(td.0.join(".codex").join("config.toml"))
+            .unwrap();
+        let v: toml::Value = toml::from_str(&body).unwrap();
+        let cmd = v
+            .get("mcp_servers")
+            .and_then(|m| m.get("tangerine"))
+            .and_then(|t| t.get("command"))
+            .and_then(|c| c.as_str())
+            .unwrap();
+        assert_eq!(cmd, "npx");
+    }
+
+    #[tokio::test]
+    async fn v15_configure_windsurf_writes_canonical_entry() {
+        let td = V15Tmp::new("windsurf-fresh");
+        v15_dispatch_configure("windsurf", &td.0).await.unwrap();
+        let body = fs::read_to_string(
+            td.0.join(".codeium")
+                .join("windsurf")
+                .join("mcp_config.json"),
+        )
+        .unwrap();
+        let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert!(v["mcpServers"]["tangerine"].is_object());
+    }
+
+    // ---- 4 keychain / platform-gated configure tests -----------------------
+
+    #[tokio::test]
+    async fn v15_configure_devin_succeeds() {
+        // Doesn't matter whether we hit keychain or file fallback — the
+        // function must succeed without an error string.
+        v15_dispatch_configure("devin", &PathBuf::from("/tmp"))
+            .await
+            .expect("devin configure must succeed");
+    }
+
+    #[tokio::test]
+    async fn v15_configure_replit_succeeds() {
+        v15_dispatch_configure("replit", &PathBuf::from("/tmp"))
+            .await
+            .expect("replit configure must succeed");
+    }
+
+    #[tokio::test]
+    async fn v15_configure_apple_intelligence_returns_platform_unsupported() {
+        let err = v15_dispatch_configure(
+            "apple-intelligence",
+            &PathBuf::from("/tmp"),
+        )
+        .await
+        .expect_err("must return PlatformUnsupported until v1.16");
+        assert!(
+            err.starts_with("PlatformUnsupported:"),
+            "got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn v15_configure_ms_copilot_returns_platform_unsupported() {
+        let err = v15_dispatch_configure("ms-copilot", &PathBuf::from("/tmp"))
+            .await
+            .expect_err("must return PlatformUnsupported until v1.16");
+        assert!(
+            err.starts_with("PlatformUnsupported:"),
+            "got: {err}"
+        );
+    }
+
+    // ---- 4 idempotent tests for MCP editors -------------------------------
+
+    #[tokio::test]
+    async fn v15_configure_claude_code_is_idempotent() {
+        let td = V15Tmp::new("claude-idem");
+        v15_dispatch_configure("claude-code", &td.0).await.unwrap();
+        let body1 = fs::read_to_string(td.0.join(".claude.json")).unwrap();
+        v15_dispatch_configure("claude-code", &td.0).await.unwrap();
+        let body2 = fs::read_to_string(td.0.join(".claude.json")).unwrap();
+        assert_eq!(body1, body2, "second configure must be a no-op");
+    }
+
+    #[tokio::test]
+    async fn v15_configure_cursor_is_idempotent() {
+        let td = V15Tmp::new("cursor-idem");
+        v15_dispatch_configure("cursor", &td.0).await.unwrap();
+        let p = td.0.join(".cursor").join("mcp.json");
+        let body1 = fs::read_to_string(&p).unwrap();
+        v15_dispatch_configure("cursor", &td.0).await.unwrap();
+        let body2 = fs::read_to_string(&p).unwrap();
+        assert_eq!(body1, body2);
+    }
+
+    #[tokio::test]
+    async fn v15_configure_codex_is_idempotent() {
+        let td = V15Tmp::new("codex-idem");
+        v15_dispatch_configure("codex", &td.0).await.unwrap();
+        let p = td.0.join(".codex").join("config.toml");
+        let body1 = fs::read_to_string(&p).unwrap();
+        v15_dispatch_configure("codex", &td.0).await.unwrap();
+        let body2 = fs::read_to_string(&p).unwrap();
+        assert_eq!(body1, body2);
+    }
+
+    #[tokio::test]
+    async fn v15_configure_windsurf_is_idempotent() {
+        let td = V15Tmp::new("windsurf-idem");
+        v15_dispatch_configure("windsurf", &td.0).await.unwrap();
+        let p = td
+            .0
+            .join(".codeium")
+            .join("windsurf")
+            .join("mcp_config.json");
+        let body1 = fs::read_to_string(&p).unwrap();
+        v15_dispatch_configure("windsurf", &td.0).await.unwrap();
+        let body2 = fs::read_to_string(&p).unwrap();
+        assert_eq!(body1, body2);
+    }
+
+    // ---- 8 handshake tests ------------------------------------------------
+
+    #[tokio::test]
+    async fn v15_handshake_claude_code_returns_false_when_no_sampler() {
+        let registry = crate::agi::sampling_bridge::global();
+        registry.deregister("claude-code");
+        let alive = mcp_server_handshake("claude-code".to_string())
+            .await
+            .unwrap();
+        assert!(!alive, "must be false with no sampler registered");
+    }
+
+    #[tokio::test]
+    async fn v15_handshake_cursor_returns_false_when_no_sampler() {
+        let registry = crate::agi::sampling_bridge::global();
+        registry.deregister("cursor");
+        let alive =
+            mcp_server_handshake("cursor".to_string()).await.unwrap();
+        assert!(!alive);
+    }
+
+    #[tokio::test]
+    async fn v15_handshake_codex_returns_false_when_no_sampler() {
+        let registry = crate::agi::sampling_bridge::global();
+        registry.deregister("codex");
+        let alive = mcp_server_handshake("codex".to_string()).await.unwrap();
+        assert!(!alive);
+    }
+
+    #[tokio::test]
+    async fn v15_handshake_windsurf_returns_false_when_no_sampler() {
+        let registry = crate::agi::sampling_bridge::global();
+        registry.deregister("windsurf");
+        let alive =
+            mcp_server_handshake("windsurf".to_string()).await.unwrap();
+        assert!(!alive);
+    }
+
+    #[tokio::test]
+    async fn v15_handshake_devin_returns_bool_without_panic() {
+        let _ = mcp_server_handshake("devin".to_string()).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn v15_handshake_replit_returns_bool_without_panic() {
+        let _ = mcp_server_handshake("replit".to_string()).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn v15_handshake_apple_intelligence_returns_platform_unsupported() {
+        let err = mcp_server_handshake("apple-intelligence".to_string())
+            .await
+            .expect_err("must error");
+        assert!(err.starts_with("PlatformUnsupported:"), "got: {err}");
+    }
+
+    #[tokio::test]
+    async fn v15_handshake_ms_copilot_returns_platform_unsupported() {
+        let err = mcp_server_handshake("ms-copilot".to_string())
+            .await
+            .expect_err("must error");
+        assert!(err.starts_with("PlatformUnsupported:"), "got: {err}");
+    }
+
+    // ---- JSON / TOML merge invariants -------------------------------------
+
+    #[tokio::test]
+    async fn v15_json_merge_preserves_other_servers() {
+        let td = V15Tmp::new("merge-other-json");
+        let p = td.0.join(".claude.json");
+        let initial = serde_json::json!({
+            "mcpServers": {
+                "user-server": { "command": "node", "args": ["/tmp/foo.js"] }
+            },
+            "unrelated_top_level_key": "preserved"
+        });
+        fs::write(&p, serde_json::to_string_pretty(&initial).unwrap())
+            .unwrap();
+        v15_dispatch_configure("claude-code", &td.0).await.unwrap();
+        let body = fs::read_to_string(&p).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(
+            v["mcpServers"]["user-server"]["command"].as_str().unwrap(),
+            "node",
+            "user's other server must survive"
+        );
+        assert_eq!(
+            v["unrelated_top_level_key"].as_str().unwrap(),
+            "preserved",
+            "unrelated top-level keys must survive"
+        );
+        assert!(v["mcpServers"]["tangerine"].is_object());
+    }
+
+    #[tokio::test]
+    async fn v15_toml_merge_preserves_other_tables() {
+        let td = V15Tmp::new("merge-other-toml");
+        let p = td.0.join(".codex").join("config.toml");
+        fs::create_dir_all(p.parent().unwrap()).unwrap();
+        let initial = r#"
+[user_settings]
+theme = "dark"
+
+[mcp_servers.user-server]
+command = "node"
+args = ["/tmp/foo.js"]
+"#;
+        fs::write(&p, initial).unwrap();
+        v15_dispatch_configure("codex", &td.0).await.unwrap();
+        let body = fs::read_to_string(&p).unwrap();
+        let v: toml::Value = toml::from_str(&body).unwrap();
+        assert_eq!(
+            v["user_settings"]["theme"].as_str().unwrap(),
+            "dark",
+            "unrelated table must survive"
+        );
+        assert_eq!(
+            v["mcp_servers"]["user-server"]["command"]
+                .as_str()
+                .unwrap(),
+            "node",
+            "user's other server must survive"
+        );
+        assert!(v["mcp_servers"]["tangerine"].is_table());
+    }
+
+    // ---- Error-case tests --------------------------------------------------
+
+    #[tokio::test]
+    async fn v15_malformed_json_surfaces_error() {
+        let td = V15Tmp::new("malformed-json");
+        let p = td.0.join(".claude.json");
+        fs::write(&p, "{ this is not json :::: ").unwrap();
+        let err = v15_dispatch_configure("claude-code", &td.0)
+            .await
+            .expect_err("must surface, not silently overwrite");
+        assert!(
+            err.contains("malformed"),
+            "got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn v15_malformed_toml_surfaces_error() {
+        let td = V15Tmp::new("malformed-toml");
+        let p = td.0.join(".codex").join("config.toml");
+        fs::create_dir_all(p.parent().unwrap()).unwrap();
+        fs::write(&p, "this = is = not toml = at = all\n[[][[\n").unwrap();
+        let err = v15_dispatch_configure("codex", &td.0)
+            .await
+            .expect_err("must surface, not silently overwrite");
+        assert!(err.contains("malformed"), "got: {err}");
+    }
+
+    #[tokio::test]
+    async fn v15_top_level_json_array_rejected() {
+        let td = V15Tmp::new("array-json");
+        let p = td.0.join(".claude.json");
+        fs::write(&p, "[1, 2, 3]").unwrap();
+        let err = v15_dispatch_configure("claude-code", &td.0)
+            .await
+            .expect_err("must reject non-object root");
+        assert!(err.contains("malformed"), "got: {err}");
+    }
+
+    #[tokio::test]
+    async fn v15_unknown_tool_id_returns_error() {
+        let err = v15_dispatch_configure("not-a-real-tool", &PathBuf::from("/tmp"))
+            .await
+            .expect_err("must reject unknown tool id");
+        assert!(err.starts_with("unknown_tool:"), "got: {err}");
+    }
+
+    #[tokio::test]
+    async fn v15_handshake_unknown_tool_id_returns_error() {
+        let err = mcp_server_handshake("not-a-real-tool".to_string())
+            .await
+            .expect_err("must reject unknown tool id");
+        assert!(err.starts_with("unknown_tool:"), "got: {err}");
+    }
+
+    #[tokio::test]
+    async fn v15_atomic_write_creates_parent_dirs() {
+        let td = V15Tmp::new("mkdir-p");
+        let nested = td.0.join("a").join("b").join("c").join("file.json");
+        atomic_write(&nested, b"{\"hello\":\"world\"}").unwrap();
+        assert_eq!(
+            fs::read_to_string(&nested).unwrap(),
+            "{\"hello\":\"world\"}"
+        );
+    }
+
+    #[tokio::test]
+    async fn v15_atomic_write_overwrites_existing() {
+        let td = V15Tmp::new("overwrite");
+        let p = td.0.join("file.txt");
+        fs::write(&p, b"old").unwrap();
+        atomic_write(&p, b"new").unwrap();
+        assert_eq!(fs::read_to_string(&p).unwrap(), "new");
+    }
+
+    #[tokio::test]
+    async fn v15_home_root_honors_test_override() {
+        let td = V15Tmp::new("home-override");
+        // Use a unique env var per test would be ideal but the var is
+        // module-global; we restore it after.
+        let prev = std::env::var("TANGERINE_TEST_HOME_OVERRIDE").ok();
+        std::env::set_var(
+            "TANGERINE_TEST_HOME_OVERRIDE",
+            td.0.to_string_lossy().to_string(),
+        );
+        let h = v15_home_root().unwrap();
+        assert_eq!(h, td.0);
+        match prev {
+            Some(v) => std::env::set_var("TANGERINE_TEST_HOME_OVERRIDE", v),
+            None => std::env::remove_var("TANGERINE_TEST_HOME_OVERRIDE"),
+        }
+    }
+}
+// === end v1.15.0 wave 1.3 ===

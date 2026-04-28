@@ -10,6 +10,13 @@ import {
   relativeTime,
   citationToRoute,
 } from "../src/lib/co-thinker";
+// === v1.15.0 Wave 2.2 === — these legacy tests assert on the
+// returning-user explainer (the original "This is your team's shared
+// brain" pre-init card). Wave 2.2 wraps the empty branch with a fresh-
+// user EmptyStateCard gated on `firstAtomCapturedAt === null`, so these
+// tests must flip the latch to a non-null timestamp before render to
+// keep exercising the legacy explainer path.
+import { useStore } from "../src/lib/store";
 
 const SAMPLE_BRAIN = `# Co-thinker
 
@@ -136,6 +143,10 @@ describe("CoThinkerRoute", () => {
   });
 
   it("renders empty state when brain doc empty", async () => {
+    // === v1.15.0 Wave 2.2 === — exercise the returning-user path so
+    // the legacy explainer ("This is your team's shared brain") still
+    // renders. First-time users hit the new EmptyStateCard via Wave 2.2.
+    useStore.getState().ui.setFirstAtomCapturedAt(Date.now());
     vi.spyOn(tauri, "coThinkerReadBrain").mockResolvedValue("");
     vi.spyOn(tauri, "coThinkerStatus").mockResolvedValue({
       last_heartbeat_at: null,
@@ -165,6 +176,10 @@ describe("CoThinkerRoute", () => {
 
   // Wave 4-C — co-thinker explainer pre-init.
   it("explainer card surfaces 4 design pillars before init", async () => {
+    // === v1.15.0 Wave 2.2 === — flip latch so the legacy 4-pillar
+    // explainer renders (returning-user path). First-time users see
+    // the lighter EmptyStateCard.
+    useStore.getState().ui.setFirstAtomCapturedAt(Date.now());
     vi.spyOn(tauri, "coThinkerReadBrain").mockResolvedValue("");
     vi.spyOn(tauri, "coThinkerStatus").mockResolvedValue({
       last_heartbeat_at: null,

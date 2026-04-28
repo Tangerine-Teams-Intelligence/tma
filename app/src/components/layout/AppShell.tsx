@@ -34,6 +34,12 @@ import { CoachmarkProvider } from "@/components/coachmark/CoachmarkProvider";
 import { FirstRunTour } from "@/components/coachmark/FirstRunTour";
 import { TryThisFAB } from "@/components/coachmark/TryThisFAB";
 // === end wave 22 ===
+// === wave 1.15 W2.1 === — non-blocking demo-tour overlay. Self-gates on
+// `demoMode === true && demoTourCompleted === false`; the W1.1
+// SetupWizard's "Try with sample data" card flips `demoMode = true` so
+// this overlay appears the moment the user enters demo mode.
+import { DemoTourOverlay } from "@/components/onboarding/DemoTourOverlay";
+// === end wave 1.15 W2.1 ===
 // === wave 1.13-D ===
 // v1.13 — team presence layer. Provider wraps the AppShell so every
 // route shares one heartbeat + reader pair (no duplicate intervals
@@ -74,6 +80,15 @@ import { ConnectionBanner } from "@/components/ConnectionBanner";
 // lands on disk.
 import { DemoModeBanner } from "@/components/DemoModeBanner";
 // === end wave 13 ===
+// === v1.15.0 Wave 1.4 ===
+// Solo Cloud upgrade prompt — non-blocking global banner that fires once
+// the solo user crosses 7 days OR ≥ 50 atoms. FirstRealAtomActivation is
+// the headless listener that converts the wave-16 `activity:atom_written`
+// stream into the activation telemetry event. Both mount once at AppShell
+// root so they survive route changes (atom captures land on any route).
+import { SoloCloudUpgradePromptContainer } from "@/components/SoloCloudUpgradePromptContainer";
+import { FirstRealAtomActivation } from "@/components/FirstRealAtomActivation";
+// === end v1.15.0 Wave 1.4 ===
 // === wave 10 === — v1.10 git-init wizard banner. Mounts in the system
 // banner stack, only renders while `gitMode === "unknown"`.
 import { GitInitBannerContainer } from "@/components/GitInitBannerContainer";
@@ -219,6 +234,14 @@ export function AppShell() {
   );
   const setupWizardSkipped = useStore((s) => s.ui.setupWizardSkipped);
   // === end wave 11 ===
+  // === wave 1.15 W1.1 === — first-launch latch. Drives the full-screen
+  // SetupWizard mount (firstLaunch mode). Once the user picks a path
+  // (or explicitly skips) the latch flips and the wizard never mounts
+  // again on subsequent launches.
+  const onboardingCompletedAt = useStore(
+    (s) => s.ui.onboardingCompletedAt,
+  );
+  // === end wave 1.15 W1.1 ===
   // === v2.5 trial gate ===
   // Track the team-id used for billing scoping. When the user is solo,
   // we anchor on `solo-${currentUser}`; in team mode we use the repoUrl
@@ -706,6 +729,12 @@ export function AppShell() {
     // not a layered modal on top of it.
     if (onboardingMode === "chat") return;
     // === end wave 18 ===
+    // === wave 1.15 W1.1 === — first-launch wizard owns first-run gate
+    // when `onboardingCompletedAt === null`. The dedicated mount below
+    // (firstLaunch=true) renders separately, so suppress this on-demand
+    // auto-trigger to avoid a double-mounted wizard on top of itself.
+    if (onboardingCompletedAt === null) return;
+    // === end wave 1.15 W1.1 ===
     const timer = window.setTimeout(() => {
       setSetupWizardOpen(true);
       void logEvent("setup_wizard_auto_triggered", {});
@@ -720,6 +749,9 @@ export function AppShell() {
     // === wave 18 ===
     onboardingMode,
     // === end wave 18 ===
+    // === wave 1.15 W1.1 ===
+    onboardingCompletedAt,
+    // === end wave 1.15 W1.1 ===
   ]);
   // === end wave 11 ===
 
@@ -886,6 +918,19 @@ export function AppShell() {
             <DemoModeBanner />
           </ErrorBoundary>
           {/* === end wave 13 === */}
+          {/* === v1.15.0 Wave 1.4 === — Solo Cloud upgrade prompt.
+              Non-blocking global banner. Self-hides until the user is
+              past onboarding AND (7 days elapsed OR atom count ≥ 50).
+              Sits above the Setup wizard banner so a returning solo
+              user sees the upsell before any wizard nag. ErrorBoundary
+              follows the wave-10.1 pattern. The headless
+              FirstRealAtomActivation listener fires once per install
+              when the first real (non-sample) atom lands. */}
+          <ErrorBoundary label="SoloCloudUpgradePrompt">
+            <SoloCloudUpgradePromptContainer />
+          </ErrorBoundary>
+          <FirstRealAtomActivation />
+          {/* === end v1.15.0 Wave 1.4 === */}
           {/* === wave 10 === — git-init wizard banner. Self-hides when
               `gitMode !== "unknown"` or when the memory dir is already a
               git repo. Sits below ConnectionBanner so a network drop is
@@ -1057,6 +1102,27 @@ export function AppShell() {
         </ErrorBoundary>
         {/* === end wave 11 === */}
 
+        {/* === wave 1.15 W1.1 === — First-launch SetupWizard.
+            Renders ONCE per fresh install (`onboardingCompletedAt
+            === null`). `firstLaunch=true` flips the wizard into card
+            mode (3 paths) and hides the X close. Each path stamps the
+            latch so this mount unmounts itself after the user picks.
+            Wrapped in ErrorBoundary so a thrown render in the new
+            paths step never blanks the shell (Wave 10.1 lesson). */}
+        {onboardingCompletedAt === null && (
+          <ErrorBoundary label="FirstLaunchSetupWizard">
+            <SetupWizard
+              open
+              firstLaunch
+              onClose={() => {
+                /* no-op — first-launch dismiss happens via the latch
+                 * setter inside the wizard's path / skip handlers */
+              }}
+            />
+          </ErrorBoundary>
+        )}
+        {/* === end wave 1.15 W1.1 === */}
+
         {/* === wave 5-β === */}
         {/* Discoverability layer. HelpButton is a fixed-position floating
             `?` icon at bottom-right; KeyboardShortcutsOverlay is the
@@ -1095,6 +1161,16 @@ export function AppShell() {
           <TryThisFAB />
         </ErrorBoundary>
         {/* === end wave 22 === */}
+
+        {/* === wave 1.15 W2.1 === — demo-tour overlay. Self-gates on
+            demoMode + !demoTourCompleted; renders nothing otherwise.
+            Wrapped in ErrorBoundary because the overlay calls into the
+            Tauri bridge (demoSeedClear) on conversion and we never
+            want a Rust failure to blank the shell. */}
+        <ErrorBoundary label="DemoTourOverlay">
+          <DemoTourOverlay />
+        </ErrorBoundary>
+        {/* === end wave 1.15 W2.1 === */}
       </div>
     </AmbientInputObserver>
     {/* === wave 1.13-D === */}

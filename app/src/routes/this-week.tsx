@@ -11,6 +11,9 @@ import {
 } from "@/lib/views";
 import { TangerineNotes } from "@/components/TangerineNotes";
 import { TimelineEvent } from "@/components/TimelineEvent";
+// === v1.15.0 Wave 2.2 ===
+import { EmptyStateCard } from "@/components/EmptyStateCard";
+import { useStore } from "@/lib/store";
 
 /**
  * /this-week — last 7 days aggregation.
@@ -31,6 +34,11 @@ export default function ThisWeekRoute() {
   // failure; surface the error inline so /this-week stops silently
   // showing zero-stat aggregations when the backend is broken.
   const [error, setError] = useState<string | null>(null);
+  // === v1.15.0 Wave 2.2 ===
+  const firstAtomCapturedAt = useStore(
+    (s) => (s.ui as unknown as { firstAtomCapturedAt?: string | null }).firstAtomCapturedAt ?? null,
+  );
+  const isFirstTime = firstAtomCapturedAt === null;
 
   useEffect(() => {
     let cancel = false;
@@ -122,6 +130,24 @@ export default function ThisWeekRoute() {
             </p>
           </div>
         </header>
+
+        {/* === v1.15.0 Wave 2.2 === — first-time onboarding card. Only
+            renders when the week aggregation is empty AND the user has
+            never captured an atom AND no fetch error landed (R6/R7/R8
+            defense). Returning users see the existing zero-stat strip
+            below it untouched. */}
+        {isFirstTime && weekEvents.length === 0 && !error && (
+          <div className="mt-6">
+            <EmptyStateCard
+              icon={<CalendarRange size={24} />}
+              title="This week's activity will appear here"
+              description="Capture your first atom from your AI tool to see week-over-week trends, top decisions, and stale threads land here."
+              ctaLabel="Capture from your AI tool →"
+              ctaAction="/setup/connect"
+              telemetrySurface="this-week"
+            />
+          </div>
+        )}
 
         <section className="mt-8 grid grid-cols-2 gap-3 md:grid-cols-5">
           <Stat n={stats.meetings} label={t("thisWeek.labelMeetings")} />

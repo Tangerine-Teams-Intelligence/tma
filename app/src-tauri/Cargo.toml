@@ -141,6 +141,14 @@ async-trait = "0.1"
 regex = "1"
 # === end wave 1.13-C ===
 
+# === v1.15.0 wave 1.3 ===
+# `toml` powers the Codex MCP config writer (`~/.codex/config.toml`). Need
+# the `parse` feature for round-tripping (read existing TOML → merge in our
+# `[mcp_servers.tangerine]` table → write back) without clobbering the
+# user's other tables. Pure-Rust, no native deps.
+toml = "0.8"
+# === end v1.15.0 wave 1.3 ===
+
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["winuser", "processthreadsapi", "handleapi", "winbase"] }
 

@@ -8,6 +8,114 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
      Each version block focuses on user-visible features so this doc can
      also feed the in-app /whats-new-app route. -->
 
+## [1.15.0] — 2026-04-28 — Onboarding reboot + activation funnel
+
+The "装上就死" → "装上 5 分钟用起来" release. v1.14.6 first-launch fell
+into a chicken-and-egg loop: the conversational onboarding needed an LLM
+to parse the user's tool name, but the LLM ran inside the tool the user
+hadn't connected yet. v1.15.0 inverts the default: form-first wizard
+with auto-detection, demo mode promoted to a first-class try-before-config
+path, and a real activation funnel (`first_real_atom_captured`) so v1.15.1
+can be data-driven instead of guess-driven.
+
+### Added
+- **SetupWizard 三路径 first-launch card layout.** Cold launches with
+  `onboardingCompletedAt === null` mount a wizard that asks one question:
+  Connect AI tool / Try with sample data / Configure manually. Wave 11's
+  form is still here — it's the third card, not the default. The chat
+  onboarding is demoted to Settings → Advanced ("Configure with AI").
+- **AIToolDetectionGrid covering all 8 AI tools.** Cursor / Claude Code /
+  Codex / Windsurf get one-click MCP auto-configure (atomic JSON / TOML
+  merge into the tool's own config — never overwrites existing servers,
+  idempotent). Devin / Replit get keychain-backed remote config. Apple
+  Intelligence / MS Copilot surface as `PlatformUnsupported` with an
+  honest reason chip — no fake green check. Display order: detected
+  first, then market rank.
+- **MCP server health-check polling.** After Auto-configure, the grid
+  polls `mcp_server_handshake(tool_id)` every 3 s for up to 30 s. UI
+  states cycle Configuring → Waiting for restart → Connected ✓ on a
+  successful handshake; `Restart [tool] to finish setup` on timeout
+  with a Retry button that re-arms the same poll. The handshake reads
+  the in-process MCP sampling-bridge registry (no probe spawn that
+  would race the user's editor for stdio).
+- **DemoTourOverlay — 5-step guided tour over sample data.** Picking
+  the demo card flips `demoMode = true`; AppShell mounts a
+  non-blocking dialog that walks the user through /memory → /people →
+  /threads → /co-thinker → "Ready for real?". The conversion CTA
+  physically deletes the sample atoms via `demo_seed_clear` (preserving
+  R9 sample-vs-real isolation), drops `demoMode`, latches
+  `demoTourCompleted = true`, and routes back to the wizard. Skip /
+  Esc at any step latches `demoTourCompleted` only — sample data
+  stays so the user can keep browsing.
+- **EmptyStateCard on /people /threads /co-thinker /today /this-week
+  /memory.** First-time users (`firstAtomCapturedAt === null`) now see a
+  "Capture your first [thing]" card with a CTA back into the AI-tool
+  detection grid plus a "See the demo →" secondary that re-enters demo
+  mode. Returning users with a quiet day fall through to the existing
+  lighter "no items yet" message.
+- **`first_real_atom_captured` activation event.** Headless React
+  listener subscribes to the existing `activity:atom_written` Tauri
+  event, filters out R9 sample atoms via the propagated `is_sample`
+  flag, latches `firstAtomCapturedAt` exactly once, and emits the event
+  for the activation funnel. The listener self-skips after latch — zero
+  IPC cost for returning users.
+- **SoloCloudUpgradePrompt — first paywall trigger.** Non-blocking
+  global banner above the route shell. Eligibility = ≥ 7 d post-onboard
+  OR ≥ 50 atoms (whichever first), AND not currently in team mode.
+  Dismiss latches `soloCloudPromptDismissedAt` for a 7 d cool-down
+  window. Upgrade CTA opens an external Stripe Checkout URL (read from
+  `VITE_STRIPE_SOLO_CHECKOUT_URL` build env var). Emits
+  `solo_cloud_upgrade_prompt_shown` / `solo_cloud_upgrade_clicked` /
+  `solo_cloud_upgrade_dismissed` for funnel analytics.
+- **First-launch detection vs. upgrade-launch detection.**
+  `onboardingCompletedAt` smart-upgrade hydration pre-stamps the latch
+  for any v1.14.6 user who already passed the wave 11 wizard or
+  welcomed. They upgrade into v1.15.0 and the new wizard never appears.
+- **14 + 2 new typed telemetry events.** The full Wave 1.15 funnel
+  (onboarding_wizard_shown → onboarding_path_chosen →
+  onboarding_detection_completed → onboarding_mcp_configured /
+  onboarding_mcp_failed / onboarding_mcp_timeout → mcp_connected →
+  first_real_atom_captured → onboarding_completed) plus demo path
+  (demo_tour_step_completed × 5 → demo_tour_dismissed |
+  demo_to_real_conversion) plus paywall trio. All have typed payload
+  shapes via `logTypedEvent<E>(...)` — strict TS, no `any`. Existing
+  `logEvent` call sites stay on the untyped path for back-compat.
+
+### Changed
+- **OnboardingChat is no longer the first-launch surface.** Lives in
+  Settings → Advanced. Error messages rewritten from "ollama isn't
+  responding" to "Open your AI tool first (Cursor / Claude Code) so
+  I can borrow its LLM" — honest about the actual prerequisite.
+- **`setup_wizard_auto_configure_mcp` delegates unknown tool_ids.**
+  Wave 11's existing 4-tool dispatcher now falls through to W1.3's
+  v15 dispatcher for `devin` / `replit` / `apple-intelligence` /
+  `ms-copilot`. Single React call site (`setupWizardAutoConfigureMcp`)
+  handles all 8 tools.
+
+### Fixed
+- 2 baseline test-file flakes (`co-thinker.test.tsx`,
+  `routes.smoke.test.tsx`) updated to drive the returning-user path
+  now that the empty branches render the new EmptyStateCard.
+
+### Tests
+- 670 → 783 passing vitest (+113 new specs across 7 new files); 3
+  failures are pre-existing wave21 MemoryTree DOM testid races
+  documented in v1.13 R10.
+- 768 → 803 passing cargo --lib (+30 new setup_wizard tests + 2
+  activity tests + 3 perf tests still flake under load — same as
+  v1.14.6 baseline, run in isolation to verify).
+- **0 cargo warnings** preserved.
+- 226 / 226 pytest passing (+8 new event_router activation specs).
+
+### Known shippable gaps (deliberately deferred)
+- Local LLM bundle (Llama 3.2 1B sidecar). Decision deferred to
+  v1.15.1 pending real telemetry on auto-configure success rate; if
+  ≥ 85 % of users complete onboarding via the detection grid we may
+  not need it.
+- Team Cloud / Enterprise paywall. Solo is the only tier wired in
+  v1.15.0.
+- Cross-machine 2-Playwright presence E2E. R7 still in-process only.
+
 ## [1.14.6] — 2026-04-28
 
 Round 7 closes the v1.14 arc. Final 10/10 dimension lift on real-time

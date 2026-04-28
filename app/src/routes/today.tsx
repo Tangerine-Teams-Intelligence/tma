@@ -40,6 +40,11 @@ import { RecentDecisionsWidget } from "@/components/dashboard/RecentDecisionsWid
 import { TodaysActivityWidget } from "@/components/dashboard/TodaysActivityWidget";
 import { BrainStatusWidget } from "@/components/dashboard/BrainStatusWidget";
 import { ConnectedToolsWidget } from "@/components/dashboard/ConnectedToolsWidget";
+// === v1.15.0 Wave 2.2 === — first-time onboarding card; appears above
+// the widget stack only when the activity bus is truly empty AND the
+// user has never captured an atom. Returning users with a quiet day
+// keep seeing the widgets' own per-card empty states untouched.
+import { EmptyStateCard } from "@/components/EmptyStateCard";
 
 /**
  * /today — the home dashboard.
@@ -72,6 +77,11 @@ export default function TodayRoute() {
   const onboardingMode = useStore((s) => s.ui.onboardingMode);
   const inSetupMode =
     onboardingMode === "chat" && !setupWizardChannelReady;
+  // === v1.15.0 Wave 2.2 === — defensive read of W1.4's flag.
+  const firstAtomCapturedAt = useStore(
+    (s) => (s.ui as unknown as { firstAtomCapturedAt?: string | null }).firstAtomCapturedAt ?? null,
+  );
+  const isFirstTime = firstAtomCapturedAt === null;
 
   // === wave 20 === — stat strip data. Pulled in parallel on mount.
   const [statAtoms, setStatAtoms] = useState<number>(0);
@@ -428,6 +438,27 @@ export default function TodayRoute() {
             </div>
           )}
         </header>
+
+        {/* === v1.15.0 Wave 2.2 === — first-time onboarding card.
+            Renders above the widget stack ONLY when (a) the activity
+            bus returned 0 atoms AND (b) the user has never captured one
+            (`firstAtomCapturedAt === null`). Returning users with a
+            quiet day keep seeing the widgets' per-card empty states
+            untouched — they don't need the "Capture from your AI tool"
+            pitch. R6/R7/R8 defense: gated on `!statError` so a fetch
+            failure doesn't masquerade as an empty bus. */}
+        {isFirstTime && statAtoms === 0 && !statError && (
+          <div className="mb-4">
+            <EmptyStateCard
+              icon={<Calendar size={24} />}
+              title="Today's activity will appear here"
+              description="Once you capture your first atom from your AI tool, today's decisions, threads, and brain reasoning land in this view."
+              ctaLabel="Capture from your AI tool →"
+              ctaAction="/setup/connect"
+              telemetrySurface="today"
+            />
+          </div>
+        )}
 
         {/* === wave 20 === — Widget stack. Single column, full-width
             within the page padding. Order top → bottom: decisions,

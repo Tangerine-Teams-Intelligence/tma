@@ -16,6 +16,9 @@ import CanvasRoute from "../src/routes/canvas";
 import CoThinkerRoute from "../src/routes/co-thinker";
 
 import * as views from "../src/lib/views";
+// === v1.15.0 Wave 2.2 === — flip the W1.4 latch so the legacy
+// /co-thinker pre-init explainer still renders for this smoke test.
+import { useStore } from "../src/lib/store";
 
 function renderRoute(path: string, element: React.ReactNode) {
   return render(
@@ -138,6 +141,8 @@ describe("Stage 1 Wave 3 routes — smoke", () => {
   });
 
   it("/co-thinker renders the route (empty state by default)", async () => {
+    // === v1.15.0 Wave 2.2 === — exercise returning-user empty path.
+    useStore.getState().ui.setFirstAtomCapturedAt(Date.now());
     renderRoute("/co-thinker", <CoThinkerRoute />);
     // === wave 12 === — H1 renamed "Co-thinker" → "Team brain" + explainer
     // lede shifted from "This is your team's AGI brain" to

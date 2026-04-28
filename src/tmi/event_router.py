@@ -1414,6 +1414,68 @@ def _read_sample_flag(fm: dict[str, object]) -> bool:
 # === end v1.13.9 round-9 ===
 
 
+# === v1.15.0 Wave 1.4 ===
+# Activation funnel surface for the Python pipeline. The frontend's
+# `first_real_atom_captured` telemetry event is fired by the React
+# `FirstRealAtomActivation` listener (see `app/src/components/`); the
+# Python pipeline doesn't need to re-fire that itself, but it DOES need
+# to expose two affordances so the Tauri shell + the dogfood CLI agree
+# on the activation contract:
+#
+#   1. ``is_real_atom(ev)`` — single source of truth for "this atom
+#      counts toward activation". Mirrors the React-side
+#      ``isFirstRealAtomTrigger`` (sample-filtered). Used by callers
+#      that want to count without depending on Rust IPC.
+#
+#   2. ``ACTIVATION_EVENT_NAMES`` — the set of telemetry event names the
+#      shell understands for activation. Re-exported here so a Python
+#      smoke test can assert the names are stable end-to-end.
+#
+# These additions DO NOT change the timeline/index format — they're
+# helpers the Tauri shell + observer daemon import. R9 sample-isolation
+# is preserved: ``is_real_atom`` reads ``ev.sample`` rather than re-
+# parsing the file (cheap + already authoritative).
+
+ACTIVATION_EVENT_NAMES: tuple[str, ...] = (
+    "onboarding_wizard_shown",
+    "onboarding_path_chosen",
+    "onboarding_detection_completed",
+    "onboarding_mcp_configured",
+    "onboarding_mcp_failed",
+    "onboarding_skipped_to_demo",
+    "onboarding_skipped_to_manual",
+    "onboarding_completed",
+    "mcp_connected",
+    "first_real_atom_captured",
+    "demo_tour_step_completed",
+    "demo_to_real_conversion",
+    "solo_cloud_upgrade_prompt_shown",
+    "solo_cloud_upgrade_clicked",
+)
+
+
+def is_real_atom(ev: Event) -> bool:
+    """Return True iff the event represents a real (non-sample) atom
+    write. Mirrors the React-side `isFirstRealAtomTrigger` check.
+
+    R9 invariant: a Wave 13 demo seed (``sample: true`` in YAML
+    frontmatter) is propagated end-to-end via ``Event.sample``; this
+    helper reads that flag rather than re-parsing the file. Used by
+    the dogfood CLI's "activation summary" output and by future
+    pipelines that want to count only real captures.
+    """
+    return not bool(ev.sample)
+
+
+def count_real_atoms(events: Iterable[Event]) -> int:
+    """Return the count of real (non-sample) atoms in the iterable.
+    Convenience wrapper over `is_real_atom` so callers don't have to
+    remember the predicate.
+    """
+    return sum(1 for ev in events if is_real_atom(ev))
+# === end v1.15.0 Wave 1.4 ===
+
+
 __all__ = [
     "Event",
     "EventRefs",
@@ -1438,4 +1500,9 @@ __all__ = [
     "ensure_world_model",
     "world_model_path",
     "write_sidecar_docs",
+    # === v1.15.0 Wave 1.4 ===
+    "ACTIVATION_EVENT_NAMES",
+    "is_real_atom",
+    "count_real_atoms",
+    # === end v1.15.0 Wave 1.4 ===
 ]

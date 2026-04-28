@@ -53,6 +53,11 @@ import { logEvent } from "@/lib/telemetry";
 // AtomCards.
 import { vendorColor } from "@/lib/vendor-colors";
 import { AtomCard } from "@/components/AtomCard";
+// === v1.15.0 Wave 2.2 === — first-time-only EmptyStateCard. The legacy
+// EmptyState (above) keeps showing for returning users so power users
+// who explicitly cleared their brain doc still get the Initialize CTA.
+import { EmptyStateCard } from "@/components/EmptyStateCard";
+import { activityRecent } from "@/lib/tauri";
 
 // === wave 9 === — view modes for the split layout. "split" is the
 // default to telegraph design moat #2 (markdown brain transparency):
@@ -301,6 +306,33 @@ export default function CoThinkerRoute() {
 
   const isEmpty = !loading && content.trim().length === 0;
 
+  // === v1.15.0 Wave 2.2 === — first-time-user atom-count probe for the
+  // empty state's "0/5 atoms captured" progress badge. We hit
+  // activityRecent (already used by /today's stat strip) so we don't
+  // need a new IPC channel. Failures soft-fall back to 0; the badge is
+  // copy, not load-bearing.
+  const firstAtomCapturedAt = useStore(
+    (s) => (s.ui as unknown as { firstAtomCapturedAt?: string | null }).firstAtomCapturedAt ?? null,
+  );
+  const isFirstTime = firstAtomCapturedAt === null;
+  const [atomCountForBadge, setAtomCountForBadge] = useState<number>(0);
+  useEffect(() => {
+    if (!isEmpty || !isFirstTime) return;
+    let cancel = false;
+    void activityRecent({ limit: 10 })
+      .then((rows) => {
+        if (cancel) return;
+        setAtomCountForBadge(Math.min(rows.length, 5));
+      })
+      .catch(() => {
+        if (cancel) return;
+        setAtomCountForBadge(0);
+      });
+    return () => {
+      cancel = true;
+    };
+  }, [isEmpty, isFirstTime]);
+
   // === v1.13.9 round-9 ===
   // R9 deceptive-success audit: detect the bundled Wave 13 sample
   // brain doc. The seed `team/co-thinker.md` ships with `sample: true`
@@ -417,11 +449,35 @@ export default function CoThinkerRoute() {
             testId="co-thinker-error"
           />
         ) : isEmpty ? (
-          <EmptyState
-            primaryToolName={primaryToolName}
-            onInitialize={onInitialize}
-            initializing={triggerLoading}
-          />
+          // === v1.15.0 Wave 2.2 === — first-time vs returning split.
+          // Returning users (firstAtomCapturedAt set) keep the legacy
+          // detailed EmptyState explainer + Initialize CTA so power
+          // users who wiped their brain doc get the same affordance
+          // they're used to. First-time users see the lighter
+          // EmptyStateCard pointing back into capture, with a 0/N
+          // progress badge so they know exactly how close they are to
+          // the brain having something to think about.
+          isFirstTime ? (
+            <EmptyStateCard
+              icon={<Brain size={24} />}
+              title="Co-Thinker reasons about your team's work"
+              description="The brain reads atoms every 5 minutes and writes a markdown summary. Capture at least 5 atoms first so it has something to reason about."
+              ctaLabel="Capture 5+ atoms first →"
+              ctaAction="/setup/connect"
+              telemetrySurface="co-thinker"
+              badge={
+                <span className="inline-flex items-center gap-1 rounded-full border border-[var(--ti-orange-300,#FFB477)] bg-[var(--ti-orange-50,#FFF5EC)] px-2 py-0.5 font-mono text-[10px] text-[var(--ti-orange-700,#A04400)] dark:border-stone-600 dark:bg-stone-900 dark:text-[var(--ti-orange-500,#CC5500)]">
+                  {atomCountForBadge}/5 atoms captured
+                </span>
+              }
+            />
+          ) : (
+            <EmptyState
+              primaryToolName={primaryToolName}
+              onInitialize={onInitialize}
+              initializing={triggerLoading}
+            />
+          )
         ) : editing ? (
           <EditPane
             value={draft}

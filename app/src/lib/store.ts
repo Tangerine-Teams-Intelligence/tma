@@ -161,6 +161,15 @@ interface UiSlice {
    *  not re-fire after the user has dismissed the banner). */
   demoSeedAttempted: boolean;
   // === end wave 13 ===
+  // === wave 1.15 W2.1 ===
+  /** Wave 1.15 W2.1 — true once the 5-step DemoTourOverlay has been
+   *  completed OR skipped. Persisted so a returning user who finished /
+   *  skipped the tour never re-sees it on subsequent cold launches.
+   *  Independent of `demoMode`: a user can skip the tour but stay in
+   *  demo mode browsing sample data (in which case the overlay stays
+   *  dismissed but the sample data + DemoModeBanner persist). */
+  demoTourCompleted: boolean;
+  // === end wave 1.15 W2.1 ===
   /** v1.6.0 team memory sync configuration. Undefined mode → first-run. */
   memoryConfig: MemoryConfig;
   /** Current user alias used by cursor / what's-new commands. Defaults to
@@ -349,10 +358,16 @@ interface UiSlice {
   setSetupWizardDismissedThisSession: (v: boolean) => void;
   // === end wave 11 ===
   // === wave 18 ===
-  /** v1.10.4 — conversational onboarding agent. Default mode = "chat";
-   *  user can flip to "wizard" via Settings → General → "Use form-based
-   *  setup" if they prefer the legacy form flow. Persisted so the choice
-   *  survives cold launches. */
+  /** v1.10.4 — conversational onboarding agent.
+   *
+   *  === wave 1.15 W1.1 === — Default flipped from "chat" → "wizard"
+   *  after v1.14.6 dogfood found that fresh installs hitting the
+   *  conversational primer required an LLM connection THEY HAD NOT YET
+   *  MADE — chicken-and-egg deadlock ("input claude code" → dispatch →
+   *  no channel → loop). The form wizard does not require a live LLM
+   *  to step through, so it is the new default first-run path.
+   *  Conversational onboarding is still reachable via Settings →
+   *  Advanced → "Configure with AI" (sets mode back to "chat"). */
   onboardingMode: "chat" | "wizard";
   /** Latch — flips true the first time the OnboardingChat component
    *  mounts (i.e. user landed on /today and saw the chat primer). The
@@ -362,6 +377,30 @@ interface UiSlice {
   setOnboardingMode: (v: "chat" | "wizard") => void;
   setOnboardingChatStarted: (v: boolean) => void;
   // === end wave 18 ===
+  // === wave 1.15 W1.1 ===
+  /** v1.15 Wave 1.1 — first-launch detection latch.
+   *
+   *  Epoch ms when the user first finished any onboarding path (wizard
+   *  / chat / sample-data demo / manual). `null` on a fresh install —
+   *  AppShell uses `null` as the signal to mount the SetupWizard
+   *  full-screen on top of every route.
+   *
+   *  Once stamped this NEVER goes back to null (returning users skip
+   *  the wizard forever). The OnboardingChat / sample-data path /
+   *  wizard-finish path all flip this together with their own
+   *  channel-ready / mode flags so the rule is "any completion
+   *  unblocks the app".
+   *
+   *  Coexistence with wave-11 `setupWizardChannelReady`:
+   *    - W1.1 owns first-launch GATE (mount wizard vs. mount app).
+   *    - W11 owns the LLM-channel-ready fact (heartbeat trust).
+   *  Both can be true (typical — finished wizard) or w11 can be false
+   *  while w1.1 is true (e.g. user picked "Try with sample data" —
+   *  app loads, but heartbeat-fail toast still nudges them to wire an
+   *  LLM later). */
+  onboardingCompletedAt: number | null;
+  setOnboardingCompletedAt: (v: number | null) => void;
+  // === end wave 1.15 W1.1 ===
   // === wave 1.13-A ===
   /** v1.13 — Solo/Team setup scope. The OnboardingChat asks this on its
    *  first prompt and uses the answer to skip team-roster setup (solo) or
@@ -371,6 +410,24 @@ interface UiSlice {
   onboardingScope: "solo" | "team" | null;
   setOnboardingScope: (v: "solo" | "team" | null) => void;
   // === end wave 1.13-A ===
+  // === wave 1.15 W1.4 ===
+  /** v1.15.0 W1.4 — first real-atom capture latch. Flips from `null` to
+   *  `Date.now()` the first time `activity:atom_written` lands with
+   *  `is_sample === false`. Activation marker — gated to fire the
+   *  `first_real_atom_captured` telemetry event exactly once per
+   *  install. Wave 13 demo seeds carry `sample: true` in the YAML
+   *  frontmatter (R9 propagation) and never flip this latch. Persisted
+   *  so a returning user past activation doesn't double-fire. */
+  firstAtomCapturedAt: number | null;
+  /** v1.15.0 W1.4 — Solo Cloud upgrade prompt dismissal timestamp.
+   *  `null` until the user clicks the dismiss × on the global banner.
+   *  Re-prompt rate limit: `SoloCloudUpgradePrompt` re-shows only after
+   *  7 days have elapsed since dismissal. Persisted across cold
+   *  launches so a 2pm dismiss → 4pm relaunch never re-prompts. */
+  soloCloudPromptDismissedAt: number | null;
+  setFirstAtomCapturedAt: (v: number | null) => void;
+  setSoloCloudPromptDismissedAt: (v: number | null) => void;
+  // === end wave 1.15 W1.4 ===
   // === wave 22 ===
   /** Wave 22 — first-run guided coachmark tour completion latch.
    *  Flips `true` once the user finishes or skips the 6-step tour.
@@ -559,6 +616,11 @@ interface UiSlice {
    *  this install (independent of success). Persisted. */
   setDemoSeedAttempted: (v: boolean) => void;
   // === end wave 13 ===
+  // === wave 1.15 W2.1 ===
+  /** Wave 1.15 W2.1 — flip the demo-tour completion latch. Set true
+   *  when the user finishes step 5 OR clicks Skip on any step. */
+  setDemoTourCompleted: (v: boolean) => void;
+  // === end wave 1.15 W2.1 ===
   setMemoryConfig: (patch: Partial<MemoryConfig>) => void;
   resetMemoryConfig: () => void;
   setCurrentUser: (u: string) => void;
@@ -830,6 +892,11 @@ export const useStore = create<Store>()(
         demoMode: false,
         demoSeedAttempted: false,
         // === end wave 13 ===
+        // === wave 1.15 W2.1 ===
+        // Defaults false so the overlay can fire the first time a user
+        // enters demo mode. Flips true on tour finish or skip.
+        demoTourCompleted: false,
+        // === end wave 1.15 W2.1 ===
         // v2.0-alpha.1 — personalDirEnabled defaults to true on first launch.
         // The setMemoryConfig patch flow lets the user flip it from the
         // settings UI without disturbing repo / mode / invite fields.
@@ -896,17 +963,29 @@ export const useStore = create<Store>()(
         setupWizardDismissedThisSession: false,
         // === end wave 11 ===
         // === wave 18 ===
-        // Default = "chat" so fresh installs land in the conversational
-        // flow per the CEO-ratified paradigm shift. Existing users who
-        // already finished the form-based wizard see no behavior change
-        // (channelReady is true → both surfaces self-hide).
-        onboardingMode: "chat",
+        // === wave 1.15 W1.1 === — Default flipped to "wizard" because
+        // the chat path requires a live LLM the fresh install does not
+        // yet have (chicken-and-egg). Existing users with persisted
+        // "chat" keep their preference; fresh installs land on the form
+        // wizard, which steps through detect → configure → test without
+        // needing a working LLM.
+        onboardingMode: "wizard",
         onboardingChatStarted: false,
         // === end wave 18 ===
+        // === wave 1.15 W1.1 === — first-launch latch. `null` = never
+        // completed any onboarding; AppShell mounts the SetupWizard
+        // full-screen on top of every route until something flips it.
+        onboardingCompletedAt: null,
+        // === end wave 1.15 W1.1 ===
         // === wave 1.13-A === — Solo/Team scope. `null` until the
         // OnboardingChat first-run prompt asks the user.
         onboardingScope: null,
         // === end wave 1.13-A ===
+        // === wave 1.15 W1.4 === — activation event + Solo Cloud prompt
+        // latches. Both default null (never seen / never dismissed).
+        firstAtomCapturedAt: null,
+        soloCloudPromptDismissedAt: null,
+        // === end wave 1.15 W1.4 ===
         // === wave 22 ===
         // Wave 22 — first-run guided tour + TryThisFAB dismiss memory.
         // All three default to "fresh install" values. The FirstRunTour
@@ -1017,10 +1096,29 @@ export const useStore = create<Store>()(
         setOnboardingChatStarted: (v) =>
           set((s) => ({ ui: { ...s.ui, onboardingChatStarted: v } })),
         // === end wave 18 ===
+        // === wave 1.15 W1.1 === — first-launch latch setter. Callers:
+        //   - SetupWizard "Done" handler (after wizard completion)
+        //   - SetupWizard "Skip" handler (so a deliberate skip
+        //     unblocks the app)
+        //   - Demo "Try with sample data" CTA
+        //   - OnboardingChat completion (same trigger as channelReady)
+        setOnboardingCompletedAt: (v) =>
+          set((s) => ({ ui: { ...s.ui, onboardingCompletedAt: v } })),
+        // === end wave 1.15 W1.1 ===
         // === wave 1.13-A ===
         setOnboardingScope: (v) =>
           set((s) => ({ ui: { ...s.ui, onboardingScope: v } })),
         // === end wave 1.13-A ===
+        // === wave 1.15 W1.4 === — activation event + Solo Cloud prompt
+        // setters. Pure set; idempotent — fire twice and the state is
+        // identical to firing once. The first-real-atom listener uses a
+        // null-guard so a second `activity:atom_written` event that
+        // matches `is_sample === false` is a no-op.
+        setFirstAtomCapturedAt: (v) =>
+          set((s) => ({ ui: { ...s.ui, firstAtomCapturedAt: v } })),
+        setSoloCloudPromptDismissedAt: (v) =>
+          set((s) => ({ ui: { ...s.ui, soloCloudPromptDismissedAt: v } })),
+        // === end wave 1.15 W1.4 ===
         // === wave 22 ===
         // Wave 22 — coachmark + tour + try-this reducers. Each one is a
         // pure idempotent set so re-firing the same dismiss is a no-op
@@ -1093,6 +1191,10 @@ export const useStore = create<Store>()(
         setDemoSeedAttempted: (v) =>
           set((s) => ({ ui: { ...s.ui, demoSeedAttempted: v } })),
         // === end wave 13 ===
+        // === wave 1.15 W2.1 ===
+        setDemoTourCompleted: (v) =>
+          set((s) => ({ ui: { ...s.ui, demoTourCompleted: v } })),
+        // === end wave 1.15 W2.1 ===
         setMemoryConfig: (patch) =>
           set((s) => ({
             ui: {
@@ -1501,6 +1603,9 @@ export const useStore = create<Store>()(
             demoMode: s.ui.demoMode,
             demoSeedAttempted: s.ui.demoSeedAttempted,
             // === end wave 13 ===
+            // === wave 1.15 W2.1 === — demo-tour completion latch.
+            demoTourCompleted: s.ui.demoTourCompleted,
+            // === end wave 1.15 W2.1 ===
             memoryConfig: s.ui.memoryConfig,
             currentUser: s.ui.currentUser,
             dismissedAtoms: s.ui.dismissedAtoms,
@@ -1571,10 +1676,22 @@ export const useStore = create<Store>()(
             onboardingMode: s.ui.onboardingMode,
             onboardingChatStarted: s.ui.onboardingChatStarted,
             // === end wave 18 ===
+            // === wave 1.15 W1.1 === — first-launch latch persists so a
+            // returning user never sees the SetupWizard full-screen
+            // again. Reset to null only via reinstall / debug clear.
+            onboardingCompletedAt: s.ui.onboardingCompletedAt,
+            // === end wave 1.15 W1.1 ===
             // === wave 1.13-A === — Solo/Team scope. Persisted so the
             // user's first-prompt answer survives cold launches.
             onboardingScope: s.ui.onboardingScope,
             // === end wave 1.13-A ===
+            // === wave 1.15 W1.4 === — activation event + Solo Cloud
+            // prompt latches. Both persist so a returning user past
+            // activation never re-fires `first_real_atom_captured`, and
+            // a 7-day Solo prompt dismissal carries across cold launches.
+            firstAtomCapturedAt: s.ui.firstAtomCapturedAt,
+            soloCloudPromptDismissedAt: s.ui.soloCloudPromptDismissedAt,
+            // === end wave 1.15 W1.4 ===
             // === wave 16 === — right-rail ACTIVITY filter pick.
             activityFeedFilter: s.ui.activityFeedFilter,
             // === end wave 16 ===
@@ -1606,6 +1723,9 @@ export const useStore = create<Store>()(
                 demoMode?: boolean;
                 demoSeedAttempted?: boolean;
                 // === end wave 13 ===
+                // === wave 1.15 W2.1 ===
+                demoTourCompleted?: boolean;
+                // === end wave 1.15 W2.1 ===
                 memoryConfig?: MemoryConfig;
                 currentUser?: string;
                 dismissedAtoms?: string[];
@@ -1672,6 +1792,10 @@ export const useStore = create<Store>()(
             demoSeedAttempted:
               p?.ui?.demoSeedAttempted ?? current.ui.demoSeedAttempted,
             // === end wave 13 ===
+            // === wave 1.15 W2.1 ===
+            demoTourCompleted:
+              p?.ui?.demoTourCompleted ?? current.ui.demoTourCompleted,
+            // === end wave 1.15 W2.1 ===
             memoryConfig: p?.ui?.memoryConfig ?? current.ui.memoryConfig,
             currentUser: p?.ui?.currentUser ?? current.ui.currentUser,
             dismissedAtoms: p?.ui?.dismissedAtoms ?? current.ui.dismissedAtoms,
@@ -1764,6 +1888,65 @@ export const useStore = create<Store>()(
               (p?.ui as { onboardingScope?: "solo" | "team" | null } | undefined)
                 ?.onboardingScope ?? current.ui.onboardingScope,
             // === end wave 1.13-A ===
+            // === wave 18 hydration ===
+            // Persist `onboardingMode`. Cast bare because the v1.10.3-
+            // and-earlier install pre-dates this key — fall back to the
+            // current default ("wizard" post-W1.1).
+            onboardingMode: ((): "chat" | "wizard" => {
+              const v = (p?.ui as { onboardingMode?: string } | undefined)
+                ?.onboardingMode;
+              if (v === "chat" || v === "wizard") return v;
+              return current.ui.onboardingMode;
+            })(),
+            onboardingChatStarted:
+              (p?.ui as { onboardingChatStarted?: boolean } | undefined)
+                ?.onboardingChatStarted ?? current.ui.onboardingChatStarted,
+            // === end wave 18 hydration ===
+            // === wave 1.15 W1.1 === — first-launch latch hydration.
+            // Bare cast so a v1.14-and-earlier install (no key persisted)
+            // upgrades to `null` AND ALSO pre-stamps it forward when the
+            // user has obviously already completed onboarding via wave-11
+            // / wave-18 (channelReady true OR welcomed true). This avoids
+            // showing the W1.1 wizard to existing dogfood users on the
+            // v1.14.6 → v1.15.0 upgrade.
+            onboardingCompletedAt: ((): number | null => {
+              const persisted = (
+                p?.ui as { onboardingCompletedAt?: number | null } | undefined
+              )?.onboardingCompletedAt;
+              if (typeof persisted === "number") return persisted;
+              if (persisted === null) return null;
+              // No key persisted — first time we've seen this slice. If
+              // the user already passed wave-11 wizard or has welcomed
+              // flipped, treat as already-onboarded so the W1.1 wizard
+              // does not pop. Otherwise leave null so the wizard shows.
+              const channelReady = (
+                p?.ui as { setupWizardChannelReady?: boolean } | undefined
+              )?.setupWizardChannelReady;
+              const welcomed = (p?.ui as { welcomed?: boolean } | undefined)
+                ?.welcomed;
+              if (channelReady === true || welcomed === true) {
+                return Date.now();
+              }
+              return current.ui.onboardingCompletedAt;
+            })(),
+            // === end wave 1.15 W1.1 ===
+            // === wave 1.15 W1.4 === — activation event + Solo Cloud
+            // prompt latches. Bare cast so a v1.14-and-earlier persisted
+            // state (which pre-dates these keys) upgrades to the `null`
+            // defaults — the first real atom on next launch flips
+            // `firstAtomCapturedAt`, and the prompt becomes eligible
+            // 7 days post-onboarding (or at 50 atoms).
+            firstAtomCapturedAt:
+              (p?.ui as { firstAtomCapturedAt?: number | null } | undefined)
+                ?.firstAtomCapturedAt ?? current.ui.firstAtomCapturedAt,
+            soloCloudPromptDismissedAt:
+              (
+                p?.ui as
+                  | { soloCloudPromptDismissedAt?: number | null }
+                  | undefined
+              )?.soloCloudPromptDismissedAt ??
+              current.ui.soloCloudPromptDismissedAt,
+            // === end wave 1.15 W1.4 ===
             // v3.0 §1 — personal-agent capture flags. Persisted; the
             // Settings page also calls `personal_agents_get_settings`
             // on mount to reconcile with the Rust source of truth.

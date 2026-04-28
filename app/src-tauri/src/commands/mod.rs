@@ -761,6 +761,17 @@ macro_rules! tmi_invoke_handler {
             $crate::commands::setup_wizard::setup_wizard_install_ollama_hint,
             $crate::commands::setup_wizard::setup_wizard_persist_state,
             // === end wave 11 ===
+            // === v1.15.0 wave 1.3 ===
+            // 8-tool MCP auto-configure + per-tool handshake. New surface
+            // bolted alongside the wave 11 4-tool surface above. Distinct
+            // command name (`_v15_`) avoids signature collision with the
+            // wave 11 `setup_wizard_auto_configure_mcp` (which has a richer
+            // result shape used by onboarding_chat + lib/tauri.ts). See the
+            // v1.15.0 section header in setup_wizard.rs for the full
+            // contract.
+            $crate::commands::setup_wizard::setup_wizard_v15_auto_configure_mcp,
+            $crate::commands::setup_wizard::mcp_server_handshake,
+            // === end v1.15.0 wave 1.3 ===
             // === wave 13 ===
             // v1.10.3 — populated-app demo seed. 3 commands. See
             // `demo_seed.rs` for the doc comment + invariants.

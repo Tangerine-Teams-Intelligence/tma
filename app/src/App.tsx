@@ -37,6 +37,11 @@ import ThreadsListRoute from "@/routes/threads";
 import ThreadDetailRoute from "@/routes/threads/detail";
 // v1.8 Phase 1 — per-tool setup pages for the AI Tools sidebar section.
 import AIToolSetupRoute from "@/routes/ai-tools/[id]";
+// === v1.15.0 wave 1.2 ===
+// /setup/connect — onboarding "Connect AI tool" step. Render OUTSIDE the
+// AppShell layout so the wizard owns the full viewport with no sidebar.
+import SetupConnectRoute from "@/routes/setup/connect";
+// === end v1.15.0 wave 1.2 ===
 // v1.8 Phase 1 — Canvas + Co-thinker placeholder routes (Phase 4 / Phase 3).
 import CanvasRoute from "@/routes/canvas";
 import CoThinkerRoute from "@/routes/co-thinker";
@@ -161,6 +166,10 @@ export default function App() {
       <Route path="/dashboard" element={<Navigate to="/today" replace />} />
       <Route path="/skills" element={<Navigate to="/today" replace />} />
       <Route path="/skills/meeting" element={<Navigate to="/sources/discord" replace />} />
+      {/* === v1.15.0 wave 1.2 === — /setup/connect must beat the
+          /setup → /today redirect below; it's a real wizard step. */}
+      <Route path="/setup/connect" element={<SetupConnectRoute />} />
+      {/* === end v1.15.0 wave 1.2 === */}
       <Route path="/setup" element={<Navigate to="/today" replace />} />
       <Route path="/home" element={<Navigate to="/today" replace />} />
       {/* Old "Meeting tool" surface — Meeting was the Discord source. */}

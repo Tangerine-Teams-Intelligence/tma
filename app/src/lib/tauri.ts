@@ -3919,6 +3919,30 @@ export async function setupWizardAutoConfigureMcp(
   );
 }
 
+// === v1.15.0 wave 1.2 ===
+/**
+ * W1.2 — handshake probe used by AIToolDetectionGrid after a successful
+ * auto-configure. Polled every 3s with a 30s timeout; returns `true` once
+ * the freshly-restarted MCP host has actually wired up the Tangerine
+ * sampler (R6/R7 honesty rule: don't paint a green check until the
+ * round-trip really worked).
+ *
+ * W1.3 owns the real Rust impl. Until that lands, the mock answers
+ * `false` so the UI honestly times out instead of painting a fake
+ * "Connected" — the suite drives a happy-path by overriding this fn
+ * with `vi.spyOn(...).mockResolvedValue(true)`.
+ */
+export async function mcpServerHandshake(toolId: string): Promise<boolean> {
+  return safeInvoke<boolean>(
+    "mcp_server_handshake",
+    { toolId },
+    // Honest mock: nothing has restarted; report unconnected. Tests that
+    // want the connected branch override via vi.spyOn / vi.mock.
+    () => false,
+  );
+}
+// === end v1.15.0 wave 1.2 ===
+
 export async function setupWizardTestChannel(args: {
   channel?: string;
   toolId?: string;
@@ -4241,6 +4265,17 @@ export interface ActivityAtomEvent {
   timestamp: string;
   /** What kind of atom this is. */
   kind: ActivityAtomKind;
+  // === v1.15.0 Wave 1.4 ===
+  /** True when the underlying atom was sourced from a Wave 13 demo
+   *  seed (frontmatter carries `sample: true`, R9 propagation). The
+   *  Wave 1.4 activation listener filters on this so seeded fixtures
+   *  never trip the `first_real_atom_captured` event.
+   *
+   *  Defaults to `false` on the Rust side via `serde(default)` so a
+   *  legacy v1.14 ledger entry replayed through `activity_recent`
+   *  deserialises with `is_sample === false` — the safe default. */
+  isSample: boolean;
+  // === end v1.15.0 Wave 1.4 ===
 }
 
 /** Tauri unlisten fn — return from `listenActivityAtoms`. */

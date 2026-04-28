@@ -81,10 +81,29 @@ pub struct ActivityAtomEvent {
     pub timestamp: String,
     /// Atom kind enum — see [`AtomKind`].
     pub kind: AtomKind,
+    // === v1.15.0 Wave 1.4 ===
+    /// True when this atom was sourced from a Wave 13 demo seed (its
+    /// markdown frontmatter carries `sample: true`). The frontend's
+    /// `first_real_atom_captured` activation listener filters on this
+    /// so a fresh install pre-populated with the bundled demo memory
+    /// never trips the activation event.
+    ///
+    /// Defaulted to `false` and `serde(default)` so a v1.14-and-earlier
+    /// persisted activity ledger entry deserialises cleanly. Real
+    /// emitters that know the source is a sample (e.g. demo seed
+    /// re-emit, future replay) flip this; the personal-agent / source-
+    /// connector / co-thinker paths that produce real captures leave
+    /// it `false`.
+    #[serde(default)]
+    pub is_sample: bool,
+    // === end v1.15.0 Wave 1.4 ===
 }
 
 impl ActivityAtomEvent {
     /// Build a new event with `timestamp` filled to "now (UTC)".
+    /// `is_sample` defaults to `false`; flip with [`with_sample`] when
+    /// the caller knows the underlying file carries `sample: true` in
+    /// its YAML frontmatter (Wave 13 demo seeds).
     pub fn new(
         path: impl Into<String>,
         title: impl Into<String>,
@@ -97,6 +116,9 @@ impl ActivityAtomEvent {
             author: None,
             timestamp: Utc::now().to_rfc3339(),
             kind,
+            // === v1.15.0 Wave 1.4 ===
+            is_sample: false,
+            // === end v1.15.0 Wave 1.4 ===
         }
     }
 
@@ -111,6 +133,16 @@ impl ActivityAtomEvent {
         self.author = Some(a.into());
         self
     }
+
+    // === v1.15.0 Wave 1.4 ===
+    /// Builder — flip `is_sample`. Used by future replay / demo paths
+    /// that re-emit a seeded fixture so the React activation listener
+    /// can drop the event from the `first_real_atom_captured` count.
+    pub fn with_sample(mut self, is_sample: bool) -> Self {
+        self.is_sample = is_sample;
+        self
+    }
+    // === end v1.15.0 Wave 1.4 ===
 }
 
 /// Process-wide ring buffer. `Mutex` (not `parking_lot`) keeps the dep
@@ -445,6 +477,38 @@ mod tests {
         assert!(s.contains("\"author\""));
         assert!(s.contains("\"timestamp\""));
         assert!(s.contains("\"kind\":\"decision\""));
+        // === v1.15.0 Wave 1.4 ===
+        // `is_sample` MUST always be present in the wire shape so the
+        // React `first_real_atom_captured` listener can rely on the
+        // field rather than a nullable check. New events default false.
+        assert!(s.contains("\"isSample\""));
+        assert!(s.contains("\"isSample\":false"));
+        // === end v1.15.0 Wave 1.4 ===
     }
+
+    // === v1.15.0 Wave 1.4 ===
+    #[test]
+    fn event_with_sample_serialises_true() {
+        // A future demo-replay path can call `with_sample(true)` so the
+        // event surfaces in the activity feed AND telemetry can drop it
+        // from the activation funnel. Test the builder + serde shape.
+        let ev = ActivityAtomEvent::new("decisions/sample.md", "Demo", AtomKind::Decision)
+            .with_sample(true);
+        assert!(ev.is_sample);
+        let s = serde_json::to_string(&ev).unwrap();
+        assert!(s.contains("\"isSample\":true"));
+    }
+
+    #[test]
+    fn event_deserialises_legacy_payload_without_is_sample() {
+        // A v1.14-and-earlier persisted activity.jsonl line will not
+        // carry `isSample`. `serde(default)` MUST give us `false` so
+        // the rotation read path doesn't blow up on legacy files.
+        let legacy = r#"{"path":"a.md","title":"t","vendor":null,"author":null,"timestamp":"2026-04-28T00:00:00Z","kind":"decision"}"#;
+        let ev: ActivityAtomEvent = serde_json::from_str(legacy).unwrap();
+        assert_eq!(ev.path, "a.md");
+        assert!(!ev.is_sample, "legacy entry must default to is_sample=false");
+    }
+    // === end v1.15.0 Wave 1.4 ===
 }
 // === end wave 16 ===

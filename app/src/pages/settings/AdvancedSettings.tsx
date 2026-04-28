@@ -1,7 +1,8 @@
 // === wave 5-α ===
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { Download, Trash2 } from "lucide-react";
+import { Download, Trash2, Sparkles } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -28,6 +29,18 @@ interface Props {
 
 export function AdvancedSettings(_props: Props) {
   const { t } = useTranslation();
+  const navigate = useNavigate();
+  // === wave 1.15 W1.1 === — Settings entry to flip onboarding mode
+  // back to the conversational chat agent. The chat path is no longer
+  // the default first-run experience (it required a live LLM the
+  // fresh install hadn't wired yet — chicken-and-egg loop), but power
+  // users who prefer it can flip back from here. Mode change is
+  // immediate; user is routed to /today where OnboardingChat will
+  // re-mount in setup mode if `setupWizardChannelReady` is still
+  // false, otherwise it stays in general-query mode.
+  const setOnboardingMode = useStore((s) => s.ui.setOnboardingMode);
+  const onboardingMode = useStore((s) => s.ui.onboardingMode);
+  // === end wave 1.15 W1.1 ===
   const [last, setLast] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -162,6 +175,35 @@ export function AdvancedSettings(_props: Props) {
         )}
       </section>
       {/* === end v1.13.9 round-9 === */}
+
+      {/* === wave 1.15 W1.1 === — "Configure with AI" entry. Flips
+          `onboardingMode` to "chat" so the conversational onboarding
+          agent comes back as the /today setup-mode hero. The form
+          wizard is the default first-run path because it doesn't
+          require a live LLM; this entry exists so power users who
+          prefer the chat flow have an opt-in. */}
+      <section data-testid="st-configure-with-ai-section">
+        <h3 className="font-display text-lg">Conversational onboarding</h3>
+        <p className="mt-1 text-sm text-[var(--ti-ink-700)]">
+          The default first-run wizard is form-based. If you'd rather chat
+          with Tangerine to wire your AI tools, switch the mode here. You
+          can flip back any time. Currently:{" "}
+          <code className="font-mono text-[11px]">{onboardingMode}</code>
+        </p>
+        <Button
+          onClick={() => {
+            setOnboardingMode("chat");
+            navigate("/today");
+          }}
+          disabled={onboardingMode === "chat"}
+          className="mt-3"
+          data-testid="st-configure-with-ai"
+        >
+          <Sparkles size={14} />
+          Configure with AI
+        </Button>
+      </section>
+      {/* === end wave 1.15 W1.1 === */}
 
       <section>
         <h3 className="font-display text-lg">{t("settings.advanced.aboutTitle")}</h3>

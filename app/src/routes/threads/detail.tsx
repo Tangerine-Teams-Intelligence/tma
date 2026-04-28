@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, MessageCircle } from "lucide-react";
 import {
   readThread,
   markAtomViewed,
@@ -9,11 +9,18 @@ import {
 import { useStore } from "@/lib/store";
 import { TangerineNotes } from "@/components/TangerineNotes";
 import { ThreadView } from "@/components/ThreadView";
+// === v1.15.0 Wave 2.2 ===
+import { EmptyStateCard } from "@/components/EmptyStateCard";
 
 export default function ThreadDetailRoute() {
   const params = useParams();
   const topic = decodeURIComponent(params.topic ?? "");
   const currentUser = useStore((s) => s.ui.currentUser);
+  // === v1.15.0 Wave 2.2 ===
+  const firstAtomCapturedAt = useStore(
+    (s) => (s.ui as unknown as { firstAtomCapturedAt?: string | null }).firstAtomCapturedAt ?? null,
+  );
+  const isFirstTime = firstAtomCapturedAt === null;
   const [data, setData] = useState<ThreadDetailData | null>(null);
   const [loading, setLoading] = useState(true);
   // === v1.13.8 round-8 === — readThread re-throws on Tauri failure
@@ -64,12 +71,39 @@ export default function ThreadDetailRoute() {
             <p className="text-[12px] text-rose-700 dark:text-rose-300">Couldn't read thread #{topic}.</p>
             <p className="mt-1 font-mono text-[10px] text-rose-600 dark:text-rose-400">{error}</p>
           </div>
-        ) : data ? (
+        ) : data && data.events.length > 0 ? (
           <ThreadView data={data} onAtomViewed={onAtomViewed} />
         ) : (
-          <p className="text-[12px] text-stone-500 dark:text-stone-400">
-            No data for #{topic}.
-          </p>
+          // === v1.15.0 Wave 2.2 === — first-time vs returning split.
+          // Empty thread for a first-timer means they linked to a topic
+          // before any atoms exist; route them back to capture rather
+          // than showing a dead-end "No data" line. Either branch keeps
+          // the `#topic` heading visible so smoke tests + screen-readers
+          // still find the canonical topic on the page.
+          <div data-testid="thread-detail-empty">
+            <h1 className="font-display text-2xl tracking-tight text-stone-900 dark:text-stone-100">
+              #{topic}
+            </h1>
+            {isFirstTime ? (
+              <div className="mt-4">
+                <EmptyStateCard
+                  icon={<MessageCircle size={24} />}
+                  title={`No atoms tagged #${topic} yet`}
+                  description="Capture an atom that mentions this topic from your AI tool, and it will land here."
+                  ctaLabel="Capture from your AI tool →"
+                  ctaAction="/setup/connect"
+                  telemetrySurface="threads-detail"
+                />
+              </div>
+            ) : (
+              <p
+                data-testid="thread-detail-empty-returning"
+                className="mt-4 text-[12px] text-stone-500 dark:text-stone-400"
+              >
+                No data for #{topic}.
+              </p>
+            )}
+          </div>
         )}
       </div>
     </div>

@@ -346,9 +346,16 @@ export function OnboardingChat({ onSetupComplete }: OnboardingChatProps) {
             className="rounded-xl border border-rose-200 bg-rose-50/80 px-4 py-3 text-[12px] text-rose-700 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-300"
           >
             <p className="font-medium">
+              {/* === wave 1.15 W1.1 === — Reword: the v1.14.6 message
+                  "Ollama isn't responding" was misleading; the real
+                  failure mode 95% of the time is the user has no
+                  AI-tool session open at all, so MCP-sampling can't
+                  borrow a channel. */}
               {t("onboardingChat.errorTitle", {
-                defaultValue: "Couldn't reach the LLM.",
+                defaultValue:
+                  "Open your AI tool first (Cursor / Claude Code) so I can borrow its LLM.",
               })}
+              {/* === end wave 1.15 W1.1 === */}
             </p>
             <p className="mt-1 font-mono text-[11px]">{dispatchError}</p>
             <button

@@ -209,8 +209,82 @@ export type TelemetryEventName =
   // that silently fell back to a console.info mock.
   // Payload: { meeting_id: string, approved_count: number,
   //            rejected_count: number, edited_count: number }
-  | "review_decisions_submitted";
+  | "review_decisions_submitted"
   // === end v1.13.5 round-5 ===
+  // === v1.15.0 Wave 1.4 — onboarding wizard + activation funnel ===
+  // The four-pillar event set the new onboarding paths emit so analytics
+  // can compute "shown → path picked → connected → first real atom" at
+  // the user level. Payload schemas live at the call sites; the comments
+  // below describe the contract:
+  //   - onboarding_wizard_shown          : {}
+  //   - onboarding_path_chosen           : { path: "ai_tool" | "demo" | "manual" }
+  //   - onboarding_detection_completed   : { detected_count: number,
+  //                                           tools: string[] }
+  //   - onboarding_mcp_configured        : { tool_id: string,
+  //                                           success: boolean }
+  //   - onboarding_mcp_failed            : { tool_id: string,
+  //                                           error_class: string }
+  //   - onboarding_skipped_to_demo       : {}
+  //   - onboarding_skipped_to_manual     : {}
+  //   - onboarding_completed             : { time_to_complete_ms: number,
+  //                                           path: string }
+  //   - mcp_connected                    : { tool_id: string }
+  //   - first_real_atom_captured         : { source: string }
+  //   - demo_tour_step_completed         : { step_index: number }
+  //   - demo_to_real_conversion          : {}
+  //   - solo_cloud_upgrade_prompt_shown  : {}
+  //   - solo_cloud_upgrade_clicked       : {}
+  //
+  // `first_real_atom_captured` is the activation event — fires at MOST
+  // ONCE per install (gated by store flag `firstAtomCapturedAt`). The
+  // listener filters out sample atoms via the R9-propagated YAML
+  // `sample: true` flag so seeded fixtures never count. Wave 1.4 spec.
+  | "onboarding_wizard_shown"
+  | "onboarding_path_chosen"
+  | "onboarding_detection_completed"
+  | "onboarding_mcp_configured"
+  | "onboarding_mcp_failed"
+  | "onboarding_skipped_to_demo"
+  | "onboarding_skipped_to_manual"
+  | "onboarding_completed"
+  | "mcp_connected"
+  | "first_real_atom_captured"
+  | "demo_tour_step_completed"
+  | "demo_to_real_conversion"
+  | "solo_cloud_upgrade_prompt_shown"
+  | "solo_cloud_upgrade_clicked"
+  // Wave 4 wire-up additions:
+  //   - onboarding_mcp_timeout      : { tool_id: string, elapsed_ms: number }
+  //     Fired by AIToolDetectionGrid when 30s passes without a successful
+  //     handshake. Distinct from `onboarding_mcp_failed` (which is for
+  //     hard errors — Auto-configure failure or thrown bridge). Timeout
+  //     means "user hasn't restarted their AI tool yet" — retryable.
+  //   - solo_cloud_upgrade_dismissed: { snooze_days?: number }
+  //     Fired by SoloCloudUpgradePrompt when user clicks the X button.
+  //     The 7d cool-down is enforced by `soloCloudPromptDismissedAt` in
+  //     the store; this event is for analytics so we can compute
+  //     dismiss-rate vs upgrade-rate.
+  | "onboarding_mcp_timeout"
+  | "solo_cloud_upgrade_dismissed"
+  // === v1.15.0 Wave 2.1 — demo tour dismiss telemetry ===
+  // Fired when the user closes the DemoTourOverlay before completing
+  // step 5 (real-data conversion). Lets analytics distinguish
+  // `demo_to_real_conversion` (full traversal + clear-samples) from
+  // mid-tour drop-off. Payload:
+  //   - demo_tour_dismissed : { at_step: number }   // 0..4
+  | "demo_tour_dismissed"
+  // === v1.15.0 Wave 2.2 — first-week empty state telemetry ===
+  // EmptyStateCard renders on /people /threads /co-thinker /today
+  // /this-week /memory when fetch succeeds AND data is empty AND
+  // `firstAtomCapturedAt === null` (returning users see the lighter
+  // "no items yet" message instead). Lets analytics see which
+  // surfaces convert empty-state CTAs into capture activations.
+  // Payload (both): { surface: string }
+  // surface ∈ "people" | "people-detail" | "threads" | "threads-detail"
+  //         | "co-thinker" | "today" | "this-week" | "memory-tree"
+  | "empty_state_shown"
+  | "empty_state_cta_clicked";
+  // === end v1.15.0 Wave 1.4 + 2.1 + 2.2 ===
 // === end wave 5-β discoverability ===
 
 /** One telemetry record. Mirrors `app/src-tauri/src/agi/telemetry.rs::TelemetryEvent`. */
@@ -277,3 +351,114 @@ export async function readWindow(hours: number): Promise<TelemetryEvent[]> {
     return [];
   }
 }
+
+// === v1.15.0 Wave 1.4 — typed onboarding event payloads ===
+//
+// `logEvent` itself stays `Record<string, unknown>` for back-compat with
+// the ~80 existing call sites that already mix shapes. Wave 1.4 adds
+// four typed call paths so the new onboarding surfaces get a real
+// compile-time check on their payload contract. Strict TS — no `any`.
+//
+// Mirror of the comment block on `TelemetryEventName`. If you add a new
+// event name, also add its props interface here so the typed helper
+// catches a missing field before the build hits prod.
+
+export interface OnboardingPathChosenProps {
+  path: "ai_tool" | "demo" | "manual";
+}
+
+export interface OnboardingDetectionCompletedProps {
+  detected_count: number;
+  tools: string[];
+}
+
+export interface OnboardingMcpConfiguredProps {
+  tool_id: string;
+  success: boolean;
+}
+
+export interface OnboardingMcpFailedProps {
+  tool_id: string;
+  error_class: string;
+}
+
+export interface OnboardingCompletedProps {
+  time_to_complete_ms: number;
+  path: string;
+}
+
+export interface McpConnectedProps {
+  tool_id: string;
+}
+
+export interface FirstRealAtomCapturedProps {
+  source: string;
+}
+
+export interface DemoTourStepCompletedProps {
+  step_index: number;
+}
+
+/** Wave 2.1 — payload for `demo_tour_dismissed`. */
+export interface DemoTourDismissedProps {
+  /** Zero-indexed step the user was on when they closed the overlay. */
+  at_step: number;
+}
+
+/**
+ * Wave 2.2 — shared payload for `empty_state_shown` and
+ * `empty_state_cta_clicked`. The `surface` discriminator matches the
+ * route slot the EmptyStateCard mounted into.
+ */
+export interface EmptyStateProps {
+  surface: string;
+}
+
+/**
+ * Discriminated map: TypeScript looks up the props shape per event name
+ * so a typo or missing field on any of the new Wave 1.4 events fails
+ * `tsc --noEmit`. Existing event names map to `Record<string, unknown>`
+ * so the v1.9-era call sites stay compiling.
+ *
+ * Defensive: `keyof` is exhaustive — when a new name lands in the union
+ * but you forget to map it here, TypeScript flags the gap on every typed
+ * caller.
+ */
+export type TelemetryPayload<E extends TelemetryEventName> =
+  E extends "onboarding_path_chosen" ? OnboardingPathChosenProps :
+  E extends "onboarding_detection_completed" ? OnboardingDetectionCompletedProps :
+  E extends "onboarding_mcp_configured" ? OnboardingMcpConfiguredProps :
+  E extends "onboarding_mcp_failed" ? OnboardingMcpFailedProps :
+  E extends "onboarding_completed" ? OnboardingCompletedProps :
+  E extends "mcp_connected" ? McpConnectedProps :
+  E extends "first_real_atom_captured" ? FirstRealAtomCapturedProps :
+  E extends "demo_tour_step_completed" ? DemoTourStepCompletedProps :
+  E extends "demo_tour_dismissed" ? DemoTourDismissedProps :
+  E extends "empty_state_shown" | "empty_state_cta_clicked" ? EmptyStateProps :
+  E extends "onboarding_wizard_shown"
+    | "onboarding_skipped_to_demo"
+    | "onboarding_skipped_to_manual"
+    | "demo_to_real_conversion"
+    | "solo_cloud_upgrade_prompt_shown"
+    | "solo_cloud_upgrade_clicked"
+    ? Record<string, never>
+    : Record<string, unknown>;
+
+/**
+ * Typed wrapper around `logEvent`. Use from new Wave 1.4 surfaces so the
+ * compiler enforces the payload shape; legacy call sites stay on the
+ * untyped `logEvent`.
+ *
+ * Usage:
+ *   void logTypedEvent("onboarding_path_chosen", { path: "ai_tool" });
+ */
+export async function logTypedEvent<E extends TelemetryEventName>(
+  event: E,
+  payload: TelemetryPayload<E>,
+): Promise<void> {
+  // Cast through unknown so the structural-vs-Record gap on the strict
+  // empty-payload events doesn't trip the inference. Runtime shape is
+  // identical to `logEvent`.
+  return logEvent(event, payload as unknown as Record<string, unknown>);
+}
+// === end v1.15.0 Wave 1.4 ===
