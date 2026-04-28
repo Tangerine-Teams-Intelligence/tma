@@ -1,16 +1,37 @@
 # Tangerine Teams App
 
-> **AI-native team's Obsidian, more visual + easier onboarding.**
+> **The team work memory layer no one else does.**
 >
-> Your team's shared AI memory. Across Cursor, Claude, ChatGPT, and the rest.
+> Tangerine captures **two layers** that no other tool combines:
+> 1. **AI tool work** — Cursor / Claude / ChatGPT / Codex / Windsurf / Gemini / Devin / Replit / Apple Intelligence / MS Copilot
+> 2. **Human communication** — Discord (real) · Slack / GitHub / Linear / Calendar (beta) · Lark / Zoom / Teams (coming v1.13+)
 >
-> Your team uses Cursor, Claude, ChatGPT, Codex, Devin, Copilot — but each AI sees a different slice of what your team's actually doing. We align them all with one source of team workflow. Your AIs stop giving different answers.
+> Every other tool only does **one** layer (or neither, well):
+>
+> | Tool | AI tool work | Human comm | Position |
+> |---|---|---|---|
+> | **Tangerine** | ✅ 8 vendors | ✅ Discord real + 4 beta | **Unique cross-section** |
+> | Obsidian | ❌ | ❌ | Personal markdown |
+> | Notion | ❌ | partial | Personal/team docs |
+> | Mem.ai | partial | ❌ | Personal AI notes |
+> | Glean | ❌ | partial | Closed enterprise search |
+> | Linear / Slack / GitHub | ❌ | self-only | Single-channel |
 
 [![Latest Release](https://img.shields.io/github/v/release/Tangerine-Teams-Intelligence/tangerine-teams-app?include_prereleases)](https://github.com/Tangerine-Teams-Intelligence/tangerine-teams-app/releases/latest)
 [![License: Apache-2.0 (current)](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](PRIOR-LICENSE-APACHE-2.0.txt)
 [![License: AGPL v3 + Commercial (transition)](https://img.shields.io/badge/license-AGPL_v3_+_Commercial-orange.svg)](LICENSE)
 
-**Status**: v1.12.0 — Linear + Obsidian style — auto-updater shipped
+**Status**: v1.12.1 — dual-layer memory · auto-updater shipped · Lark integration coming v1.13
+
+---
+
+## What we sell that no one else has
+
+**Your team's combined work-trace** — what your team's AI tools did + what your team said to each other → unified, searchable, AI-readable, in your own git repo.
+
+Without Tangerine: 5 silos (Cursor history / Claude session / Slack thread / GitHub PR / your notes). Your AI tools see only their own slice. Your team forgets what was decided 3 days ago.
+
+With Tangerine: 1 markdown brain + 1 git repo. Every AI tool can read team context. Every team member sees what their AIs did + what other humans said. Search "what did we decide on PCB" returns relevant atoms across all sources.
 
 <!-- === wave 25 === Hero screenshots — placeholders point to dogfood-prep/video/screenshots/ -->
 <!-- Replace with absolute GitHub raw URLs once images are committed to the repo. -->
