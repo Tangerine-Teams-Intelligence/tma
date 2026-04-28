@@ -3,7 +3,14 @@
 
 use std::path::PathBuf;
 
-use serde::{Deserialize, Serialize};
+// === v1.13.3 round-3 ===
+// Drop unused `Serialize` import — `cargo check` flagged it as dead. The
+// public response shapes returned by this module are imported from
+// `super::{IntentInfo, MeetingListItem, MeetingState}` which already
+// derive Serialize at their definition site, so this file's request
+// types only need Deserialize.
+use serde::Deserialize;
+// === end v1.13.3 round-3 ===
 use tauri::State;
 
 use super::{AppError, AppState, IntentInfo, MeetingListItem, MeetingState};

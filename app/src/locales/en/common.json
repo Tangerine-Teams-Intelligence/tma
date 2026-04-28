@@ -264,6 +264,7 @@
     "anchorParagraph": "Paragraph {{n}}",
     "placeholder": "Add a comment. Use @ to mention a teammate.",
     "mentionHint": "Use @ to mention",
+    "willNotify": "Will notify {{users}}",
     "post": "Post",
     "posting": "Posting...",
     "reply": "Reply",

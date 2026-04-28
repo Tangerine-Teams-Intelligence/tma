@@ -264,6 +264,7 @@
     "anchorParagraph": "第 {{n}} 段",
     "placeholder": "添加评论。用 @ 提及队友。",
     "mentionHint": "用 @ 提及",
+    "willNotify": "将通知 {{users}}",
     "post": "发送",
     "posting": "发送中...",
     "reply": "回复",

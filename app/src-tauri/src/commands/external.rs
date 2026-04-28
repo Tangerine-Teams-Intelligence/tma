@@ -7,7 +7,13 @@ use std::path::{Path, PathBuf};
 use std::process::Command as StdCommand;
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Manager, Runtime, State};
+// === v1.13.3 round-3 ===
+// Drop unused `Manager` import — `cargo check` flagged it. AppHandle here
+// is only ever used for `app.shell()` (via ShellExt) and `app.state()`
+// is plumbed through the State<…> extractor, so the Manager trait isn't
+// actually needed in this module.
+use tauri::{AppHandle, Runtime, State};
+// === end v1.13.3 round-3 ===
 use tauri_plugin_shell::ShellExt;
 
 use super::runner::run_oneshot;

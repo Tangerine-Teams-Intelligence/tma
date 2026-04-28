@@ -325,6 +325,15 @@ pub fn tmi_args(subcommand: &str, extra: &[String]) -> Vec<String> {
 }
 
 /// Convenience for callers that want a `Vec<String>` of OS path strings.
+///
+/// === v1.13.3 round-3 ===
+/// Currently has zero callers — `cargo check` flagged it as dead. Kept
+/// as a public helper because the runner module is the canonical place
+/// for OS-path coercion and future StdCommand call sites (e.g. the
+/// pending whisper bin auto-detection in setup_wizard) will want it.
+/// `#[allow(dead_code)]` quiets the warning without losing the helper.
+/// === end v1.13.3 round-3 ===
+#[allow(dead_code)]
 pub fn paths_as_strings(paths: &[PathBuf]) -> Result<Vec<String>, AppError> {
     paths
         .iter()

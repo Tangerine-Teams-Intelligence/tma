@@ -185,6 +185,18 @@ export async function inboxMarkAllRead(): Promise<number> {
 /**
  * Resolve the current user profile. Re-fetches once on mount; the alias is
  * stable for a given install so we don't poll.
+ *
+ * === v1.13.3 round-3 ===
+ * Currently has zero in-app callers — AppShell calls
+ * `identityGetCurrentUser()` imperatively inside a useEffect (it only
+ * needs the alias once, stored into a ref for the inbox listener), and
+ * everywhere else reads `useStore((s) => s.ui.currentUser)` for the
+ * alias-only shape. Kept intentionally as the exported public-API hook
+ * for components that want the full UserProfile shape (display_name,
+ * avatar_url) — Settings profile editor + future avatar pickers will be
+ * the natural callers. Delete only after one full release with no new
+ * call sites added.
+ * === end v1.13.3 round-3 ===
  */
 export function useCurrentUser(): {
   user: UserProfile | null;
