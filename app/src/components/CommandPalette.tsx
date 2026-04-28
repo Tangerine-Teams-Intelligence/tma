@@ -48,6 +48,9 @@ import { logEvent } from "@/lib/telemetry";
 // === wave 10 === — git auto-sync palette commands.
 import { gitSyncPull, gitSyncPush, gitSyncStatus } from "@/lib/tauri";
 // === end wave 10 ===
+// === wave 11 === — Test LLM channel palette command.
+import { setupWizardTestChannel } from "@/lib/tauri";
+// === end wave 11 ===
 
 interface Props {
   open: boolean;
@@ -203,6 +206,11 @@ export function CommandPalette({ open, onClose }: Props) {
   const memoryRoot = useStore((s) => s.ui.memoryRoot);
   const cycleTheme = useStore((s) => s.ui.cycleTheme);
   const setWelcomed = useStore((s) => s.ui.setWelcomed);
+  // === wave 11 === — pull setup wizard open setter + toast push so the
+  // "Set up LLM channel" / "Test LLM channel" palette items can dispatch.
+  const setSetupWizardOpen = useStore((s) => s.ui.setSetupWizardOpen);
+  const pushToast = useStore((s) => s.ui.pushToast);
+  // === end wave 11 ===
   const inputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<MemorySearchHit[]>([]);
@@ -272,6 +280,54 @@ export function CommandPalette({ open, onClose }: Props) {
           close();
         },
       },
+      // === wave 11 === — first-run LLM channel setup wizard. Opens the
+      // SetupWizard modal directly. Independent of the welcome-tour replay
+      // (above) so a returning user can re-run the LLM setup without also
+      // re-watching the 4-card welcome overlay.
+      {
+        id: "action:setup-llm-channel",
+        kind: "action",
+        label: "Set up LLM channel",
+        search: "setup llm channel ai brain wizard mcp ollama configure init",
+        hint: "open setup wizard",
+        icon: Brain,
+        onSelect: () => {
+          setSetupWizardOpen(true);
+          close();
+        },
+      },
+      // Run the test prompt through session_borrower::dispatch and toast
+      // the result. Useful for "did my channel break?" debugging without
+      // walking the wizard again.
+      {
+        id: "action:test-llm-channel",
+        kind: "action",
+        label: "Test LLM channel",
+        search: "test llm channel probe sample prompt borrow check",
+        hint: "send test prompt",
+        icon: PlayCircle,
+        onSelect: async () => {
+          close();
+          try {
+            const r = await setupWizardTestChannel({});
+            if (r.ok) {
+              pushToast(
+                "success",
+                `LLM channel OK · ${r.channel_used} · ${r.latency_ms}ms`,
+              );
+            } else {
+              pushToast(
+                "error",
+                `LLM channel test failed: ${r.error ?? "unknown"}`,
+              );
+            }
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            pushToast("error", `LLM channel test failed: ${msg}`);
+          }
+        },
+      },
+      // === end wave 11 ===
       {
         id: "action:open-memory-dir",
         kind: "action",
@@ -398,7 +454,17 @@ export function CommandPalette({ open, onClose }: Props) {
     ];
 
     return [...actions, ...routes, ...aiTools];
-  }, [navigate, onClose, cycleTheme, setWelcomed, memoryRoot]);
+  }, [
+    navigate,
+    onClose,
+    cycleTheme,
+    setWelcomed,
+    memoryRoot,
+    // === wave 11 === — new deps for setup-wizard palette items.
+    setSetupWizardOpen,
+    pushToast,
+    // === end wave 11 ===
+  ]);
 
   // Run memory search whenever the query changes (debounced via the
   // effect's natural batching).

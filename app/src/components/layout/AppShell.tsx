@@ -18,6 +18,15 @@ import { KeyboardShortcutsOverlay } from "@/components/KeyboardShortcutsOverlay"
 // overlay self-hides once `ui.welcomed` flips, so re-renders after the
 // first cold launch are zero-cost.
 import { WelcomeOverlay } from "@/components/WelcomeOverlay";
+// === wave 11 === — first-run LLM channel setup wizard + banner.
+// Boot flow: WelcomeOverlay (~30s) → SetupWizard (~60s) → /today.
+// The wizard auto-opens once after the welcome overlay closes for fresh
+// installs that haven't already verified an LLM channel; the banner
+// stays visible across cold launches until the user finishes the wizard
+// or flips `setupWizardSkipped` to true via the in-wizard Skip link.
+import { SetupWizard } from "@/components/SetupWizard";
+import { SetupWizardBanner } from "@/components/SetupWizardBanner";
+// === end wave 11 ===
 // Wave 3 — offline indicator (OBSERVABILITY_SPEC §8 edge case catalog)
 import { ConnectionBanner } from "@/components/ConnectionBanner";
 // === wave 10 === — v1.10 git-init wizard banner. Mounts in the system
@@ -125,6 +134,20 @@ export function AppShell() {
   const samplesSeeded = useStore((s) => s.ui.samplesSeeded);
   const setSamplesSeeded = useStore((s) => s.ui.setSamplesSeeded);
   const memoryConfigMode = useStore((s) => s.ui.memoryConfig.mode);
+  // === wave 11 === — first-run setup-wizard auto-trigger state.
+  // Read once per render so the auto-trigger effect can decide whether to
+  // mount SetupWizard right after WelcomeOverlay closes. The wizard only
+  // auto-shows ONCE per fresh install: skip = wizard suppressed forever
+  // (until user opens via banner / Cmd+K), channelReady = wizard never
+  // re-prompts (banner self-hides too).
+  const welcomed = useStore((s) => s.ui.welcomed);
+  const setupWizardOpen = useStore((s) => s.ui.setupWizardOpen);
+  const setSetupWizardOpen = useStore((s) => s.ui.setSetupWizardOpen);
+  const setupWizardChannelReady = useStore(
+    (s) => s.ui.setupWizardChannelReady,
+  );
+  const setupWizardSkipped = useStore((s) => s.ui.setupWizardSkipped);
+  // === end wave 11 ===
   // === v2.5 trial gate ===
   // Track the team-id used for billing scoping. When the user is solo,
   // we anchor on `solo-${currentUser}`; in team mode we use the repoUrl
@@ -507,6 +530,38 @@ export function AppShell() {
     };
   }, [currentUser]);
 
+  // === wave 11 === — auto-trigger the SetupWizard on first launch.
+  //
+  // Sequence: WelcomeOverlay (4-C) closes → flips `welcomed = true`. THIS
+  // effect watches `welcomed` and opens the wizard exactly once if the
+  // user hasn't already finished it (`channelReady`) or explicitly skipped
+  // (`skipped`). The wizard's persisted state controls future cold launches
+  // — once channelReady or skipped flips, the auto-trigger never re-fires.
+  //
+  // We don't gate on a route since the user may have arrived on /today via
+  // a deep link; the wizard is route-agnostic. WelcomeOverlay is the only
+  // gate (so the welcome 4-card tour comes first), and we leave a beat for
+  // the welcome dismissal to render through before opening to avoid a
+  // layered modal stacking glitch.
+  useEffect(() => {
+    if (!welcomed) return;
+    if (setupWizardChannelReady) return;
+    if (setupWizardSkipped) return;
+    if (setupWizardOpen) return;
+    const timer = window.setTimeout(() => {
+      setSetupWizardOpen(true);
+      void logEvent("setup_wizard_auto_triggered", {});
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [
+    welcomed,
+    setupWizardChannelReady,
+    setupWizardSkipped,
+    setupWizardOpen,
+    setSetupWizardOpen,
+  ]);
+  // === end wave 11 ===
+
   return (
     // v1.8 Phase 4 — the AmbientInputObserver wraps the whole shell so a
     // single delegated input listener sees every textarea / contenteditable
@@ -538,6 +593,14 @@ export function AppShell() {
             <GitInitBannerContainer />
           </ErrorBoundary>
           {/* === end wave 10 === */}
+          {/* === wave 11 === — first-run LLM channel banner. Self-hides
+              when the user finishes the wizard (channelReady) or
+              dismisses for the session. ErrorBoundary so a thrown
+              render never blanks the shell (Wave 10.1 lesson). */}
+          <ErrorBoundary label="SetupWizardBanner">
+            <SetupWizardBanner />
+          </ErrorBoundary>
+          {/* === end wave 11 === */}
           <WhatsNewBanner />
           {/* === v2.0-beta.3 co-thinker home strip ===
               Sits between the system banners and the suggestion banner so
@@ -663,6 +726,21 @@ export function AppShell() {
             Self-hides on subsequent launches via persisted `welcomed`
             flag, so this mount is a no-op for returning users. */}
         <WelcomeOverlay />
+
+        {/* === wave 11 === — first-run LLM channel setup wizard. Auto-
+            opens once after WelcomeOverlay closes (effect above). Also
+            opened on demand from the SetupWizardBanner / Cmd+K palette /
+            heartbeat-fail toast. Wrapped in an ErrorBoundary so a thrown
+            render never blanks the shell. Mounted ABOVE WelcomeOverlay
+            in z-order so a fast re-trigger doesn't end up trapped under
+            a stale welcome tour. */}
+        <ErrorBoundary label="SetupWizard">
+          <SetupWizard
+            open={setupWizardOpen}
+            onClose={() => setSetupWizardOpen(false)}
+          />
+        </ErrorBoundary>
+        {/* === end wave 11 === */}
 
         {/* === wave 5-β === */}
         {/* Discoverability layer. HelpButton is a fixed-position floating

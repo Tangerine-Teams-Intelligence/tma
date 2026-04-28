@@ -272,6 +272,34 @@ interface UiSlice {
   gitAutoPushOnCommit: boolean;
   setGitAutoPushOnCommit: (v: boolean) => void;
   // === end wave 10 ===
+  // === wave 11 ===
+  /** v1.10.2 — first-run LLM channel setup wizard slice.
+   *
+   *  Three-state model the React side reads to decide what to render:
+   *    - `setupWizardOpen` (transient) — true while the modal is on screen.
+   *      Reset on every cold launch.
+   *    - `setupWizardChannelReady` (persisted) — true once the user
+   *      finished the wizard with a verified channel. Hides the banner
+   *      on subsequent launches; the wizard never auto-prompts again.
+   *    - `setupWizardSkipped` (persisted, per-cold-launch reset on the
+   *      banner via `setupWizardDismissedThisSession`) — true if the
+   *      user clicked Skip. The banner stays visible (so the user can
+   *      re-open it) but auto-prompt is suppressed.
+   *
+   *  Banner-only "dismiss for this session" is `setupWizardDismissedThisSession`
+   *  — NOT persisted. Cleared on every cold launch so the banner re-appears
+   *  until the user actually completes the wizard. */
+  setupWizardOpen: boolean;
+  setupWizardChannelReady: boolean;
+  setupWizardSkipped: boolean;
+  setupWizardPrimaryChannel: string | null;
+  setupWizardDismissedThisSession: boolean;
+  setSetupWizardOpen: (v: boolean) => void;
+  setSetupWizardChannelReady: (v: boolean) => void;
+  setSetupWizardSkipped: (v: boolean) => void;
+  setSetupWizardPrimaryChannel: (v: string | null) => void;
+  setSetupWizardDismissedThisSession: (v: boolean) => void;
+  // === end wave 11 ===
   setAgiParticipation: (v: boolean) => void;
   setAgiVolume: (v: AgiVolume) => void;
   toggleAgiChannelMute: (channel: string) => void;
@@ -720,6 +748,17 @@ export const useStore = create<Store>()(
         gitAutoCommitOnHeartbeat: true,
         gitAutoPushOnCommit: true,
         // === end wave 10 ===
+        // === wave 11 ===
+        // v1.10.2 — first-run LLM channel setup wizard. Defaults match
+        // a fresh install (no LLM channel yet). The AppShell auto-trigger
+        // reads these to decide whether to mount SetupWizard after the
+        // WelcomeOverlay closes.
+        setupWizardOpen: false,
+        setupWizardChannelReady: false,
+        setupWizardSkipped: false,
+        setupWizardPrimaryChannel: null,
+        setupWizardDismissedThisSession: false,
+        // === end wave 11 ===
         // v3.0 §1 + §5 — personal-agent capture flags. ALL FALSE by default
         // — opt-in per source. Hydrated from `personal_agents_get_settings`
         // on Settings page mount; the flag map mirrors the Rust persisted
@@ -799,6 +838,20 @@ export const useStore = create<Store>()(
         },
         setMemoryRoot: (path) =>
           set((s) => ({ ui: { ...s.ui, memoryRoot: path } })),
+        // === wave 11 === — first-run LLM setup wizard setters.
+        setSetupWizardOpen: (v) =>
+          set((s) => ({ ui: { ...s.ui, setupWizardOpen: v } })),
+        setSetupWizardChannelReady: (v) =>
+          set((s) => ({ ui: { ...s.ui, setupWizardChannelReady: v } })),
+        setSetupWizardSkipped: (v) =>
+          set((s) => ({ ui: { ...s.ui, setupWizardSkipped: v } })),
+        setSetupWizardPrimaryChannel: (v) =>
+          set((s) => ({ ui: { ...s.ui, setupWizardPrimaryChannel: v } })),
+        setSetupWizardDismissedThisSession: (v) =>
+          set((s) => ({
+            ui: { ...s.ui, setupWizardDismissedThisSession: v },
+          })),
+        // === end wave 11 ===
         toggleSidebar: () =>
           set((s) => ({ ui: { ...s.ui, sidebarCollapsed: !s.ui.sidebarCollapsed } })),
         setPalette: (open) =>
@@ -1255,6 +1308,14 @@ export const useStore = create<Store>()(
             gitAutoCommitOnHeartbeat: s.ui.gitAutoCommitOnHeartbeat,
             gitAutoPushOnCommit: s.ui.gitAutoPushOnCommit,
             // === end wave 10 ===
+            // === wave 11 === — first-run LLM setup wizard latch.
+            // `setupWizardOpen` and `setupWizardDismissedThisSession` are
+            // session-scoped (cold launch resets them); only the
+            // "wizard finished / user permanently skipped" facts persist.
+            setupWizardChannelReady: s.ui.setupWizardChannelReady,
+            setupWizardSkipped: s.ui.setupWizardSkipped,
+            setupWizardPrimaryChannel: s.ui.setupWizardPrimaryChannel,
+            // === end wave 11 ===
           },
           skills: { meetingConfig: s.skills.meetingConfig },
         }) as unknown as Store,
@@ -1389,6 +1450,21 @@ export const useStore = create<Store>()(
               (p?.ui as { gitAutoPushOnCommit?: boolean } | undefined)
                 ?.gitAutoPushOnCommit ?? current.ui.gitAutoPushOnCommit,
             // === end wave 10 ===
+            // === wave 11 === — first-run LLM setup wizard hydration.
+            // Bare `(p?.ui as ...)` casts so a v1.10.1-and-earlier persisted
+            // state (which has none of these keys) upgrades cleanly to the
+            // current.ui defaults.
+            setupWizardChannelReady:
+              (p?.ui as { setupWizardChannelReady?: boolean } | undefined)
+                ?.setupWizardChannelReady ?? current.ui.setupWizardChannelReady,
+            setupWizardSkipped:
+              (p?.ui as { setupWizardSkipped?: boolean } | undefined)
+                ?.setupWizardSkipped ?? current.ui.setupWizardSkipped,
+            setupWizardPrimaryChannel:
+              (p?.ui as { setupWizardPrimaryChannel?: string | null } | undefined)
+                ?.setupWizardPrimaryChannel ??
+              current.ui.setupWizardPrimaryChannel,
+            // === end wave 11 ===
             // v3.0 §1 — personal-agent capture flags. Persisted; the
             // Settings page also calls `personal_agents_get_settings`
             // on mount to reconcile with the Rust source of truth.

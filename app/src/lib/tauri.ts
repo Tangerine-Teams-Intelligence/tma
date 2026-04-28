@@ -3351,3 +3351,149 @@ export async function gitSyncHistory(args: {
   );
 }
 // === end wave 10 ===
+
+// === wave 11 ===
+// v1.10.2 — first-run LLM channel setup wizard. Five typed wrappers
+// around the Tauri commands in `src-tauri/src/commands/setup_wizard.rs`.
+//
+// Defensive: every call uses `safeInvoke` with a sensible mock fallback
+// so the wizard renders during `vite dev` / vitest even without a real
+// backend. The mocks return shapes that match the "first run" detection
+// state (no editor, no Ollama, NoChannelAvailable) so the React side
+// exercises the install-something path by default — which is the worst
+// case it has to handle gracefully.
+
+export interface DetectedMcpTool {
+  tool_id: string;
+  display_name: string;
+  config_path: string;
+  already_has_tangerine: boolean;
+}
+
+export type RecommendedChannel =
+  | { kind: "mcp_sampling"; tool_id: string; requires_restart: boolean }
+  | { kind: "ollama_http"; default_model: string }
+  | { kind: "browser_ext" }
+  | { kind: "no_channel_available" };
+
+export interface SetupWizardDetection {
+  mcp_capable_tools: DetectedMcpTool[];
+  ollama_running: boolean;
+  ollama_default_model: string | null;
+  browser_ext_browsers: string[];
+  cloud_reachable: boolean;
+  recommended_channel: RecommendedChannel | null;
+}
+
+export interface SetupWizardAutoConfigResult {
+  ok: boolean;
+  file_written: string;
+  restart_required: boolean;
+  error: string | null;
+}
+
+export interface SetupWizardTestResult {
+  ok: boolean;
+  channel_used: string;
+  response_preview: string;
+  latency_ms: number;
+  error: string | null;
+}
+
+export interface InstallHintResult {
+  os: string;
+  url: string;
+  cli: string | null;
+  note: string;
+}
+
+export interface SetupWizardPersistedState {
+  completed_at: string | null;
+  channel_ready: boolean;
+  primary_channel: string | null;
+  skipped: boolean;
+}
+
+export async function setupWizardDetect(): Promise<SetupWizardDetection> {
+  return safeInvoke<SetupWizardDetection>(
+    "setup_wizard_detect",
+    undefined,
+    () => ({
+      mcp_capable_tools: [],
+      ollama_running: false,
+      ollama_default_model: null,
+      browser_ext_browsers: [],
+      cloud_reachable: false,
+      recommended_channel: { kind: "no_channel_available" },
+    }),
+  );
+}
+
+export async function setupWizardAutoConfigureMcp(
+  toolId: string,
+): Promise<SetupWizardAutoConfigResult> {
+  return safeInvoke<SetupWizardAutoConfigResult>(
+    "setup_wizard_auto_configure_mcp",
+    { toolId },
+    () => ({
+      ok: true,
+      file_written: `~/.${toolId}/mcp.json`,
+      restart_required: true,
+      error: null,
+    }),
+  );
+}
+
+export async function setupWizardTestChannel(args: {
+  channel?: string;
+  toolId?: string;
+}): Promise<SetupWizardTestResult> {
+  return safeInvoke<SetupWizardTestResult>(
+    "setup_wizard_test_channel",
+    { args: { channel: args.channel ?? null, tool_id: args.toolId ?? null } },
+    () => ({
+      ok: true,
+      channel_used: args.channel ?? "mcp_sampling",
+      response_preview: "Tangerine LLM channel test OK",
+      latency_ms: 42,
+      error: null,
+    }),
+  );
+}
+
+export async function setupWizardInstallOllamaHint(): Promise<InstallHintResult> {
+  return safeInvoke<InstallHintResult>(
+    "setup_wizard_install_ollama_hint",
+    undefined,
+    () => ({
+      os: "windows",
+      url: "https://ollama.com/download/windows",
+      cli: null,
+      note: "Install Ollama and run it; default port is 11434.",
+    }),
+  );
+}
+
+export async function setupWizardPersistState(args: {
+  channelReady: boolean;
+  primaryChannel?: string | null;
+  skipped?: boolean;
+}): Promise<SetupWizardPersistedState> {
+  return safeInvoke<SetupWizardPersistedState>(
+    "setup_wizard_persist_state",
+    {
+      args: {
+        channel_ready: args.channelReady,
+        primary_channel: args.primaryChannel ?? null,
+        skipped: args.skipped ?? false,
+      },
+    },
+    () => ({
+      completed_at: new Date().toISOString(),
+      channel_ready: args.channelReady,
+      primary_channel: args.primaryChannel ?? null,
+      skipped: args.skipped ?? false,
+    }),
+  );
+}
+// === end wave 11 ===

@@ -65,6 +65,11 @@ export default function CoThinkerRoute() {
   const { t } = useTranslation();
   const primaryAITool = useStore((s) => s.ui.primaryAITool);
   const pushToast = useStore((s) => s.ui.pushToast);
+  // === wave 11 === — heartbeat-fail toast now opens the SetupWizard
+  // instead of routing to /ai-tools/cursor (which forced the user to
+  // hunt for the right setup steps). The wizard is the guided path.
+  const setSetupWizardOpen = useStore((s) => s.ui.setSetupWizardOpen);
+  // === end wave 11 ===
   const location = useLocation();
 
   const [content, setContent] = useState<string>("");
@@ -150,12 +155,18 @@ export default function CoThinkerRoute() {
   }
   function pushHeartbeatErrorToast(err: string) {
     if (isLlmConfigError(err)) {
+      // === wave 11 === — open the SetupWizard instead of navigating
+      // to /ai-tools/cursor. The wizard is the guided fix; a raw
+      // ai-tools route deep-link makes the user puzzle out which knob
+      // to turn. `onAccept` runs before dismiss so the wizard opens
+      // immediately when the user clicks the CTA.
       pushToast({
         kind: "error",
-        msg: `${t("welcome.heartbeatNoChannelTitle")} ${t("welcome.heartbeatNoChannelBody")}`,
-        ctaLabel: t("welcome.heartbeatNoChannelCta"),
-        ctaHref: "/ai-tools/cursor",
+        msg: `${t("setupWizard.heartbeatToastTitle")} ${t("setupWizard.heartbeatToastBody")}`,
+        ctaLabel: t("setupWizard.heartbeatToastCta"),
+        onAccept: () => setSetupWizardOpen(true),
       });
+      // === end wave 11 ===
     } else {
       pushToast("error", `${t("coThinker.heartbeatFailed")} ${err}`);
     }

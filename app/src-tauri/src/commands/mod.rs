@@ -231,6 +231,17 @@ pub mod sso;
 pub mod audit;
 // === end v3.5 audit ===
 
+// === wave 11 ===
+// v1.10.2 — first-run LLM channel setup wizard. 5 commands behind the
+// React `SetupWizard.tsx`: detect installed editors / Ollama / browsers,
+// auto-merge a `tangerine` entry into the chosen editor's mcp.json, send a
+// canonical test prompt through `session_borrower::dispatch`, surface OS-
+// specific Ollama install hints, and persist a "channel ready" state file
+// so the wizard banner self-hides for users who already finished. See
+// `setup_wizard.rs` for the full doc comment + command shapes.
+pub mod setup_wizard;
+// === end wave 11 ===
+
 mod error;
 mod paths;
 mod runner;
@@ -579,6 +590,14 @@ macro_rules! tmi_invoke_handler {
             $crate::commands::audit::audit_get_region,
             $crate::commands::audit::audit_set_region,
             // === end v3.5 audit ===
+            // === wave 11 ===
+            // v1.10.2 — first-run LLM channel setup wizard. 5 commands.
+            $crate::commands::setup_wizard::setup_wizard_detect,
+            $crate::commands::setup_wizard::setup_wizard_auto_configure_mcp,
+            $crate::commands::setup_wizard::setup_wizard_test_channel,
+            $crate::commands::setup_wizard::setup_wizard_install_ollama_hint,
+            $crate::commands::setup_wizard::setup_wizard_persist_state,
+            // === end wave 11 ===
         ]
     };
 }

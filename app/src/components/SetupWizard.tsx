@@ -1,0 +1,1252 @@
+// === wave 11 ===
+/**
+ * v1.10.2 — first-run LLM channel setup wizard.
+ *
+ * The single biggest UX gap blocking real-user adoption: a fresh install
+ * lands on /today, the heartbeat fires within ~5 min and tries to call an
+ * LLM via session_borrower (3 channels: MCP sampling / Browser ext /
+ * Ollama HTTP). All 3 channels fail by default — the user sees a cryptic
+ * "心跳失败" toast with no actionable path forward.
+ *
+ * SetupWizard fixes this with a 5-step guided flow:
+ *
+ *   1. Welcome      — "Set up your AGI brain in 60 seconds" + Skip link.
+ *   2. Detect       — calls `setup_wizard_detect` and renders results.
+ *                     Highlights the recommended easiest path. The user
+ *                     can pick an alternative.
+ *   3. Configure    — varies by selection. For MCP tools we offer
+ *                     auto-configure (writes a `tangerine` entry to
+ *                     mcp.json) or "show me the snippet" for manual paste.
+ *                     For Ollama we just confirm. For "no channel" we
+ *                     show install hints + a Re-detect button.
+ *   4. Test         — sends a fixed prompt through `session_borrower`
+ *                     and shows the response preview + latency. On fail
+ *                     the user can Retry or pick a different channel.
+ *   5. Done         — flips `setup_wizard.channel_ready` so the banner
+ *                     and heartbeat error toast hide.
+ *
+ * Mounted by AppShell (only auto-shows on first cold launch after the
+ * WelcomeOverlay closes). Also opened on demand from:
+ *   - the Cmd+K palette ("Set up LLM channel")
+ *   - the SetupWizardBanner ("Set up now")
+ *   - the heartbeat-fail toast ("Set up channel" CTA)
+ *
+ * Defensive: every Tauri call is wrapped in try/catch with a safe
+ * fallback (post-Wave-10.1 lesson — a thrown render-time exception in
+ * this overlay would blank the whole shell since SetupWizard sits at
+ * the top of the z-stack).
+ */
+
+import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
+import {
+  Sparkles,
+  RotateCw,
+  Check,
+  X,
+  ChevronRight,
+  ExternalLink,
+  Copy,
+  Server,
+  Brain,
+  Globe,
+  Cloud,
+  AlertCircle,
+} from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import { useStore } from "@/lib/store";
+import { logEvent } from "@/lib/telemetry";
+import {
+  setupWizardDetect,
+  setupWizardAutoConfigureMcp,
+  setupWizardTestChannel,
+  setupWizardInstallOllamaHint,
+  setupWizardPersistState,
+  type SetupWizardDetection,
+  type SetupWizardTestResult,
+  type RecommendedChannel,
+  type DetectedMcpTool,
+  type InstallHintResult,
+} from "@/lib/tauri";
+
+type WizardStep = "welcome" | "detect" | "configure" | "test" | "done";
+
+/**
+ * The user's selected channel — set on the Detect step + carried through
+ * Configure → Test → Done. Mirrors the shape of `RecommendedChannel`
+ * but without the "no_channel_available" variant (the Configure step
+ * branches into install-hints when there's nothing to use yet).
+ */
+type SelectedChannel =
+  | { kind: "mcp_sampling"; tool_id: string; config_path: string }
+  | { kind: "ollama_http"; default_model: string }
+  | { kind: "browser_ext" }
+  | { kind: "install_required" };
+
+interface SetupWizardProps {
+  /** When true, the wizard renders as a full-screen overlay. */
+  open: boolean;
+  /** Close handler. Called from Skip + the X button + step 5 CTA. */
+  onClose: () => void;
+}
+
+export function SetupWizard({ open, onClose }: SetupWizardProps) {
+  const { t } = useTranslation();
+  const setSetupWizardChannelReady = useStore(
+    (s) => s.ui.setSetupWizardChannelReady,
+  );
+  const setSetupWizardSkipped = useStore((s) => s.ui.setSetupWizardSkipped);
+  const setSetupWizardPrimaryChannel = useStore(
+    (s) => s.ui.setSetupWizardPrimaryChannel,
+  );
+  const setPrimaryAITool = useStore((s) => s.ui.setPrimaryAITool);
+
+  const [step, setStep] = useState<WizardStep>("welcome");
+  const [detection, setDetection] = useState<SetupWizardDetection | null>(null);
+  const [detecting, setDetecting] = useState(false);
+  const [detectError, setDetectError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<SelectedChannel | null>(null);
+  const [autoConfigStatus, setAutoConfigStatus] = useState<
+    "idle" | "writing" | "ok" | "error"
+  >("idle");
+  const [autoConfigPath, setAutoConfigPath] = useState<string | null>(null);
+  const [autoConfigError, setAutoConfigError] = useState<string | null>(null);
+  const [showSnippet, setShowSnippet] = useState(false);
+  const [testResult, setTestResult] = useState<SetupWizardTestResult | null>(
+    null,
+  );
+  const [testing, setTesting] = useState(false);
+  const [installHint, setInstallHint] = useState<InstallHintResult | null>(
+    null,
+  );
+
+  // Reset transient state on every fresh open. Persisted facts
+  // (channel_ready / primary_channel) stay where they were.
+  useEffect(() => {
+    if (!open) return;
+    setStep("welcome");
+    setDetection(null);
+    setDetectError(null);
+    setSelected(null);
+    setAutoConfigStatus("idle");
+    setAutoConfigPath(null);
+    setAutoConfigError(null);
+    setShowSnippet(false);
+    setTestResult(null);
+    void logEvent("setup_wizard_opened", {});
+  }, [open]);
+
+  // Lazy-load the install hint the first time the user lands on the
+  // "no channel" Configure step. Cached for the rest of the wizard
+  // session.
+  useEffect(() => {
+    if (selected?.kind !== "install_required") return;
+    if (installHint !== null) return;
+    void (async () => {
+      try {
+        const hint = await setupWizardInstallOllamaHint();
+        setInstallHint(hint);
+      } catch (e) {
+        // Non-fatal — the React side renders a generic install link
+        // when the hint isn't available.
+        // eslint-disable-next-line no-console
+        console.error("[setupWizard] install hint failed", e);
+      }
+    })();
+  }, [selected, installHint]);
+
+  // ---- step transitions ----
+
+  const onSkip = () => {
+    void logEvent("setup_wizard_skipped", { from_step: step });
+    setSetupWizardSkipped(true);
+    // Persist so the wizard never auto-prompts again unless the user
+    // explicitly re-opens it from Cmd+K or the banner. Tauri-side write
+    // is fire-and-forget — failure is logged but doesn't block the close.
+    void setupWizardPersistState({
+      channelReady: false,
+      primaryChannel: null,
+      skipped: true,
+    }).catch((e) => {
+      // eslint-disable-next-line no-console
+      console.error("[setupWizard] persist skipped state failed", e);
+    });
+    onClose();
+  };
+
+  const onAdvanceToDetect = async () => {
+    setStep("detect");
+    setDetecting(true);
+    setDetectError(null);
+    try {
+      const det = await setupWizardDetect();
+      setDetection(det);
+      // Pre-pick the recommended channel so the user can hit Continue
+      // without thinking. They can change it before advancing.
+      const rec = det.recommended_channel;
+      if (rec) {
+        setSelected(recommendedToSelected(rec, det.mcp_capable_tools));
+      }
+    } catch (e) {
+      setDetectError(typeof e === "string" ? e : (e as Error).message);
+      // eslint-disable-next-line no-console
+      console.error("[setupWizard] detect failed", e);
+    } finally {
+      setDetecting(false);
+    }
+  };
+
+  const onAutoConfigure = async () => {
+    if (selected?.kind !== "mcp_sampling") return;
+    setAutoConfigStatus("writing");
+    setAutoConfigError(null);
+    try {
+      const r = await setupWizardAutoConfigureMcp(selected.tool_id);
+      setAutoConfigPath(r.file_written);
+      if (r.ok) {
+        setAutoConfigStatus("ok");
+        void logEvent("setup_wizard_auto_configured", {
+          tool_id: selected.tool_id,
+        });
+      } else {
+        setAutoConfigStatus("error");
+        setAutoConfigError(r.error ?? "unknown error");
+      }
+    } catch (e) {
+      setAutoConfigStatus("error");
+      setAutoConfigError(typeof e === "string" ? e : (e as Error).message);
+      // eslint-disable-next-line no-console
+      console.error("[setupWizard] auto configure failed", e);
+    }
+  };
+
+  const onAdvanceToTest = async () => {
+    if (!selected || selected.kind === "install_required") return;
+    setStep("test");
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const channel =
+        selected.kind === "mcp_sampling"
+          ? "mcp_sampling"
+          : selected.kind === "ollama_http"
+            ? "ollama"
+            : "browser_ext";
+      const toolId =
+        selected.kind === "mcp_sampling" ? selected.tool_id : undefined;
+      const r = await setupWizardTestChannel({
+        channel,
+        toolId,
+      });
+      setTestResult(r);
+      void logEvent("setup_wizard_tested", {
+        ok: r.ok,
+        channel: r.channel_used,
+        latency_ms: r.latency_ms,
+      });
+    } catch (e) {
+      const msg = typeof e === "string" ? e : (e as Error).message;
+      setTestResult({
+        ok: false,
+        channel_used: "error",
+        response_preview: "",
+        latency_ms: 0,
+        error: msg,
+      });
+      // eslint-disable-next-line no-console
+      console.error("[setupWizard] test channel failed", e);
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const onAdvanceToDone = async () => {
+    setStep("done");
+    if (!selected) return;
+    const channelLabel =
+      selected.kind === "mcp_sampling"
+        ? `mcp_sampling/${selected.tool_id}`
+        : selected.kind === "ollama_http"
+          ? "ollama"
+          : "browser_ext";
+    setSetupWizardChannelReady(true);
+    setSetupWizardPrimaryChannel(channelLabel);
+    // Set the user's primary AI tool so subsequent heartbeats route
+    // straight to the channel they just verified.
+    if (selected.kind === "mcp_sampling") {
+      setPrimaryAITool(selected.tool_id);
+    } else if (selected.kind === "ollama_http") {
+      setPrimaryAITool("ollama");
+    }
+    try {
+      await setupWizardPersistState({
+        channelReady: true,
+        primaryChannel: channelLabel,
+        skipped: false,
+      });
+      void logEvent("setup_wizard_completed", { primary_channel: channelLabel });
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error("[setupWizard] persist completed state failed", e);
+    }
+  };
+
+  if (!open) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-[110] flex items-center justify-center bg-stone-950/70 px-4 py-6 backdrop-blur-sm"
+      data-testid="setup-wizard"
+      aria-modal="true"
+      role="dialog"
+      aria-labelledby="setup-wizard-title"
+    >
+      <div className="relative w-full max-w-2xl rounded-lg border border-stone-200 bg-white p-7 shadow-2xl dark:border-stone-800 dark:bg-stone-900">
+        <button
+          type="button"
+          aria-label={t("setupWizard.close")}
+          data-testid="setup-wizard-close"
+          className="absolute right-4 top-4 inline-flex h-7 w-7 items-center justify-center rounded text-stone-400 hover:bg-stone-100 hover:text-stone-700 dark:hover:bg-stone-800 dark:hover:text-stone-200"
+          onClick={onClose}
+        >
+          <X size={14} />
+        </button>
+
+        <StepProgress step={step} />
+
+        {step === "welcome" && (
+          <WelcomeStep onContinue={() => void onAdvanceToDetect()} onSkip={onSkip} />
+        )}
+
+        {step === "detect" && (
+          <DetectStep
+            detection={detection}
+            detecting={detecting}
+            error={detectError}
+            selected={selected}
+            onSelect={setSelected}
+            onContinue={() => {
+              setStep("configure");
+              setShowSnippet(false);
+              setAutoConfigStatus("idle");
+            }}
+            onRetry={() => void onAdvanceToDetect()}
+            onSkip={onSkip}
+          />
+        )}
+
+        {step === "configure" && (
+          <ConfigureStep
+            selected={selected}
+            autoConfigStatus={autoConfigStatus}
+            autoConfigPath={autoConfigPath}
+            autoConfigError={autoConfigError}
+            showSnippet={showSnippet}
+            setShowSnippet={setShowSnippet}
+            installHint={installHint}
+            onAutoConfigure={() => void onAutoConfigure()}
+            onContinueAfterRestart={() => void onAdvanceToTest()}
+            onContinueOllama={() => void onAdvanceToTest()}
+            onReDetect={() => void onAdvanceToDetect()}
+            onSkip={onSkip}
+          />
+        )}
+
+        {step === "test" && (
+          <TestStep
+            testing={testing}
+            result={testResult}
+            onRetry={() => void onAdvanceToTest()}
+            onPickDifferent={() => setStep("detect")}
+            onContinue={() => void onAdvanceToDone()}
+            onSkip={onSkip}
+          />
+        )}
+
+        {step === "done" && <DoneStep onClose={onClose} />}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Step 1 — Welcome
+// ---------------------------------------------------------------------------
+
+function WelcomeStep({
+  onContinue,
+  onSkip,
+}: {
+  onContinue: () => void;
+  onSkip: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <section data-testid="setup-wizard-step-welcome" className="space-y-6">
+      <header>
+        <p className="ti-section-label">{t("setupWizard.kicker")}</p>
+        <h1
+          id="setup-wizard-title"
+          className="mt-2 text-display-md text-[var(--ti-ink-900)] dark:text-[var(--ti-ink-900)]"
+        >
+          {t("setupWizard.welcomeTitle")}
+        </h1>
+        <p className="mt-3 max-w-prose text-[13px] leading-relaxed text-[var(--ti-ink-600)] dark:text-[var(--ti-ink-500)]">
+          {t("setupWizard.welcomeBody")}
+        </p>
+      </header>
+
+      <div className="rounded-md border border-[var(--ti-orange-500)]/30 bg-[var(--ti-orange-50)]/40 p-4 dark:border-[var(--ti-orange-500)]/30 dark:bg-stone-900/40">
+        <div className="flex items-start gap-3">
+          <Sparkles
+            size={18}
+            className="mt-0.5 shrink-0 text-[var(--ti-orange-500)]"
+          />
+          <p className="text-[12px] leading-relaxed text-stone-700 dark:text-stone-300">
+            {t("setupWizard.welcomeHint")}
+          </p>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-4">
+        <Button onClick={onContinue} data-testid="setup-wizard-welcome-continue">
+          {t("setupWizard.letsGo")}
+          <ChevronRight size={16} aria-hidden />
+        </Button>
+        <button
+          type="button"
+          onClick={onSkip}
+          data-testid="setup-wizard-welcome-skip"
+          className="font-mono text-[12px] text-stone-500 underline-offset-2 hover:text-stone-900 hover:underline dark:text-stone-400 dark:hover:text-stone-100"
+        >
+          {t("setupWizard.skipForLater")}
+        </button>
+      </div>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Step 2 — Detect
+// ---------------------------------------------------------------------------
+
+function DetectStep({
+  detection,
+  detecting,
+  error,
+  selected,
+  onSelect,
+  onContinue,
+  onRetry,
+  onSkip,
+}: {
+  detection: SetupWizardDetection | null;
+  detecting: boolean;
+  error: string | null;
+  selected: SelectedChannel | null;
+  onSelect: (s: SelectedChannel | null) => void;
+  onContinue: () => void;
+  onRetry: () => void;
+  onSkip: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <section data-testid="setup-wizard-step-detect" className="space-y-5">
+      <header>
+        <h2 className="text-display-sm text-[var(--ti-ink-900)]">
+          {t("setupWizard.detectTitle")}
+        </h2>
+        <p className="mt-2 text-[13px] text-[var(--ti-ink-600)] dark:text-[var(--ti-ink-500)]">
+          {t("setupWizard.detectSubtitle")}
+        </p>
+      </header>
+
+      {detecting && (
+        <div
+          data-testid="setup-wizard-detect-loading"
+          className="flex items-center gap-2 text-[13px] text-stone-600 dark:text-stone-400"
+        >
+          <RotateCw size={14} className="animate-spin" />
+          <span>{t("setupWizard.detecting")}</span>
+        </div>
+      )}
+
+      {error && !detecting && (
+        <div
+          data-testid="setup-wizard-detect-error"
+          className="rounded-md border border-rose-300 bg-rose-50 p-3 text-[12px] text-rose-700 dark:border-rose-700/50 dark:bg-rose-950/30 dark:text-rose-300"
+        >
+          <div className="flex items-start gap-2">
+            <AlertCircle size={14} className="mt-0.5 shrink-0" />
+            <div>
+              <p>{error}</p>
+              <button
+                type="button"
+                className="mt-2 underline underline-offset-2"
+                onClick={onRetry}
+              >
+                {t("setupWizard.retry")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!detecting && !error && detection && (
+        <div className="space-y-3" data-testid="setup-wizard-detect-results">
+          {/* MCP-capable editors */}
+          {detection.mcp_capable_tools.length > 0 ? (
+            detection.mcp_capable_tools.map((tool) => {
+              const isSelected =
+                selected?.kind === "mcp_sampling" &&
+                selected.tool_id === tool.tool_id;
+              return (
+                <ChannelCard
+                  key={`mcp-${tool.tool_id}`}
+                  testId={`setup-wizard-channel-mcp-${tool.tool_id}`}
+                  icon={Brain}
+                  title={tool.display_name}
+                  subtitle={
+                    tool.already_has_tangerine
+                      ? t("setupWizard.alreadyConfigured")
+                      : t("setupWizard.foundAt", { path: shortenPath(tool.config_path) })
+                  }
+                  badge={t("setupWizard.recommendedMcp")}
+                  selected={isSelected}
+                  onClick={() =>
+                    onSelect({
+                      kind: "mcp_sampling",
+                      tool_id: tool.tool_id,
+                      config_path: tool.config_path,
+                    })
+                  }
+                />
+              );
+            })
+          ) : (
+            <p className="text-[12px] text-stone-500 dark:text-stone-400">
+              {t("setupWizard.noEditorFound")}
+            </p>
+          )}
+
+          {/* Ollama */}
+          <ChannelCard
+            testId="setup-wizard-channel-ollama"
+            icon={Server}
+            title="Ollama"
+            subtitle={
+              detection.ollama_running
+                ? detection.ollama_default_model
+                  ? t("setupWizard.ollamaRunning", {
+                      model: detection.ollama_default_model,
+                    })
+                  : t("setupWizard.ollamaRunningNoModel")
+                : t("setupWizard.ollamaNotRunning")
+            }
+            badge={
+              detection.ollama_running ? t("setupWizard.fallback") : undefined
+            }
+            disabled={!detection.ollama_running}
+            selected={selected?.kind === "ollama_http"}
+            onClick={() =>
+              detection.ollama_running &&
+              onSelect({
+                kind: "ollama_http",
+                default_model:
+                  detection.ollama_default_model ?? "llama3.1:8b",
+              })
+            }
+          />
+
+          {/* Browser ext fallback */}
+          {detection.browser_ext_browsers.length > 0 && (
+            <ChannelCard
+              testId="setup-wizard-channel-browser"
+              icon={Globe}
+              title={t("setupWizard.browserExt")}
+              subtitle={t("setupWizard.browserExtDetected", {
+                browser: detection.browser_ext_browsers[0],
+              })}
+              badge={t("setupWizard.lastResort")}
+              selected={selected?.kind === "browser_ext"}
+              onClick={() => onSelect({ kind: "browser_ext" })}
+            />
+          )}
+
+          {/* Cloud */}
+          <ChannelCard
+            testId="setup-wizard-channel-cloud"
+            icon={Cloud}
+            title={t("setupWizard.cloud")}
+            subtitle={t("setupWizard.cloudComingSoon")}
+            disabled
+            selected={false}
+            onClick={() => undefined}
+          />
+
+          {/* Install required fallback — when nothing was detected the
+              recommendation is "no_channel_available". Show the user a
+              path forward by selecting "install_required". */}
+          {!detection.mcp_capable_tools.length &&
+            !detection.ollama_running && (
+              <ChannelCard
+                testId="setup-wizard-channel-install"
+                icon={ExternalLink}
+                title={t("setupWizard.installSomething")}
+                subtitle={t("setupWizard.installSomethingHint")}
+                selected={selected?.kind === "install_required"}
+                onClick={() => onSelect({ kind: "install_required" })}
+              />
+            )}
+        </div>
+      )}
+
+      {!detecting && !error && (
+        <div className="flex flex-wrap items-center gap-4 pt-2">
+          <Button
+            onClick={onContinue}
+            disabled={selected === null}
+            data-testid="setup-wizard-detect-continue"
+          >
+            {t("setupWizard.useThis")}
+            <ChevronRight size={16} aria-hidden />
+          </Button>
+          <button
+            type="button"
+            onClick={onRetry}
+            data-testid="setup-wizard-detect-retry"
+            className="font-mono text-[12px] text-stone-500 underline-offset-2 hover:text-stone-900 hover:underline dark:text-stone-400 dark:hover:text-stone-100"
+          >
+            {t("setupWizard.reDetect")}
+          </button>
+          <button
+            type="button"
+            onClick={onSkip}
+            className="ml-auto font-mono text-[12px] text-stone-500 underline-offset-2 hover:text-stone-900 hover:underline dark:text-stone-400 dark:hover:text-stone-100"
+          >
+            {t("setupWizard.skipForLater")}
+          </button>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function ChannelCard({
+  testId,
+  icon: Icon,
+  title,
+  subtitle,
+  badge,
+  selected,
+  disabled,
+  onClick,
+}: {
+  testId: string;
+  icon: typeof Sparkles;
+  title: string;
+  subtitle: string;
+  badge?: string;
+  selected: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      data-testid={testId}
+      data-selected={selected ? "true" : "false"}
+      disabled={disabled}
+      onClick={onClick}
+      className={
+        "flex w-full items-start gap-3 rounded-md border p-4 text-left transition-colors duration-fast " +
+        (selected
+          ? "border-[var(--ti-orange-500)] bg-[var(--ti-orange-50)] dark:bg-stone-800/60"
+          : "border-stone-200 bg-stone-50 hover:border-stone-300 dark:border-stone-700 dark:bg-stone-900 dark:hover:border-stone-600") +
+        (disabled ? " cursor-not-allowed opacity-60" : "")
+      }
+    >
+      <Icon size={18} className="mt-0.5 shrink-0 text-stone-700 dark:text-stone-300" />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <h3 className="text-[13px] font-medium text-[var(--ti-ink-900)] dark:text-[var(--ti-ink-900)]">
+            {title}
+          </h3>
+          {badge && (
+            <span className="rounded bg-[var(--ti-orange-100,#FFE4CD)] px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wide text-[var(--ti-orange-700)] dark:bg-stone-800 dark:text-[var(--ti-orange-500)]">
+              {badge}
+            </span>
+          )}
+        </div>
+        <p className="mt-1 text-[12px] text-stone-600 dark:text-stone-400">
+          {subtitle}
+        </p>
+      </div>
+      {selected && (
+        <Check
+          size={14}
+          className="mt-1 shrink-0 text-[var(--ti-orange-500)]"
+          aria-hidden
+        />
+      )}
+    </button>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Step 3 — Configure
+// ---------------------------------------------------------------------------
+
+function ConfigureStep({
+  selected,
+  autoConfigStatus,
+  autoConfigPath,
+  autoConfigError,
+  showSnippet,
+  setShowSnippet,
+  installHint,
+  onAutoConfigure,
+  onContinueAfterRestart,
+  onContinueOllama,
+  onReDetect,
+  onSkip,
+}: {
+  selected: SelectedChannel | null;
+  autoConfigStatus: "idle" | "writing" | "ok" | "error";
+  autoConfigPath: string | null;
+  autoConfigError: string | null;
+  showSnippet: boolean;
+  setShowSnippet: (v: boolean) => void;
+  installHint: InstallHintResult | null;
+  onAutoConfigure: () => void;
+  onContinueAfterRestart: () => void;
+  onContinueOllama: () => void;
+  onReDetect: () => void;
+  onSkip: () => void;
+}) {
+  const { t } = useTranslation();
+  const snippet = useMemo(() => buildMcpSnippet(), []);
+
+  if (selected === null) {
+    return (
+      <section
+        data-testid="setup-wizard-step-configure"
+        className="text-[13px] text-stone-600 dark:text-stone-400"
+      >
+        {t("setupWizard.noChannelSelected")}
+      </section>
+    );
+  }
+
+  return (
+    <section data-testid="setup-wizard-step-configure" className="space-y-5">
+      <header>
+        <h2 className="text-display-sm text-[var(--ti-ink-900)]">
+          {t("setupWizard.configureTitle")}
+        </h2>
+      </header>
+
+      {selected.kind === "mcp_sampling" && (
+        <McpConfigurePane
+          toolId={selected.tool_id}
+          configPath={selected.config_path}
+          autoConfigStatus={autoConfigStatus}
+          autoConfigPath={autoConfigPath}
+          autoConfigError={autoConfigError}
+          showSnippet={showSnippet}
+          setShowSnippet={setShowSnippet}
+          snippet={snippet}
+          onAutoConfigure={onAutoConfigure}
+          onContinueAfterRestart={onContinueAfterRestart}
+        />
+      )}
+
+      {selected.kind === "ollama_http" && (
+        <div className="space-y-4" data-testid="setup-wizard-configure-ollama">
+          <p className="text-[13px] leading-relaxed text-[var(--ti-ink-700)] dark:text-stone-300">
+            {t("setupWizard.ollamaInstructions", {
+              model: selected.default_model,
+            })}
+          </p>
+          <Button
+            onClick={onContinueOllama}
+            data-testid="setup-wizard-configure-ollama-continue"
+          >
+            {t("setupWizard.continueButton")}
+            <ChevronRight size={16} aria-hidden />
+          </Button>
+        </div>
+      )}
+
+      {selected.kind === "browser_ext" && (
+        <div
+          className="space-y-4"
+          data-testid="setup-wizard-configure-browser"
+        >
+          <p className="text-[13px] leading-relaxed text-[var(--ti-ink-700)] dark:text-stone-300">
+            {t("setupWizard.browserInstructions")}
+          </p>
+          <Button onClick={onContinueOllama}>
+            {t("setupWizard.continueButton")}
+            <ChevronRight size={16} aria-hidden />
+          </Button>
+        </div>
+      )}
+
+      {selected.kind === "install_required" && (
+        <div
+          className="space-y-4"
+          data-testid="setup-wizard-configure-install"
+        >
+          <p className="text-[13px] leading-relaxed text-[var(--ti-ink-700)] dark:text-stone-300">
+            {t("setupWizard.installInstructions")}
+          </p>
+          <ul className="space-y-2 text-[13px] text-[var(--ti-ink-700)] dark:text-stone-300">
+            <li className="flex items-center gap-2">
+              <span aria-hidden className="text-[var(--ti-orange-500)]">·</span>
+              <a
+                href="https://cursor.com"
+                target="_blank"
+                rel="noreferrer noopener"
+                className="text-[var(--ti-orange-500)] underline-offset-2 hover:underline"
+              >
+                {t("setupWizard.installCursor")}
+              </a>
+            </li>
+            {installHint && (
+              <li className="flex items-center gap-2">
+                <span aria-hidden className="text-[var(--ti-orange-500)]">·</span>
+                <a
+                  href={installHint.url}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="text-[var(--ti-orange-500)] underline-offset-2 hover:underline"
+                >
+                  {t("setupWizard.installOllama")}
+                </a>
+                {installHint.cli && (
+                  <code className="ml-2 rounded bg-stone-100 px-1.5 py-0.5 font-mono text-[11px] text-stone-700 dark:bg-stone-800 dark:text-stone-300">
+                    {installHint.cli}
+                  </code>
+                )}
+              </li>
+            )}
+          </ul>
+          <Button onClick={onReDetect} data-testid="setup-wizard-install-redetect">
+            <RotateCw size={14} />
+            {t("setupWizard.iveInstalledRedetect")}
+          </Button>
+        </div>
+      )}
+
+      <div className="border-t border-stone-200 pt-3 dark:border-stone-800">
+        <button
+          type="button"
+          onClick={onSkip}
+          className="font-mono text-[12px] text-stone-500 underline-offset-2 hover:text-stone-900 hover:underline dark:text-stone-400 dark:hover:text-stone-100"
+        >
+          {t("setupWizard.skipForLater")}
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function McpConfigurePane({
+  toolId,
+  configPath,
+  autoConfigStatus,
+  autoConfigPath,
+  autoConfigError,
+  showSnippet,
+  setShowSnippet,
+  snippet,
+  onAutoConfigure,
+  onContinueAfterRestart,
+}: {
+  toolId: string;
+  configPath: string;
+  autoConfigStatus: "idle" | "writing" | "ok" | "error";
+  autoConfigPath: string | null;
+  autoConfigError: string | null;
+  showSnippet: boolean;
+  setShowSnippet: (v: boolean) => void;
+  snippet: string;
+  onAutoConfigure: () => void;
+  onContinueAfterRestart: () => void;
+}) {
+  const { t } = useTranslation();
+  const [copied, setCopied] = useState(false);
+  const onCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(snippet);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard blocked — silently no-op. The user can still copy
+      // manually from the visible code block.
+    }
+  };
+  return (
+    <div className="space-y-4" data-testid="setup-wizard-configure-mcp">
+      <p className="text-[13px] leading-relaxed text-[var(--ti-ink-700)] dark:text-stone-300">
+        {t("setupWizard.mcpInstructions", {
+          tool: toolId,
+          path: shortenPath(configPath),
+        })}
+      </p>
+
+      {autoConfigStatus === "idle" && (
+        <div className="flex flex-wrap items-center gap-3">
+          <Button
+            onClick={onAutoConfigure}
+            data-testid="setup-wizard-mcp-auto"
+          >
+            {t("setupWizard.autoConfigureNow")}
+          </Button>
+          <button
+            type="button"
+            onClick={() => setShowSnippet(!showSnippet)}
+            data-testid="setup-wizard-mcp-snippet-toggle"
+            className="font-mono text-[12px] text-stone-500 underline-offset-2 hover:text-stone-900 hover:underline dark:text-stone-400 dark:hover:text-stone-100"
+          >
+            {showSnippet
+              ? t("setupWizard.hideSnippet")
+              : t("setupWizard.showSnippet")}
+          </button>
+        </div>
+      )}
+
+      {autoConfigStatus === "writing" && (
+        <div className="flex items-center gap-2 text-[13px] text-stone-600 dark:text-stone-400">
+          <RotateCw size={14} className="animate-spin" />
+          <span>{t("setupWizard.writing")}</span>
+        </div>
+      )}
+
+      {autoConfigStatus === "ok" && (
+        <div
+          className="rounded-md border border-emerald-300 bg-emerald-50 p-3 text-[13px] text-emerald-700 dark:border-emerald-700/50 dark:bg-emerald-950/30 dark:text-emerald-300"
+          data-testid="setup-wizard-mcp-written"
+        >
+          <div className="flex items-start gap-2">
+            <Check size={14} className="mt-0.5 shrink-0" />
+            <div>
+              <p>
+                {t("setupWizard.writtenTo", {
+                  path: shortenPath(autoConfigPath ?? configPath),
+                })}
+              </p>
+              <p className="mt-1 text-[12px] text-emerald-700/80 dark:text-emerald-300/80">
+                {t("setupWizard.restartHint", { tool: toolId })}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {autoConfigStatus === "error" && (
+        <div className="rounded-md border border-rose-300 bg-rose-50 p-3 text-[13px] text-rose-700 dark:border-rose-700/50 dark:bg-rose-950/30 dark:text-rose-300">
+          <div className="flex items-start gap-2">
+            <AlertCircle size={14} className="mt-0.5 shrink-0" />
+            <div>
+              <p>{t("setupWizard.autoConfigureFailed")}</p>
+              {autoConfigError && (
+                <p className="mt-1 font-mono text-[11px]">{autoConfigError}</p>
+              )}
+              <p className="mt-2 text-[12px]">
+                {t("setupWizard.tryManualSnippet")}
+              </p>
+              <button
+                type="button"
+                className="mt-2 underline underline-offset-2"
+                onClick={() => setShowSnippet(true)}
+              >
+                {t("setupWizard.showSnippet")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showSnippet && (
+        <div
+          className="rounded-md border border-stone-200 bg-stone-100 p-3 dark:border-stone-700 dark:bg-stone-800"
+          data-testid="setup-wizard-mcp-snippet"
+        >
+          <div className="flex items-center justify-between pb-2 text-[11px] uppercase tracking-wide text-stone-500 dark:text-stone-400">
+            <span>{t("setupWizard.snippetLabel")}</span>
+            <button
+              type="button"
+              onClick={() => void onCopy()}
+              className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-stone-200 dark:hover:bg-stone-700"
+            >
+              <Copy size={11} />
+              <span>
+                {copied ? t("setupWizard.copied") : t("setupWizard.copy")}
+              </span>
+            </button>
+          </div>
+          <pre className="overflow-x-auto font-mono text-[11px] leading-relaxed text-stone-800 dark:text-stone-200">
+            {snippet}
+          </pre>
+          <p className="mt-2 text-[11px] text-stone-500 dark:text-stone-400">
+            {t("setupWizard.pasteHint", { path: shortenPath(configPath) })}
+          </p>
+        </div>
+      )}
+
+      {(autoConfigStatus === "ok" || showSnippet) && (
+        <div className="border-t border-stone-200 pt-3 dark:border-stone-800">
+          <Button
+            onClick={onContinueAfterRestart}
+            data-testid="setup-wizard-mcp-restarted"
+          >
+            {t("setupWizard.restartedContinue", { tool: toolId })}
+            <ChevronRight size={16} aria-hidden />
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Step 4 — Test
+// ---------------------------------------------------------------------------
+
+function TestStep({
+  testing,
+  result,
+  onRetry,
+  onPickDifferent,
+  onContinue,
+  onSkip,
+}: {
+  testing: boolean;
+  result: SetupWizardTestResult | null;
+  onRetry: () => void;
+  onPickDifferent: () => void;
+  onContinue: () => void;
+  onSkip: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <section data-testid="setup-wizard-step-test" className="space-y-5">
+      <header>
+        <h2 className="text-display-sm text-[var(--ti-ink-900)]">
+          {t("setupWizard.testTitle")}
+        </h2>
+        <p className="mt-2 text-[13px] text-[var(--ti-ink-600)] dark:text-[var(--ti-ink-500)]">
+          {t("setupWizard.testSubtitle")}
+        </p>
+      </header>
+
+      {testing && (
+        <div
+          className="flex items-center gap-2 text-[13px] text-stone-600 dark:text-stone-400"
+          data-testid="setup-wizard-test-loading"
+        >
+          <RotateCw size={14} className="animate-spin" />
+          <span>{t("setupWizard.testing")}</span>
+        </div>
+      )}
+
+      {!testing && result && result.ok && (
+        <div
+          className="rounded-md border border-emerald-300 bg-emerald-50 p-4 dark:border-emerald-700/50 dark:bg-emerald-950/30"
+          data-testid="setup-wizard-test-ok"
+        >
+          <div className="flex items-start gap-2">
+            <Check
+              size={16}
+              className="mt-0.5 shrink-0 text-emerald-600 dark:text-emerald-400"
+            />
+            <div className="min-w-0 flex-1">
+              <p className="text-[13px] font-medium text-emerald-700 dark:text-emerald-300">
+                {t("setupWizard.testOk")}
+              </p>
+              <p className="mt-2 font-mono text-[11px] leading-relaxed text-stone-700 dark:text-stone-300">
+                {result.response_preview || "(empty response)"}
+              </p>
+              <p className="mt-2 font-mono text-[11px] text-stone-500 dark:text-stone-400">
+                {t("setupWizard.via", {
+                  channel: result.channel_used,
+                  latency: result.latency_ms,
+                })}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!testing && result && !result.ok && (
+        <div
+          className="rounded-md border border-rose-300 bg-rose-50 p-4 dark:border-rose-700/50 dark:bg-rose-950/30"
+          data-testid="setup-wizard-test-fail"
+        >
+          <div className="flex items-start gap-2">
+            <AlertCircle
+              size={16}
+              className="mt-0.5 shrink-0 text-rose-600 dark:text-rose-400"
+            />
+            <div className="min-w-0 flex-1">
+              <p className="text-[13px] font-medium text-rose-700 dark:text-rose-300">
+                {t("setupWizard.testFailed")}
+              </p>
+              {result.error && (
+                <p className="mt-1 font-mono text-[11px] text-rose-700/80 dark:text-rose-300/80">
+                  {result.error}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!testing && (
+        <div className="flex flex-wrap items-center gap-3 pt-1">
+          {result && result.ok ? (
+            <Button
+              onClick={onContinue}
+              data-testid="setup-wizard-test-continue"
+            >
+              {t("setupWizard.continueButton")}
+              <ChevronRight size={16} aria-hidden />
+            </Button>
+          ) : (
+            <>
+              <Button
+                onClick={onRetry}
+                data-testid="setup-wizard-test-retry"
+              >
+                <RotateCw size={14} />
+                {t("setupWizard.retry")}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={onPickDifferent}
+                data-testid="setup-wizard-test-pick-different"
+              >
+                {t("setupWizard.pickDifferent")}
+              </Button>
+            </>
+          )}
+          <button
+            type="button"
+            onClick={onSkip}
+            className="ml-auto font-mono text-[12px] text-stone-500 underline-offset-2 hover:text-stone-900 hover:underline dark:text-stone-400 dark:hover:text-stone-100"
+          >
+            {t("setupWizard.skipForLater")}
+          </button>
+        </div>
+      )}
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Step 5 — Done
+// ---------------------------------------------------------------------------
+
+function DoneStep({ onClose }: { onClose: () => void }) {
+  const { t } = useTranslation();
+  return (
+    <section data-testid="setup-wizard-step-done" className="space-y-5">
+      <header>
+        <h2 className="text-display-sm text-[var(--ti-ink-900)]">
+          {t("setupWizard.doneTitle")}
+        </h2>
+        <p className="mt-2 text-[13px] text-[var(--ti-ink-600)] dark:text-[var(--ti-ink-500)]">
+          {t("setupWizard.doneBody")}
+        </p>
+      </header>
+      <Button onClick={onClose} data-testid="setup-wizard-done-close">
+        {t("setupWizard.takeMeToToday")}
+      </Button>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function StepProgress({ step }: { step: WizardStep }) {
+  const order: WizardStep[] = ["welcome", "detect", "configure", "test", "done"];
+  const currentIdx = order.indexOf(step);
+  return (
+    <div
+      className="ti-no-select mb-5 flex items-center gap-1"
+      aria-label="Setup progress"
+      data-testid="setup-wizard-progress"
+    >
+      {order.map((s, i) => (
+        <div
+          key={s}
+          data-step={s}
+          data-active={i <= currentIdx ? "true" : "false"}
+          className={
+            "h-1 flex-1 rounded " +
+            (i <= currentIdx
+              ? "bg-[var(--ti-orange-500)]"
+              : "bg-stone-200 dark:bg-stone-700")
+          }
+        />
+      ))}
+    </div>
+  );
+}
+
+function recommendedToSelected(
+  rec: RecommendedChannel,
+  tools: DetectedMcpTool[],
+): SelectedChannel | null {
+  switch (rec.kind) {
+    case "mcp_sampling": {
+      const tool = tools.find((t) => t.tool_id === rec.tool_id);
+      return {
+        kind: "mcp_sampling",
+        tool_id: rec.tool_id,
+        config_path: tool?.config_path ?? "",
+      };
+    }
+    case "ollama_http":
+      return { kind: "ollama_http", default_model: rec.default_model };
+    case "browser_ext":
+      return { kind: "browser_ext" };
+    case "no_channel_available":
+      return { kind: "install_required" };
+    default:
+      return null;
+  }
+}
+
+/** Trim a long file path for the UI without losing the filename. */
+function shortenPath(p: string): string {
+  if (p.length <= 50) return p;
+  // Keep the last 2 segments + leading "...".
+  const parts = p.split(/[\\/]/);
+  if (parts.length <= 3) return p;
+  return ".../" + parts.slice(-3).join("/");
+}
+
+/** The canonical Tangerine MCP server snippet — kept in sync with the
+ *  Rust merge_tangerine_into_mcp_json shape. */
+function buildMcpSnippet(): string {
+  const obj = {
+    mcpServers: {
+      tangerine: {
+        command: "npx",
+        args: ["-y", "tangerine-mcp@latest"],
+        env: {
+          TANGERINE_SAMPLING_BRIDGE: "1",
+        },
+      },
+    },
+  };
+  return JSON.stringify(obj, null, 2);
+}
+
+// === end wave 11 ===

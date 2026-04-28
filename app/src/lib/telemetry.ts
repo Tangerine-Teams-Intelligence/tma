@@ -121,7 +121,29 @@ export type TelemetryEventName =
   | "palette_select"
   | "help_open"
   | "shortcuts_open"
-  | "tour_replay";
+  | "tour_replay"
+  // === wave 11 === — first-run LLM channel setup wizard.
+  // Lets analytics see how many users open the wizard, how many auto-
+  // configure vs paste manually, how many tests succeed on first try, and
+  // how many drop out at each step. Payload shapes:
+  //   - setup_wizard_opened           : {}
+  //   - setup_wizard_auto_triggered   : {}        (auto-mounted post-welcome)
+  //   - setup_wizard_skipped          : { from_step: string }
+  //   - setup_wizard_auto_configured  : { tool_id: string }
+  //   - setup_wizard_tested           : { ok: boolean, channel: string,
+  //                                        latency_ms: number }
+  //   - setup_wizard_completed        : { primary_channel: string }
+  //   - setup_wizard_banner_open      : {}
+  //   - setup_wizard_banner_dismissed : {}
+  | "setup_wizard_opened"
+  | "setup_wizard_auto_triggered"
+  | "setup_wizard_skipped"
+  | "setup_wizard_auto_configured"
+  | "setup_wizard_tested"
+  | "setup_wizard_completed"
+  | "setup_wizard_banner_open"
+  | "setup_wizard_banner_dismissed";
+  // === end wave 11 ===
 // === end wave 5-β discoverability ===
 
 /** One telemetry record. Mirrors `app/src-tauri/src/agi/telemetry.rs::TelemetryEvent`. */
