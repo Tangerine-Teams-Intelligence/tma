@@ -32,6 +32,15 @@ import {
   CANONICAL_SECTIONS,
   relativeTime,
 } from "@/lib/co-thinker";
+// === v1.13.9 round-9 ===
+// R9 deceptive-success audit: detect when the rendered brain doc is
+// the bundled Wave 13 sample (`team/co-thinker.md` ships with
+// `sample: true` in frontmatter — fake watching items, fake threads,
+// fake reasoning timestamps) so we can surface a banner instead of
+// silently rendering 兴森 PCB decisions as if the user's team made
+// them.
+import { parseFrontmatter } from "@/lib/memory";
+// === end v1.13.9 round-9 ===
 import { HeartbeatBadge } from "@/components/co-thinker/HeartbeatBadge";
 import { CitationLink } from "@/components/co-thinker/CitationLink";
 import { getAIToolConfig } from "@/lib/ai-tools-config";
@@ -292,6 +301,17 @@ export default function CoThinkerRoute() {
 
   const isEmpty = !loading && content.trim().length === 0;
 
+  // === v1.13.9 round-9 ===
+  // R9 deceptive-success audit: detect the bundled Wave 13 sample
+  // brain doc. The seed `team/co-thinker.md` ships with `sample: true`
+  // in YAML frontmatter and a body referencing fake watching items
+  // ("Tier-2 PCB supplier choice", "$20→$24/seat pricing experiment")
+  // and fake teammates (alex / sam / jess). Without a banner the user
+  // assumes those are real reasoning artefacts about their team and
+  // builds a wrong mental model of what the agent has been doing.
+  const isSampleBrain = !loading && !editing && parseFrontmatter(content).isSample;
+  // === end v1.13.9 round-9 ===
+
   // === wave 8 === — derive "alive" state for the brain hero pulse.
   const lastBeat = status?.last_heartbeat_at ?? null;
   const isBrainAlive =
@@ -412,6 +432,36 @@ export default function CoThinkerRoute() {
           />
         ) : (
           <div ref={brainContainerRef}>
+            {/* === v1.13.9 round-9 ===
+                R9 deceptive-success audit: surface the bundled Wave 13
+                sample brain doc explicitly. Without this banner the
+                fake "watching the Tier-2 PCB supplier choice" /
+                "alex pushed v2 of /api/v2/orchestrator" reasoning
+                renders as if Tangerine had been observing the user's
+                real team. This is the single highest-trust surface in
+                the app — the user reads it as "what the agent has been
+                thinking about us" — so silent sample data here is the
+                worst-case deception. */}
+            {isSampleBrain && (
+              <div
+                role="status"
+                data-testid="co-thinker-sample-banner"
+                className="mb-4 flex items-start gap-3 rounded-md border border-[var(--ti-orange-200,#FFD9B8)] bg-[var(--ti-orange-50,#FFF5EC)] px-4 py-3 text-[12px] dark:border-stone-700 dark:bg-stone-900"
+              >
+                <span aria-hidden className="font-mono text-[14px]">
+                  🧠
+                </span>
+                <p className="flex-1 text-stone-700 dark:text-stone-300">
+                  <strong className="font-semibold">This is a sample brain.</strong>{" "}
+                  The watching items, threads, and reasoning below are
+                  bundled demo content — not your team's. Click{" "}
+                  <em>{t("coThinker.trigger")}</em> to replace it with a
+                  heartbeat over your real atoms, or clear the sample
+                  data from <code>Settings → Advanced</code>.
+                </p>
+              </div>
+            )}
+            {/* === end v1.13.9 round-9 === */}
             {/* === wave 9 === — split-view default. Renders preview-only
                 / source-only / side-by-side based on the toolbar
                 selection. Design moat #2 made literal: the user always

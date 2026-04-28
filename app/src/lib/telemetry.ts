@@ -96,6 +96,12 @@ export type TelemetryEventName =
   // Added by various waves but never registered in the union.
   | "demo_banner_connect_clicked"      // Wave 13 — DemoModeBanner.tsx
   | "demo_banner_hidden"                // Wave 13 — DemoModeBanner.tsx
+  // === v1.13.9 round-9 === — Clear samples CTA on the demo banner.
+  // Logged when user explicitly purges Wave 13 sample atoms from disk
+  // via DemoModeBanner.tsx (mirrored CTA in AdvancedSettings.tsx is
+  // not telemetered — settings interactions are out of scope).
+  | "demo_banner_clear_clicked"
+  // === end v1.13.9 round-9 ===
   | "onboarding_scope_picked"           // Wave 1.13-A — OnboardingChat.tsx solo/team picker
   | "setup_wizard_sample_query_clicked" // Wave 13 — SetupWizard.tsx sample chips
   | "welcome_card_cta"                  // Wave 1.13-A — WelcomeOverlay card 5 CTA

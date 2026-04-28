@@ -1155,6 +1155,19 @@ def _extract_from_meeting_file(
         participants = [str(p) for p in participants_raw]
     else:
         participants = []
+    # === v1.13.9 round-9 ===
+    # R9 deceptive-success audit (smoking gun): every `_extract_*`
+    # function pulled fields out of the frontmatter and built `Event`s
+    # WITHOUT propagating `sample`. Downstream filters (`read_people_list`,
+    # `read_person`, `read_projects_list`, `read_thread`, `compute_alignment`,
+    # `briefs.list_yesterday`, `cursors.unseen_for`) all check
+    # `if ev.sample: continue` — but the field was never populated for
+    # seeded fixtures, so the filter was decorative. This propagates the
+    # YAML flag end-to-end so a meeting/decision/thread/generic file
+    # carrying `sample: true` cannot leak into alignment metrics, daily
+    # briefs, or the people / projects / threads aggregations.
+    is_sample = _read_sample_flag(fm)
+    # === end v1.13.9 round-9 ===
 
     events: list[Event] = []
 
@@ -1193,6 +1206,9 @@ def _extract_from_meeting_file(
                 kind="meeting_chunk",
                 refs=refs,
                 body=msg,
+                # === v1.13.9 round-9 ===
+                sample=is_sample,
+                # === end v1.13.9 round-9 ===
             )
         )
 
@@ -1209,6 +1225,9 @@ def _extract_from_meeting_file(
             kind="summary",
             refs=EventRefs(meeting=meeting_id, people=list(participants)),
             body=f"Meeting: {title} ({len(transcript_lines)} turns)",
+            # === v1.13.9 round-9 ===
+            sample=is_sample,
+            # === end v1.13.9 round-9 ===
         )
     )
 
@@ -1238,6 +1257,9 @@ def _extract_from_meeting_file(
                         people=list(participants),
                     ),
                     body=f"Decision recorded: {slug.replace('-', ' ')}",
+                    # === v1.13.9 round-9 ===
+                    sample=is_sample,
+                    # === end v1.13.9 round-9 ===
                 )
             )
     return events
@@ -1283,6 +1305,9 @@ def _extract_from_decision_file(
     decided_by_match = re.search(r"\*\*Decided by\*\*:\s*(?P<who>[^\n]+)", body)
     decided_by = decided_by_match.group("who").strip() if decided_by_match else "system"
     actor = decided_by.split(",")[0].strip().lower() or "system"
+    # === v1.13.9 round-9 ===
+    is_sample = _read_sample_flag(fm)
+    # === end v1.13.9 round-9 ===
 
     ts = f"{date}T11:00:00+08:00"
     ev_id = make_event_id("meeting", "decision", slug, ts)
@@ -1303,6 +1328,9 @@ def _extract_from_decision_file(
             refs=refs,
             body=f"{title}",
             lifecycle=lifecycle,
+            # === v1.13.9 round-9 ===
+            sample=is_sample,
+            # === end v1.13.9 round-9 ===
         )
     ]
 
@@ -1313,6 +1341,9 @@ def _extract_from_thread_file(
     fm, _body = _split_frontmatter(text)
     topic = str(fm.get("topic") or source_path.stem)
     title = str(fm.get("title") or topic)
+    # === v1.13.9 round-9 ===
+    is_sample = _read_sample_flag(fm)
+    # === end v1.13.9 round-9 ===
     ts = _now_iso()
     ev_id = make_event_id("system", "comment", f"thread:{topic}", ts)
     return [
@@ -1325,6 +1356,9 @@ def _extract_from_thread_file(
             kind="comment",
             refs=EventRefs(threads=[topic]),
             body=f"Thread updated: {title}",
+            # === v1.13.9 round-9 ===
+            sample=is_sample,
+            # === end v1.13.9 round-9 ===
         )
     ]
 
@@ -1339,6 +1373,9 @@ def _extract_generic(
     fm, _body = _split_frontmatter(text)
     actor = str(fm.get("actor") or "system")
     ts = str(fm.get("ts") or _now_iso())
+    # === v1.13.9 round-9 ===
+    is_sample = _read_sample_flag(fm)
+    # === end v1.13.9 round-9 ===
     ev_id = make_event_id("system", "comment", str(source_path), ts)
     return [
         Event(
@@ -1350,8 +1387,31 @@ def _extract_generic(
             kind="comment",
             refs=EventRefs(),
             body=f"Touched: {source_path.name}",
+            # === v1.13.9 round-9 ===
+            sample=is_sample,
+            # === end v1.13.9 round-9 ===
         )
     ]
+
+
+# === v1.13.9 round-9 ===
+def _read_sample_flag(fm: dict[str, object]) -> bool:
+    """Read the YAML ``sample`` frontmatter key as a boolean.
+
+    Tolerant of the YAML aliases a hand-edited file may carry
+    (``true | yes | y | on | 1``) plus a string-typed value, since
+    ``yaml.safe_load`` may surface a cell typed by quoting style.
+    Defaults to ``False`` when the field is absent or unparseable.
+    """
+    raw = fm.get("sample")
+    if isinstance(raw, bool):
+        return raw
+    if isinstance(raw, (int, float)):
+        return raw != 0
+    if isinstance(raw, str):
+        return raw.strip().lower() in {"true", "yes", "y", "on", "1"}
+    return False
+# === end v1.13.9 round-9 ===
 
 
 __all__ = [

@@ -182,11 +182,37 @@ function TreeNode({
     >
       <FileText size={11} className="shrink-0 text-stone-400" />
       <span className="truncate">{displayName}</span>
+      {/* === v1.13.9 round-9 === —
+          R9 deceptive-success audit: surface the Wave 13 demo-seed
+          flag inline so a fresh user can tell `team/decisions/2026-04-22-
+          tier2-pcb-supplier.md` (bundled sample) apart from their own
+          team's decisions. The pill sits before the vendor dot so both
+          can render together without overlap. Backend `sample` field is
+          optional (older mocks omit it) — render only when explicitly
+          true. */}
+      {node.sample === true && (
+        <span
+          data-testid={`memory-tree-sample-pill-${node.path}`}
+          title="Bundled sample data — clear it from Settings → Advanced."
+          className="ml-auto rounded border border-[var(--ti-orange-300,#FFB477)] bg-[var(--ti-orange-50,#FFF5EC)] px-1 py-0 font-mono text-[8px] uppercase leading-tight tracking-wider text-[var(--ti-orange-700,#A04400)] dark:border-stone-600 dark:bg-stone-900 dark:text-[var(--ti-orange-500,#CC5500)]"
+        >
+          sample
+        </span>
+      )}
+      {/* === end v1.13.9 round-9 === */}
       {dotHex && (
         <span
           aria-hidden
           data-testid={`memory-tree-vendor-dot-${node.path}`}
-          className="ml-auto inline-block h-1.5 w-1.5 shrink-0 rounded-full"
+          className={cn(
+            "inline-block h-1.5 w-1.5 shrink-0 rounded-full",
+            // === v1.13.9 round-9 === — when the sample pill is rendered
+            // it claims `ml-auto`; the vendor dot just needs `ml-1.5` to
+            // sit next to it. When no pill, fall back to the original
+            // `ml-auto` so the dot still pushes to the right edge.
+            node.sample === true ? "ml-1.5" : "ml-auto",
+            // === end v1.13.9 round-9 ===
+          )}
           style={{ background: dotHex }}
         />
       )}

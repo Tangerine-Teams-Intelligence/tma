@@ -396,6 +396,20 @@ pub struct MemoryTreeNode {
     /// Children, only populated for dir nodes. Sorted dirs-first then alpha.
     #[serde(default)]
     pub children: Vec<MemoryTreeNode>,
+    // === v1.13.9 round-9 ===
+    // R9 deceptive-success audit: a fresh user lands on /memory and sees
+    // `team/decisions/2026-04-22-tier2-pcb-supplier.md` next to their
+    // own atoms — same font, same icon, no indication that the 兴森 PCB
+    // decision is bundled sample data, not their team's call. We
+    // propagate the YAML-frontmatter `sample` flag so the React tree can
+    // tag those rows with a visible "sample" pill. Predicate matches
+    // `commands::demo_seed::is_sample_file` — keep them in sync.
+    /// True when the file is a Wave 13 demo-seed atom (carries
+    /// `sample: true` in YAML frontmatter). Always `false` for dirs and
+    /// for user-authored files.
+    #[serde(default)]
+    pub sample: bool,
+    // === end v1.13.9 round-9 ===
 }
 
 #[derive(Debug, Serialize)]
@@ -522,6 +536,9 @@ fn walk_tree(
                 kind: "dir".into(),
                 scope,
                 children,
+                // === v1.13.9 round-9 ===
+                sample: false,
+                // === end v1.13.9 round-9 ===
             });
         } else if path.is_file() {
             // Only include markdown files — match the JS reader's filter.
@@ -531,12 +548,22 @@ fn walk_tree(
             }
             *budget = budget.saturating_sub(1);
             *files = files.saturating_add(1);
+            // === v1.13.9 round-9 ===
+            // Detect Wave 13 demo-seed atoms by scanning the YAML
+            // frontmatter for `sample: true`. Same predicate as
+            // `commands::demo_seed::is_sample_file`. Read failures fall
+            // through to `false` (we never block tree rendering on this).
+            let sample = is_sample_md_file(&path);
+            // === end v1.13.9 round-9 ===
             nodes.push(MemoryTreeNode {
                 path: rel,
                 name,
                 kind: "file".into(),
                 scope,
                 children: Vec::new(),
+                // === v1.13.9 round-9 ===
+                sample,
+                // === end v1.13.9 round-9 ===
             });
         }
     }
@@ -557,6 +584,54 @@ fn infer_scope(rel: &str) -> Option<String> {
         _ => None,
     }
 }
+
+// === v1.13.9 round-9 ===
+// Round 9 deceptive-success audit: tag Wave 13 demo-seed atoms in the
+// /memory tree so users can tell sample data apart from their own.
+// Mirrors the predicate in `commands::demo_seed::is_sample_file` —
+// detects `sample: true` (case-insensitive, tolerant of `true|yes|y`)
+// inside the leading YAML frontmatter block. We bound the scan at the
+// first ~30 frontmatter lines so a giant atom whose body happens to
+// mention `sample: true` doesn't false-positive.
+//
+// All errors degrade silently to `false` — sample-detection is a UI
+// hint, never a security boundary. A read failure here must not block
+// the tree from rendering.
+fn is_sample_md_file(path: &Path) -> bool {
+    let content = match std::fs::read_to_string(path) {
+        Ok(c) => c,
+        Err(_) => return false,
+    };
+    let mut lines = content.lines();
+    let first = match lines.next() {
+        Some(l) => l.trim(),
+        None => return false,
+    };
+    if first != "---" {
+        return false;
+    }
+    for (i, line) in lines.enumerate() {
+        if i > 30 {
+            return false;
+        }
+        let trimmed = line.trim();
+        if trimmed == "---" {
+            return false;
+        }
+        let lower = trimmed.to_ascii_lowercase();
+        if let Some(rest) = lower.strip_prefix("sample") {
+            let rest = rest.trim_start();
+            if let Some(rest) = rest.strip_prefix(':') {
+                let val = rest.trim();
+                if val == "true" || val == "yes" || val == "y" {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+// === end v1.13.9 round-9 ===
 
 // ---------------------------------------------------------------------------
 // Backlinks computation

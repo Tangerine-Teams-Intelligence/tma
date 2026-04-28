@@ -34,10 +34,20 @@
  * AppShell so a thrown render here can never blank the shell.
  */
 
-import { X } from "lucide-react";
+import { useState } from "react";
+import { Trash2, X } from "lucide-react";
 
 import { useStore } from "@/lib/store";
 import { logEvent } from "@/lib/telemetry";
+// === v1.13.9 round-9 ===
+// R9 deceptive-success audit: the banner used to ship two CTAs only
+// (Connect / Hide). "Hide" leaves seed atoms on disk — they keep
+// rendering as real-looking decisions on /memory + /co-thinker. We add
+// a third "Clear samples" CTA that calls `demoSeedClear` on the Rust
+// side and broadcasts MEMORY_REFRESHED_EVENT so the tree re-reads.
+import { demoSeedClear } from "@/lib/tauri";
+import { MEMORY_REFRESHED_EVENT } from "@/components/layout/AppShell";
+// === end v1.13.9 round-9 ===
 
 interface DemoModeBannerProps {
   /** Optional override for "Connect" — defaults to opening the SetupWizard
@@ -47,12 +57,28 @@ interface DemoModeBannerProps {
   /** Optional override for "Hide" — defaults to flipping `demoMode`
    *  off and emitting a telemetry event. */
   onHide?: () => void;
+  // === v1.13.9 round-9 ===
+  /** Optional override for "Clear samples" — defaults to calling
+   *  `demoSeedClear`, flipping `demoMode = false`, and broadcasting
+   *  MEMORY_REFRESHED_EVENT. Passing a handler lets tests stub the
+   *  filesystem call. */
+  onClear?: () => Promise<void> | void;
+  // === end v1.13.9 round-9 ===
 }
 
-export function DemoModeBanner({ onConnect, onHide }: DemoModeBannerProps = {}) {
+export function DemoModeBanner({
+  onConnect,
+  onHide,
+  // === v1.13.9 round-9 ===
+  onClear,
+  // === end v1.13.9 round-9 ===
+}: DemoModeBannerProps = {}) {
   const demoMode = useStore((s) => s.ui.demoMode);
   const setDemoMode = useStore((s) => s.ui.setDemoMode);
   const setSetupWizardOpen = useStore((s) => s.ui.setSetupWizardOpen);
+  // === v1.13.9 round-9 ===
+  const [clearing, setClearing] = useState(false);
+  // === end v1.13.9 round-9 ===
 
   if (!demoMode) return null;
 
@@ -75,6 +101,37 @@ export function DemoModeBanner({ onConnect, onHide }: DemoModeBannerProps = {}) 
     }
     setDemoMode(false);
   };
+
+  // === v1.13.9 round-9 ===
+  // Clear handler — calls the Rust `demo_seed_clear` (idempotent, only
+  // touches files carrying `sample: true` in frontmatter), then flips
+  // `demoMode` off so the banner self-dismisses. Best-effort: a clear
+  // failure still hides the banner so the user isn't stuck — they can
+  // re-trigger via Settings → Advanced if needed.
+  const handleClear = async () => {
+    if (clearing) return;
+    setClearing(true);
+    void logEvent("demo_banner_clear_clicked", {});
+    try {
+      if (onClear) {
+        await onClear();
+      } else {
+        await demoSeedClear();
+      }
+      setDemoMode(false);
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event(MEMORY_REFRESHED_EVENT));
+      }
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error("[v1.13.9 round-9] demo_seed_clear failed:", e);
+      // Still hide the banner — the user has signaled intent.
+      setDemoMode(false);
+    } finally {
+      setClearing(false);
+    }
+  };
+  // === end v1.13.9 round-9 ===
 
   return (
     <div
@@ -102,6 +159,25 @@ export function DemoModeBanner({ onConnect, onHide }: DemoModeBannerProps = {}) 
         {/* === wave 13 wrap-needed === — Wave 12 owns `demo.connectCta`. */}
         Connect your real team
       </button>
+      {/* === v1.13.9 round-9 ===
+          R9 deceptive-success audit: explicit "delete the seed atoms"
+          path. Without this the only options were Connect (wires real
+          data alongside the seed — pollution stays) or Hide (banner
+          gone, fake decisions still render on /memory + /co-thinker as
+          if real). */}
+      <button
+        type="button"
+        onClick={() => void handleClear()}
+        disabled={clearing}
+        data-testid="demo-mode-banner-clear"
+        aria-label="Clear sample data"
+        title="Delete the bundled sample atoms — your own data stays."
+        className="flex items-center gap-1 rounded border border-stone-200 bg-white px-2 py-0.5 font-mono text-[11px] text-stone-700 hover:bg-stone-50 disabled:opacity-50 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-200 dark:hover:bg-stone-800"
+      >
+        <Trash2 size={11} aria-hidden />
+        {clearing ? "Clearing…" : "Clear samples"}
+      </button>
+      {/* === end v1.13.9 round-9 === */}
       <button
         type="button"
         onClick={handleHide}

@@ -3971,6 +3971,13 @@ export interface MemoryTreeNode {
   kind: "dir" | "file";
   scope: "team" | "personal" | null;
   children: MemoryTreeNode[];
+  // === v1.13.9 round-9 ===
+  // R9 deceptive-success audit: backend now flags Wave 13 demo-seed
+  // atoms (`sample: true` in YAML frontmatter) so the React tree can
+  // render a visible badge. Older mocks default to `false` via the
+  // backend's `#[serde(default)]`, so missing values stay safe.
+  sample?: boolean;
+  // === end v1.13.9 round-9 ===
 }
 
 export interface MemoryTreeResult {
