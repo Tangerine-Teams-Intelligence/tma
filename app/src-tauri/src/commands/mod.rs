@@ -18,8 +18,12 @@
 //! That keeps T1's main.rs in charge of plugin order and window config while
 //! T3 owns command registration in one place.
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+// === v1.14.1 round-2 ===
+use std::time::SystemTime;
+// === end v1.14.1 round-2 ===
 
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
@@ -384,6 +388,16 @@ pub struct AppState {
     /// rebuilds the timeline index, refreshes pending alerts, generates
     /// daily briefs). Installed by `main.rs` after the AppState is built.
     pub daemon: Arc<daemon::DaemonSlot>,
+    // === v1.14.1 round-2 ===
+    // v1.14 R2 perf — in-process mtime-keyed cache for `is_sample_md_file`
+    // (commands::memory). Key = absolute file path; value = (mtime, sample
+    // flag). Survives across `memory_tree` invocations within the same
+    // session, clears on app restart (first-launch cold cost is acceptable).
+    // RwLock so the read path scales across concurrent Tauri command calls
+    // without a serialization point. Eviction is dirt simple: if len > 10K
+    // we wipe and rebuild — realistic memory dirs are well under that.
+    pub sample_cache: Arc<RwLock<HashMap<PathBuf, (SystemTime, bool)>>>,
+    // === end v1.14.1 round-2 ===
 }
 
 impl AppState {
@@ -403,6 +417,9 @@ impl AppState {
             ws_team_repo: Arc::new(parking_lot::Mutex::new(None)),
             ws_port: Arc::new(parking_lot::Mutex::new(None)),
             daemon: Arc::new(daemon::DaemonSlot::default()),
+            // === v1.14.1 round-2 ===
+            sample_cache: Arc::new(RwLock::new(HashMap::new())),
+            // === end v1.14.1 round-2 ===
         })
     }
 }
