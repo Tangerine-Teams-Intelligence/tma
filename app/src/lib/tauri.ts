@@ -1008,8 +1008,22 @@ export interface NotionAtom {
   preview: string;
 }
 
+// === v1.13.8 round-8 ===
+// Round 8 audit (external comm capture moat): the connector setup pages
+// (notion/loom/zoom) already wrap `*Capture` in try/catch and the
+// validate-token / list-databases calls in the Notion page expect a
+// real `{ok:false, error}` shape from Rust on failure. The original
+// `safeInvoke` swallowed Tauri-side errors and returned the mock —
+// for `notion_get_config` that meant rendering `token_present: false`
+// when in fact the config was set but the read failed; for
+// `notion_capture` that meant "Wrote 0 pages (1 error: no Tauri
+// bridge)" displayed inside Tauri (impossible state) instead of the
+// real auth failure. Switching to `tauriInvoke` re-arms the page-level
+// try/catch handlers so connector failures show the real error and
+// the user can retry their auth instead of staring at a misleading
+// "0 captured" state.
 export async function notionGetConfig(): Promise<NotionConfig> {
-  return safeInvoke("notion_get_config", undefined, () => ({
+  return tauriInvoke("notion_get_config", undefined, () => ({
     token_present: false,
     database_ids: [],
     decisions_db_id: null,
@@ -1054,7 +1068,11 @@ export async function notionCapture(args: {
   atoms: NotionAtom[];
   errors: string[];
 }> {
-  return safeInvoke("notion_capture", args, () => ({
+  // === v1.13.8 round-8 === — moat surface; setup page already wraps in
+  // try/catch and surfaces `pushToast("error", ...)`. Re-throwing makes
+  // that toast actually fire on real Rust failures instead of silently
+  // showing "Wrote 0 pages" which the user reads as "I have 0 pages."
+  return tauriInvoke("notion_capture", args, () => ({
     written: 0,
     atoms: [],
     errors: ["no Tauri bridge"],
@@ -1095,7 +1113,8 @@ export interface LoomAtom {
 }
 
 export async function loomGetConfig(): Promise<LoomConfig> {
-  return safeInvoke("loom_get_config", undefined, () => ({
+  // === v1.13.8 round-8 === — moat surface (see notionGetConfig)
+  return tauriInvoke("loom_get_config", undefined, () => ({
     token_present: false,
     watched_folders: [],
     capture_enabled: true,
@@ -1139,7 +1158,9 @@ export async function loomCapture(memory_root: string): Promise<{
   atoms: LoomAtom[];
   errors: string[];
 }> {
-  return safeInvoke("loom_capture", { memory_root }, () => ({
+  // === v1.13.8 round-8 === — moat surface; setup page handleSyncNow
+  // wraps in try/catch + pushToast.
+  return tauriInvoke("loom_capture", { memory_root }, () => ({
     written: 0,
     atoms: [],
     errors: ["no Tauri bridge"],
@@ -1167,7 +1188,8 @@ export interface ZoomMeetingAtom {
 }
 
 export async function zoomGetConfig(): Promise<ZoomConfig> {
-  return safeInvoke("zoom_get_config", undefined, () => ({
+  // === v1.13.8 round-8 === — moat surface (see notionGetConfig)
+  return tauriInvoke("zoom_get_config", undefined, () => ({
     account_id_present: false,
     client_id_present: false,
     client_secret_present: false,
@@ -1203,7 +1225,9 @@ export async function zoomCapture(memory_root: string): Promise<{
   atoms: ZoomMeetingAtom[];
   errors: string[];
 }> {
-  return safeInvoke("zoom_capture", { memory_root }, () => ({
+  // === v1.13.8 round-8 === — moat surface; setup page handleSyncNow
+  // wraps in try/catch + pushToast.
+  return tauriInvoke("zoom_capture", { memory_root }, () => ({
     written: 0,
     atoms: [],
     errors: ["no Tauri bridge"],

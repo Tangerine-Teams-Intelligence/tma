@@ -21,16 +21,25 @@ export default function PersonDetailRoute() {
   const currentUser = useStore((s) => s.ui.currentUser);
   const [data, setData] = useState<PersonDetailData | null>(null);
   const [loading, setLoading] = useState(true);
+  // === v1.13.8 round-8 === — readPerson re-throws on Tauri failure
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancel = false;
     if (!alias) return;
     setLoading(true);
-    void readPerson(alias).then((d) => {
-      if (cancel) return;
-      setData(d);
-      setLoading(false);
-    });
+    setError(null);
+    readPerson(alias)
+      .then((d) => {
+        if (cancel) return;
+        setData(d);
+        setLoading(false);
+      })
+      .catch((e: unknown) => {
+        if (cancel) return;
+        setError(typeof e === "string" ? e : (e as Error)?.message ?? "Could not read person.");
+        setLoading(false);
+      });
     return () => {
       cancel = true;
     };
@@ -59,6 +68,12 @@ export default function PersonDetailRoute() {
 
         {loading ? (
           <p className="text-[12px] text-stone-500 dark:text-stone-400">Loading…</p>
+        ) : error ? (
+          // === v1.13.8 round-8 === — armed error UI
+          <div role="alert" data-testid="person-detail-error" className="rounded-md border border-rose-200 bg-rose-50 px-4 py-3 dark:border-rose-900 dark:bg-rose-950/30">
+            <p className="text-[12px] text-rose-700 dark:text-rose-300">Couldn't read @{alias}.</p>
+            <p className="mt-1 font-mono text-[10px] text-rose-600 dark:text-rose-400">{error}</p>
+          </div>
         ) : data ? (
           <PersonView data={data} onAtomViewed={onAtomViewed} />
         ) : (

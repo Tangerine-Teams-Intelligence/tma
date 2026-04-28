@@ -28,17 +28,29 @@ export function WhatsNewBanner() {
 
   useEffect(() => {
     let cancel = false;
-    void readWhatsNew(currentUser).then((d) => {
-      if (cancel) return;
-      // Only fire when last_opened_at is older than 1 hour AND we have
-      // newer atoms. The "since" string is the cursor's last_opened_at;
-      // missing means "never opened" — show the banner once on first run.
-      const sinceMs = d.since ? Date.parse(d.since) : 0;
-      const oldEnough = !d.since || Date.now() - sinceMs > 60 * 60 * 1000;
-      const has = d.count > 0;
-      setCount(d.count);
-      setShouldShow(has && oldEnough);
-    });
+    // === v1.13.8 round-8 === — readWhatsNew now re-throws on Tauri-side
+    // failure (was masking into mock zero-count). The banner is non-
+    // critical: if the cursor diff fails, hide the banner rather than
+    // breaking AppShell render. The console.error inside the wrapper
+    // still surfaces the failure for debugging.
+    readWhatsNew(currentUser)
+      .then((d) => {
+        if (cancel) return;
+        // Only fire when last_opened_at is older than 1 hour AND we have
+        // newer atoms. The "since" string is the cursor's last_opened_at;
+        // missing means "never opened" — show the banner once on first run.
+        const sinceMs = d.since ? Date.parse(d.since) : 0;
+        const oldEnough = !d.since || Date.now() - sinceMs > 60 * 60 * 1000;
+        const has = d.count > 0;
+        setCount(d.count);
+        setShouldShow(has && oldEnough);
+      })
+      .catch(() => {
+        if (!cancel) {
+          setCount(0);
+          setShouldShow(false);
+        }
+      });
     return () => {
       cancel = true;
     };

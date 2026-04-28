@@ -97,9 +97,18 @@ export default function TodayRoute() {
   useEffect(() => {
     let cancel = false;
     const refresh = () => {
-      void readTimelineToday(today).then((s: TimelineSlice) => {
-        if (!cancel) setNotes(s.notes ?? []);
-      });
+      // === v1.13.8 round-8 === — readTimelineToday now re-throws on
+      // Tauri-side errors (was swallowing into mock). Notes are non-
+      // critical (they sit above the dashboard widgets, each of which
+      // owns its own fetch); silently keep [] on failure rather than
+      // breaking /today render.
+      void readTimelineToday(today)
+        .then((s: TimelineSlice) => {
+          if (!cancel) setNotes(s.notes ?? []);
+        })
+        .catch(() => {
+          if (!cancel) setNotes([]);
+        });
     };
     refresh();
     const onRefreshed = () => refresh();

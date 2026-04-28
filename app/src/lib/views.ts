@@ -33,6 +33,41 @@ async function safeInvoke<T>(
   }
 }
 
+// === v1.13.8 round-8 ===
+// Round 8 audit: views.ts hosts every primary read for /today, /this-week,
+// /alignment, /people, /projects, /threads, the /people|projects|threads
+// detail pages, ProjectTopology, and WhatsNewBanner. The original
+// `safeInvoke` swallowed Tauri-side errors and silently returned mock
+// shapes (zero events, empty rosters, fake timeline rows featuring
+// "daizhe / hongyu / v1-launch" — the exact same fake fingerprint R7
+// caught in atoms.ts). Six of those callers already had `.catch` /
+// `setError` UIs that were dead code in production for the same reason
+// the graphs' error UIs were dead in R7: the wrapper never threw.
+//
+// `invokeOrViewError` re-throws inside Tauri so those error UIs actually
+// fire; outside Tauri (vitest / vite dev) the mock still runs so the
+// dev surface stays usable. Best-effort writes (mark_atom_viewed /
+// mark_atom_acked / mark_user_opened) keep `safeInvoke` — a cursor
+// write failure shouldn't take down the route the user is reading.
+async function invokeOrViewError<T>(
+  cmd: string,
+  args: Record<string, unknown> | undefined,
+  mock: () => Promise<T> | T,
+): Promise<T> {
+  if (!inTauri()) return await mock();
+  try {
+    return await realInvoke<T>(cmd, args);
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error(`[tauri/views] invoke "${cmd}" failed:`, e, "args=", args);
+    // Re-throw so the load-bearing route .catch handlers (people/index,
+    // projects/index, threads/index, alignment, projects/detail, etc.)
+    // render their honest error state instead of empty mock data.
+    throw e;
+  }
+}
+// === end v1.13.8 round-8 ===
+
 // ---------- shared types ----------
 
 export interface TimelineEvent {
@@ -78,7 +113,8 @@ export interface TimelineSlice {
 }
 
 export async function readTimelineToday(date?: string): Promise<TimelineSlice> {
-  return safeInvoke("read_timeline_today", { date }, () => ({
+  // === v1.13.8 round-8 === — load-bearing: feeds /today notes + activity feed
+  return invokeOrViewError("read_timeline_today", { date }, () => ({
     date: date ?? new Date().toISOString().slice(0, 10),
     events: mockTodayEvents(),
     notes: [],
@@ -91,7 +127,8 @@ export interface TimelineRecent {
 }
 
 export async function readTimelineRecent(limit?: number): Promise<TimelineRecent> {
-  return safeInvoke("read_timeline_recent", { limit }, () => ({
+  // === v1.13.8 round-8 === — load-bearing: /this-week + /alignment
+  return invokeOrViewError("read_timeline_recent", { limit }, () => ({
     events: mockRecentEvents(),
     notes: [],
   }));
@@ -107,7 +144,8 @@ export interface BriefData {
 }
 
 export async function readBrief(date?: string): Promise<BriefData> {
-  return safeInvoke("read_brief", { date }, () => ({
+  // === v1.13.8 round-8 === — load-bearing: daily brief content
+  return invokeOrViewError("read_brief", { date }, () => ({
     date: date ?? new Date().toISOString().slice(0, 10),
     markdown: null,
     exists: false,
@@ -133,7 +171,8 @@ export interface AlignmentData {
 }
 
 export async function readAlignment(): Promise<AlignmentData> {
-  return safeInvoke("read_alignment", undefined, () => ({
+  // === v1.13.8 round-8 === — load-bearing: /alignment is a primary trust surface
+  return invokeOrViewError("read_alignment", undefined, () => ({
     latest: {
       computed_at: null,
       users: [],
@@ -165,7 +204,8 @@ export interface PendingAlertsData {
 }
 
 export async function readPendingAlerts(): Promise<PendingAlertsData> {
-  return safeInvoke("read_pending_alerts", undefined, () => ({
+  // === v1.13.8 round-8 === — load-bearing: silently empty alerts = "all clear" lie
+  return invokeOrViewError("read_pending_alerts", undefined, () => ({
     alerts: [],
     notes: [],
   }));
@@ -186,7 +226,8 @@ export interface PeopleListData {
 }
 
 export async function readPeopleList(): Promise<PeopleListData> {
-  return safeInvoke("read_people_list", undefined, () => ({
+  // === v1.13.8 round-8 === — load-bearing: /people index has armed setError UI
+  return invokeOrViewError("read_people_list", undefined, () => ({
     people: [],
     notes: [],
   }));
@@ -201,7 +242,8 @@ export interface PersonDetailData {
 }
 
 export async function readPerson(alias: string): Promise<PersonDetailData> {
-  return safeInvoke("read_person", { alias }, () => ({
+  // === v1.13.8 round-8 === — load-bearing: detail page
+  return invokeOrViewError("read_person", { alias }, () => ({
     alias,
     recent_events: [],
     mentioned_projects: [],
@@ -225,7 +267,8 @@ export interface ProjectListData {
 }
 
 export async function readProjectsList(): Promise<ProjectListData> {
-  return safeInvoke("read_projects_list", undefined, () => ({
+  // === v1.13.8 round-8 === — load-bearing: /projects index has armed setError UI
+  return invokeOrViewError("read_projects_list", undefined, () => ({
     projects: [],
     notes: [],
   }));
@@ -240,7 +283,8 @@ export interface ProjectDetailData {
 }
 
 export async function readProject(slug: string): Promise<ProjectDetailData> {
-  return safeInvoke("read_project", { slug }, () => ({
+  // === v1.13.8 round-8 === — load-bearing: detail page
+  return invokeOrViewError("read_project", { slug }, () => ({
     slug,
     recent_events: [],
     members: [],
@@ -263,7 +307,8 @@ export interface ThreadListData {
 }
 
 export async function readThreadsList(): Promise<ThreadListData> {
-  return safeInvoke("read_threads_list", undefined, () => ({
+  // === v1.13.8 round-8 === — load-bearing: /threads index has armed setError UI
+  return invokeOrViewError("read_threads_list", undefined, () => ({
     threads: [],
     notes: [],
   }));
@@ -277,7 +322,8 @@ export interface ThreadDetailData {
 }
 
 export async function readThread(topic: string): Promise<ThreadDetailData> {
-  return safeInvoke("read_thread", { topic }, () => ({
+  // === v1.13.8 round-8 === — load-bearing: detail page
+  return invokeOrViewError("read_thread", { topic }, () => ({
     topic,
     events: [],
     members: [],
@@ -371,7 +417,8 @@ export interface WhatsNewData {
 }
 
 export async function readWhatsNew(user: string): Promise<WhatsNewData> {
-  return safeInvoke("read_whats_new", { user }, () => ({
+  // === v1.13.8 round-8 === — load-bearing: WhatsNewBanner gates startup banner
+  return invokeOrViewError("read_whats_new", { user }, () => ({
     since: null,
     new_events: [],
     count: 0,

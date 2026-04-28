@@ -27,14 +27,24 @@ export default function ThisWeekRoute() {
   const { t } = useTranslation();
   const [events, setEvents] = useState<TimelineEventT[]>([]);
   const [notes, setNotes] = useState<TangerineNote[]>([]);
+  // === v1.13.8 round-8 === — readTimelineRecent now re-throws on Tauri
+  // failure; surface the error inline so /this-week stops silently
+  // showing zero-stat aggregations when the backend is broken.
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancel = false;
-    void readTimelineRecent(500).then((d) => {
-      if (cancel) return;
-      setEvents(d.events);
-      setNotes(d.notes);
-    });
+    setError(null);
+    readTimelineRecent(500)
+      .then((d) => {
+        if (cancel) return;
+        setEvents(d.events);
+        setNotes(d.notes);
+      })
+      .catch((e: unknown) => {
+        if (cancel) return;
+        setError(typeof e === "string" ? e : (e as Error)?.message ?? "Could not read timeline.");
+      });
     return () => {
       cancel = true;
     };
@@ -81,6 +91,22 @@ export default function ThisWeekRoute() {
         </div>
 
         <TangerineNotes notes={notes} route="this-week" />
+
+        {/* === v1.13.8 round-8 === — armed error UI for view-load failure */}
+        {error && (
+          <div
+            role="alert"
+            data-testid="this-week-error"
+            className="mb-6 rounded-md border border-rose-200 bg-rose-50 px-4 py-3 dark:border-rose-900 dark:bg-rose-950/30"
+          >
+            <p className="text-[12px] text-rose-700 dark:text-rose-300">
+              Couldn't read this week's timeline.
+            </p>
+            <p className="mt-1 font-mono text-[10px] text-rose-600 dark:text-rose-400">
+              {error}
+            </p>
+          </div>
+        )}
 
         <header className="flex items-center gap-4">
           <div className="flex h-12 w-12 items-center justify-center rounded-md border border-stone-200 dark:border-stone-800">

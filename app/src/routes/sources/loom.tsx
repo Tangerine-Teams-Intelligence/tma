@@ -57,13 +57,21 @@ export default function LoomSourceRoute() {
   const [testing, setTesting] = useState(false);
 
   useEffect(() => {
-    void loomGetConfig().then((cfg) => {
-      setConfig(cfg);
-      setTokenSaved(cfg.token_present);
-      setCaptureEnabled(cfg.capture_enabled);
-      setFolders(cfg.watched_folders.length > 0 ? cfg.watched_folders : [""]);
-    });
-  }, []);
+    // === v1.13.8 round-8 === — loomGetConfig now re-throws on real
+    // Tauri failure (was masking config-read errors as "no token"
+    // mock state). Surface as a toast so the user can retry instead
+    // of staring at an empty-but-look-fine setup form.
+    loomGetConfig()
+      .then((cfg) => {
+        setConfig(cfg);
+        setTokenSaved(cfg.token_present);
+        setCaptureEnabled(cfg.capture_enabled);
+        setFolders(cfg.watched_folders.length > 0 ? cfg.watched_folders : [""]);
+      })
+      .catch((e) => {
+        pushToast("error", `Couldn't read Loom config: ${(e as Error).message}`);
+      });
+  }, [pushToast]);
 
   async function handleSaveToken() {
     if (!token.trim()) return;

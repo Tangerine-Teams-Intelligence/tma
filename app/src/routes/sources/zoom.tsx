@@ -59,12 +59,17 @@ export default function ZoomSourceRoute() {
   const [lastSyncMsg, setLastSyncMsg] = useState<string | null>(null);
 
   useEffect(() => {
-    void zoomGetConfig().then((cfg) => {
-      setConfig(cfg);
-      setCaptureEnabled(cfg.capture_enabled);
-      setLookbackDays(cfg.lookback_days);
-    });
-  }, []);
+    // === v1.13.8 round-8 === — see loom.tsx: zoomGetConfig now throws
+    zoomGetConfig()
+      .then((cfg) => {
+        setConfig(cfg);
+        setCaptureEnabled(cfg.capture_enabled);
+        setLookbackDays(cfg.lookback_days);
+      })
+      .catch((e) => {
+        pushToast("error", `Couldn't read Zoom config: ${(e as Error).message}`);
+      });
+  }, [pushToast]);
 
   const credsAllStored = useMemo(() => {
     if (!config) return false;

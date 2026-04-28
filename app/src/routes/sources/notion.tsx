@@ -63,15 +63,20 @@ export default function NotionSourceRoute() {
 
   // Initial load.
   useEffect(() => {
-    void notionGetConfig().then((cfg) => {
-      setConfig(cfg);
-      setSelectedDbs(cfg.database_ids);
-      setDecisionsDb(cfg.decisions_db_id ?? "");
-      setCaptureEnabled(cfg.capture_enabled);
-      setWritebackEnabled(cfg.writeback_enabled);
-      setTokenSaved(cfg.token_present);
-    });
-  }, []);
+    // === v1.13.8 round-8 === — see loom.tsx: notionGetConfig now throws
+    notionGetConfig()
+      .then((cfg) => {
+        setConfig(cfg);
+        setSelectedDbs(cfg.database_ids);
+        setDecisionsDb(cfg.decisions_db_id ?? "");
+        setCaptureEnabled(cfg.capture_enabled);
+        setWritebackEnabled(cfg.writeback_enabled);
+        setTokenSaved(cfg.token_present);
+      })
+      .catch((e) => {
+        pushToast("error", `Couldn't read Notion config: ${(e as Error).message}`);
+      });
+  }, [pushToast]);
 
   async function handleSaveToken() {
     if (!token.trim().startsWith("secret_") && !token.trim().startsWith("ntn_")) {

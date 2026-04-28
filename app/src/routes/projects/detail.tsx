@@ -16,16 +16,25 @@ export default function ProjectDetailRoute() {
   const currentUser = useStore((s) => s.ui.currentUser);
   const [data, setData] = useState<ProjectDetailData | null>(null);
   const [loading, setLoading] = useState(true);
+  // === v1.13.8 round-8 === — readProject re-throws on Tauri failure
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancel = false;
     if (!slug) return;
     setLoading(true);
-    void readProject(slug).then((d) => {
-      if (cancel) return;
-      setData(d);
-      setLoading(false);
-    });
+    setError(null);
+    readProject(slug)
+      .then((d) => {
+        if (cancel) return;
+        setData(d);
+        setLoading(false);
+      })
+      .catch((e: unknown) => {
+        if (cancel) return;
+        setError(typeof e === "string" ? e : (e as Error)?.message ?? "Could not read project.");
+        setLoading(false);
+      });
     return () => {
       cancel = true;
     };
@@ -49,6 +58,12 @@ export default function ProjectDetailRoute() {
         <TangerineNotes notes={data?.notes ?? []} route={`projects:${slug}`} />
         {loading ? (
           <p className="text-[12px] text-stone-500 dark:text-stone-400">Loading…</p>
+        ) : error ? (
+          // === v1.13.8 round-8 === — armed error UI
+          <div role="alert" data-testid="project-detail-error" className="rounded-md border border-rose-200 bg-rose-50 px-4 py-3 dark:border-rose-900 dark:bg-rose-950/30">
+            <p className="text-[12px] text-rose-700 dark:text-rose-300">Couldn't read project {slug}.</p>
+            <p className="mt-1 font-mono text-[10px] text-rose-600 dark:text-rose-400">{error}</p>
+          </div>
         ) : data ? (
           <ProjectView data={data} onAtomViewed={onAtomViewed} />
         ) : (
