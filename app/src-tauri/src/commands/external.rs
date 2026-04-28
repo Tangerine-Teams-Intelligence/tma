@@ -8,6 +8,7 @@ use std::process::Command as StdCommand;
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, Runtime, State};
+use tauri_plugin_shell::ShellExt;
 
 use super::runner::run_oneshot;
 use super::{AppError, AppState};
@@ -37,10 +38,23 @@ pub struct OpenExternalArgs {
     pub url: String,
 }
 
+// === wave 6.5 ===
+// CEO dogfood (2026-04-27): the previous `cmd /c start "" url` invocation
+// with CREATE_NO_WINDOW silent-failed on Windows — the start verb appeared
+// to inherit the suppressed-window state and never actually spawned the
+// browser. Switch to the official tauri-plugin-shell ShellExt::open API,
+// which is also already permitted via `shell:allow-open` in capabilities.
+// Cross-platform, no manual cmd wrapper needed.
 #[tauri::command]
-pub async fn open_external(args: OpenExternalArgs) -> Result<(), AppError> {
-    open_with_default_handler(&args.url)
+pub async fn open_external<R: Runtime>(
+    app: AppHandle<R>,
+    args: OpenExternalArgs,
+) -> Result<(), AppError> {
+    app.shell()
+        .open(&args.url, None)
+        .map_err(|e| AppError::external("shell_open", e.to_string()))
 }
+// === end wave 6.5 ===
 
 #[derive(Debug, Deserialize)]
 pub struct OpenInEditorArgs {
