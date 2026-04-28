@@ -235,6 +235,21 @@ export default function MeetingSetupRoute() {
           setOpenSection("transcription");
           return;
         }
+        // === v1.14.2 round-3 ===
+        // After R3 promoted `validateWhisperKey` from safeInvoke →
+        // tauriInvoke (so a real Rust-side validator failure throws
+        // instead of silently lying through the mock heuristic), this
+        // block needs a real catch. Without it, an HTTP error from
+        // OpenAI's verify endpoint would unwind past this `try/finally`
+        // and surface as an opaque "Apply failed: ..." in the outer
+        // saveBlock catch — losing the section context for the user.
+        // === end v1.14.2 round-3 ===
+      } catch (e) {
+        const msg = (e as Error).message ?? String(e);
+        setWhisperKeyError(msg);
+        setOpenSection("transcription");
+        pushToast("error", `Whisper key validation failed: ${msg}`);
+        return;
       } finally {
         setValidatingKey(false);
       }

@@ -251,8 +251,17 @@ export async function validateTargetRepo(path: string): Promise<RepoValidationRe
   }));
 }
 
+// === v1.14.2 round-3 ===
+// LOAD-BEARING: user pastes a Whisper API key and clicks "Save" — they need
+// an honest yes/no, not a swallowed error that silently passes through to
+// the mock heuristic (which only checks the `sk-` prefix). Switching from
+// `safeInvoke` → `tauriInvoke` re-arms the page-level try/catch so a real
+// HTTP failure surfaces in the toast pipeline instead of a fake "passed"
+// reading from the mock fallback. R8 already did this for notion/loom/zoom
+// validate paths; the connector-parity sweep extends it here.
+// === end v1.14.2 round-3 ===
 export async function validateWhisperKey(key: string): Promise<{ ok: boolean; error?: string }> {
-  return safeInvoke("validate_whisper_key", { key }, () => {
+  return tauriInvoke("validate_whisper_key", { key }, () => {
     const ok = key.startsWith("sk-") && key.length >= 40;
     return ok ? { ok } : { ok: false, error: "Mock: key must start with sk- and be 40+ chars." };
   });
@@ -1266,10 +1275,21 @@ export interface EmailFetchResult {
  * keychain on success. Returns a structured `{ok, error}` result rather
  * than throwing — the UI surfaces the error inline.
  */
+// === v1.14.2 round-3 ===
+// LOAD-BEARING: user just pasted IMAP creds and clicked "Test connection".
+// They are watching for "yes / no, here's why." If the Rust handler errors
+// (network down, keychain locked, IMAP auth refused with a Rust panic
+// instead of a structured `{ok:false, error}`), `safeInvoke` would silently
+// log to console and return the mock saying "no Tauri bridge" — which the
+// user would (correctly) read as a Tauri install bug, not their real auth
+// failure. `tauriInvoke` lets the page-level try/catch render the actual
+// error in the toast. R8 hardened notion/loom/zoom validate paths the same
+// way; this extends to the most-failure-prone connector (IMAP).
+// === end v1.14.2 round-3 ===
 export async function emailTestConnection(
   config: EmailConfig
 ): Promise<EmailTestConnectionResult> {
-  return safeInvoke("email_test_connection", { config }, () => ({
+  return tauriInvoke("email_test_connection", { config }, () => ({
     ok: false,
     host: config.host ?? "",
     port: config.port ?? 993,
@@ -1282,8 +1302,15 @@ export async function emailTestConnection(
  * Manual fetch trigger — the daemon already runs this once a day. Useful
  * for the "fetch now" button in the email setup page.
  */
+// === v1.14.2 round-3 ===
+// LOAD-BEARING: user clicked "Fetch now" — they're staring at the spinner
+// expecting a count of new threads. A swallowed Rust failure that returned
+// `{threads_written: 0}` would read as "your inbox is up to date" instead
+// of "the IMAP fetch crashed." Promote to `tauriInvoke` so the route's
+// try/catch surfaces the real error.
+// === end v1.14.2 round-3 ===
 export async function emailFetchRecent(config: EmailConfig): Promise<EmailFetchResult> {
-  return safeInvoke("email_fetch_recent", { config }, () => ({
+  return tauriInvoke("email_fetch_recent", { config }, () => ({
     threads_written: 0,
     messages_seen: 0,
     provider: config.provider,
@@ -1360,11 +1387,20 @@ export async function voiceNotesListRecent(
  * lives at `decisionPath`. Pass an empty `channelId` to fall back to the
  * channel encoded in the atom's `slack_channel` frontmatter.
  */
+// === v1.14.2 round-3 ===
+// LOAD-BEARING: user clicked the "Test brief" button — the slack route
+// records the outcome in a 5-row outcomes panel and shows a toast. A
+// swallowed Rust error currently lets `safeInvoke` log to the console and
+// resolve with `undefined`, which the route reads as SUCCESS and posts a
+// fake ✓ "Posted to (atom default)." into the outcomes panel. That's the
+// exact "lying success" pattern R8 fixed for notion/loom/zoom; same fix
+// here for slack writeback.
+// === end v1.14.2 round-3 ===
 export async function slackWritebackBrief(
   decisionPath: string,
   channelId: string
 ): Promise<void> {
-  return safeInvoke(
+  return tauriInvoke(
     "slack_writeback_brief",
     { decisionPath, channelId },
     () => {
@@ -1375,11 +1411,16 @@ export async function slackWritebackBrief(
 }
 
 /** Post a finalized-meeting summary (decisions + action items) to Slack. */
+// === v1.14.2 round-3 ===
+// Same load-bearing reasoning as slackWritebackBrief above — the route's
+// "Test summary" button needs honest success/failure, not the swallowed
+// console.info path.
+// === end v1.14.2 round-3 ===
 export async function slackWritebackSummary(
   meetingPath: string,
   channelId: string
 ): Promise<void> {
-  return safeInvoke(
+  return tauriInvoke(
     "slack_writeback_summary",
     { meetingPath, channelId },
     () => {
@@ -1394,11 +1435,17 @@ export async function slackWritebackSummary(
  * Calendar event description. Idempotent — the Rust side detects the
  * sentinel and skips a second append.
  */
+// === v1.14.2 round-3 ===
+// LOAD-BEARING: calendar route "Test" button posts to the outcomes panel.
+// Same as slack writeback — a swallowed Rust error currently shows ✓
+// "Writeback IPC reachable" when the IPC actually failed. Promote so the
+// route's try/catch sees the real error.
+// === end v1.14.2 round-3 ===
 export async function calendarWritebackSummary(
   meetingPath: string,
   eventId: string
 ): Promise<void> {
-  return safeInvoke(
+  return tauriInvoke(
     "calendar_writeback_summary",
     { meetingPath, eventId },
     () => {
