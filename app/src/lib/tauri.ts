@@ -1898,9 +1898,24 @@ export interface AgentActivity {
  * even though he had no Cursor / no Devin. The empty-state ("no active
  * agents") is honest about what's parseable.
  */
+// === v1.13.7 round-7 ===
+// Round 7 audit: this used to call `safeInvoke`, which swallows real
+// Tauri-side errors and returns the empty mock fallback `[]`. That
+// rendered "no active agents" — visually indistinguishable from a real
+// no-agents state — when in fact the bridge to `get_active_agents` had
+// errored. The whole point of the AI capture moat surface is honest
+// visibility; a fake-empty list = "the moat looks broken / nothing
+// to capture", which silently undermines the dual-pillar story.
+//
+// ActiveAgentsSection.tsx already has a working error UI branch
+// (`active-agents-error` testid) that was DEAD CODE in Tauri because
+// the wrapper never threw. Switching to `tauriInvoke` re-arms it:
+// outside Tauri (vitest / vite dev) the empty mock still runs so the
+// "no agents" empty state renders for development.
 export async function getActiveAgents(): Promise<AgentActivity[]> {
-  return safeInvoke<AgentActivity[]>("get_active_agents", undefined, () => []);
+  return tauriInvoke<AgentActivity[]>("get_active_agents", undefined, () => []);
 }
+// === end v1.13.7 round-7 ===
 // === end v2.0-beta.2 active agents ===
 
 // === v2.5 auth + billing ===

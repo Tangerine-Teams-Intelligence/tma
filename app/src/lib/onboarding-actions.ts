@@ -123,11 +123,29 @@ export function actionStatusLabel(status: string): string {
   }
 }
 
+// === v1.13.7 round-7 ===
+// Round 7 audit: this used to be a `Promise<void>` that the OnboardingChat
+// CTA button discarded with `void completeFrontendAction(action)`. Result:
+// a user clicking "Open" on a github_oauth / discord_bot_guide /
+// whisper_download action card would see NOTHING happen if `openExternal`
+// or `downloadWhisperModel` rejected (e.g. shell plugin not granted, no
+// disk space, network down). The setup funnel is load-bearing for the
+// CEO's Solo+Team funnel pillar — silent click = "Tangerine is broken"
+// trust collapse on first run. Returning a discriminated-union result
+// lets the caller surface the failure as a toast/inline error without
+// destabilising the chat dispatch loop (we don't throw because the chat
+// keeps running and a single click failure shouldn't blow up the whole
+// transcript).
+export type FrontendActionResult =
+  | { ok: true }
+  | { ok: false; error: string };
+// === end v1.13.7 round-7 ===
+
 /**
  * Frontend-side completion. Some action kinds can't be fully run from the
  * backend — the user needs to click through OAuth, see the Discord portal,
- * etc. Returns a Promise<void>; the caller is expected to render any
- * resulting toast / notification.
+ * etc. Returns a `FrontendActionResult`; the caller is expected to render
+ * any resulting toast / notification (success or failure).
  *
  * `whisper_download`: the Rust backend marks the action `pending` because
  * it doesn't want to block the chat reply on a 244MB download — the
@@ -145,34 +163,41 @@ export function actionStatusLabel(status: string): string {
  */
 export async function completeFrontendAction(
   action: OnboardingAction,
-): Promise<void> {
-  switch (action.kind) {
-    case "whisper_download": {
-      const size = parseWhisperSize(action.detail);
-      // Fire and forget — caller renders the progress UI from
-      // `onEvent` if it cares. Default `onEvent` is a no-op so the
-      // chat surface itself can stay simple.
-      await downloadWhisperModel(size, () => {});
-      return;
+): Promise<FrontendActionResult> {
+  // === v1.13.7 round-7 === — wrap each Tauri call so a thrown error
+  // returns a structured failure instead of an unhandled promise rejection.
+  try {
+    switch (action.kind) {
+      case "whisper_download": {
+        const size = parseWhisperSize(action.detail);
+        // Fire and forget — caller renders the progress UI from
+        // `onEvent` if it cares. Default `onEvent` is a no-op so the
+        // chat surface itself can stay simple.
+        await downloadWhisperModel(size, () => {});
+        return { ok: true };
+      }
+      case "github_oauth": {
+        // The real device-flow lands the user here; they then come back
+        // and the existing GitHub flow polls for the token.
+        await openExternal("https://github.com/login/device");
+        return { ok: true };
+      }
+      case "discord_bot_guide": {
+        await openExternal("https://discord.com/developers/applications");
+        return { ok: true };
+      }
+      case "restart_required":
+      case "configure_mcp":
+      case "git_remote_set":
+      default:
+        // These are either already done by the backend or pure user
+        // actions with no URL to open. No-op.
+        return { ok: true };
     }
-    case "github_oauth": {
-      // The real device-flow lands the user here; they then come back
-      // and the existing GitHub flow polls for the token.
-      await openExternal("https://github.com/login/device");
-      return;
-    }
-    case "discord_bot_guide": {
-      await openExternal("https://discord.com/developers/applications");
-      return;
-    }
-    case "restart_required":
-    case "configure_mcp":
-    case "git_remote_set":
-    default:
-      // These are either already done by the backend or pure user
-      // actions with no URL to open. No-op.
-      return;
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
+  // === end v1.13.7 round-7 ===
 }
 
 /** Pull "small" / "base" / "medium" out of a whisper_download detail line.

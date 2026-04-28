@@ -491,6 +491,14 @@ function ActionCard({ action }: { action: OnboardingAction }) {
   const { t } = useTranslation();
   const Icon = actionIcon(action.kind);
   const color = actionStatusColor(action.status);
+  // === v1.13.7 round-7 === — surface a real CTA failure inline so the
+  // user doesn't see a silent click no-op when openExternal /
+  // downloadWhisperModel rejects (e.g. shell plugin not granted, no disk
+  // space). Local state because the failure is per-card; we don't want
+  // to thread a global toast for a single OAuth open click.
+  const pushToast = useStore((s) => s.ui.pushToast);
+  const [ctaError, setCtaError] = useState<string | null>(null);
+  // === end v1.13.7 round-7 ===
   const colorClasses = (() => {
     switch (color) {
       case "green":
@@ -503,9 +511,22 @@ function ActionCard({ action }: { action: OnboardingAction }) {
         return "border-stone-200 bg-stone-50/60 text-stone-700 dark:border-stone-800 dark:bg-stone-950/30 dark:text-stone-300";
     }
   })();
-  const handleCta = () => {
-    void completeFrontendAction(action);
+  // === v1.13.7 round-7 === — await the typed result (R7 made it a
+  // discriminated-union return). On `ok: false`, render an inline error
+  // line + push a toast so the failure is visible across the shell.
+  const handleCta = async () => {
+    setCtaError(null);
+    const r = await completeFrontendAction(action);
+    if (!r.ok) {
+      setCtaError(r.error);
+      pushToast({
+        kind: "error",
+        msg: `Couldn't ${actionTitle(action.kind).toLowerCase()}: ${r.error}`,
+        durationMs: 6000,
+      });
+    }
   };
+  // === end v1.13.7 round-7 ===
   return (
     <div
       data-testid={`onboarding-chat-action-${action.kind}`}
@@ -532,7 +553,10 @@ function ActionCard({ action }: { action: OnboardingAction }) {
           <button
             type="button"
             data-testid={`onboarding-chat-action-cta-${action.kind}`}
-            onClick={handleCta}
+            // === v1.13.7 round-7 === — handleCta is now async; void the
+            // returned promise so React's onClick contract stays sync.
+            onClick={() => void handleCta()}
+            // === end v1.13.7 round-7 ===
             className="mt-1.5 rounded border border-current px-2 py-0.5 text-[11px] hover:bg-current/10"
           >
             {t("onboardingChat.actionCta", {
@@ -540,6 +564,18 @@ function ActionCard({ action }: { action: OnboardingAction }) {
             })}
           </button>
         )}
+        {/* === v1.13.7 round-7 === — inline failure line so a click that
+            errored doesn't look like a silent no-op. Toast also fires
+            via pushToast in handleCta for cross-route visibility. */}
+        {ctaError && (
+          <div
+            data-testid={`onboarding-chat-action-cta-error-${action.kind}`}
+            className="mt-1 font-mono text-[10px] text-rose-700 dark:text-rose-300"
+          >
+            {ctaError}
+          </div>
+        )}
+        {/* === end v1.13.7 round-7 === */}
       </div>
     </div>
   );

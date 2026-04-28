@@ -20,6 +20,18 @@ async function realInvoke<T>(cmd: string, args?: Record<string, unknown>): Promi
   return invoke<T>(cmd, args);
 }
 
+// === v1.13.7 round-7 ===
+// Round 7 audit: this used to swallow real Tauri-side errors and return
+// mockAtoms() as a fallback — meaning the 4 graph callers' .catch handlers
+// (WorkflowGraph / SocialGraph / DecisionLineageTree / ProjectTopology)
+// were dead code in production. A `list_atoms` failure on a fresh install
+// (e.g. memory dir missing, permission denied) silently rendered the
+// canonical mock graph (daizhe / hongyu / v1-launch / 2026-04-pricing /
+// 2026-04-scope-lock / 2026-04-26-graph-build) — load-bearing for first-
+// run trust because the user thinks "Tangerine has my team's atoms"
+// when in fact it has none. We propagate the error inside Tauri so the
+// existing per-component error UI actually fires; outside Tauri (vitest /
+// vite dev) the mock still runs so the dev surface stays usable.
 async function safeInvoke<T>(
   cmd: string,
   args: Record<string, unknown> | undefined,
@@ -31,9 +43,13 @@ async function safeInvoke<T>(
   } catch (e) {
     // eslint-disable-next-line no-console
     console.error(`[tauri/atoms] invoke "${cmd}" failed:`, e, "args=", args);
-    return await mock();
+    // Re-throw so the load-bearing graph callers' .catch handlers can
+    // render their honest error state instead of a fake-but-plausible
+    // 6-row team graph.
+    throw e;
   }
 }
+// === end v1.13.7 round-7 ===
 
 /** One row returned by `list_atoms`. Mirrors the Rust struct exactly. */
 export interface AtomEntry {
