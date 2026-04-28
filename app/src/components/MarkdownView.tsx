@@ -21,8 +21,21 @@ interface Props {
  * frontmatter from the rendered body so users don't see raw YAML.
  */
 export function MarkdownView({ content, relPath, provenance }: Props) {
+  // === v1.13.10 round-10 ===
+  // Per-file dismiss: previously a single global `sampleBannerDismissed`
+  // bool meant dismissing on one sample file hid the banner on every
+  // sample file forever (and also after the user re-seeded fresh
+  // samples). We now key dismissal by `relPath` so each sample file is
+  // its own decision, and the legacy bool is honored as a one-time
+  // global override only if the user previously hit dismiss in v1.13.9
+  // or earlier — that prevents a regression where they'd see the
+  // banner pop back on files they had already dismissed.
   const sampleBannerDismissed = useStore((s) => s.ui.sampleBannerDismissed);
+  const sampleBannerDismissedPaths = useStore(
+    (s) => s.ui.sampleBannerDismissedPaths,
+  );
   const dismissSampleBanner = useStore((s) => s.ui.dismissSampleBanner);
+  // === end v1.13.10 round-10 ===
 
   if (content == null) {
     return (
@@ -44,7 +57,15 @@ export function MarkdownView({ content, relPath, provenance }: Props) {
   // If we successfully parsed frontmatter, render only the body. Otherwise
   // (no leading ---), render the full content untouched.
   const bodyToRender = fm.raw ? fm.body : content;
-  const showSampleBanner = fm.isSample && !sampleBannerDismissed;
+  // === v1.13.10 round-10 ===
+  // Hide if the legacy global is set OR this specific path is in the
+  // per-file dismiss list. New dismissals always go through the per-file
+  // list (handler below).
+  const showSampleBanner =
+    fm.isSample &&
+    !sampleBannerDismissed &&
+    !sampleBannerDismissedPaths.includes(relPath);
+  // === end v1.13.10 round-10 ===
 
   return (
     // tabIndex=-1 + outline-none stops the article from grabbing focus on
@@ -69,7 +90,7 @@ export function MarkdownView({ content, relPath, provenance }: Props) {
           </p>
           <button
             type="button"
-            onClick={dismissSampleBanner}
+            onClick={() => dismissSampleBanner(relPath)}
             className="shrink-0 rounded p-1 text-stone-400 hover:bg-stone-100 hover:text-stone-700 dark:hover:bg-stone-800 dark:hover:text-stone-200"
             aria-label="Dismiss sample notice"
             title="Dismiss"

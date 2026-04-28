@@ -597,12 +597,47 @@ fn infer_scope(rel: &str) -> Option<String> {
 // All errors degrade silently to `false` — sample-detection is a UI
 // hint, never a security boundary. A read failure here must not block
 // the tree from rendering.
+//
+// === v1.13.10 round-10 ===
+// Round 10 perf fix: previous version called `read_to_string` which
+// loads the entire file into memory. For a 1000-file tree where each
+// atom is ~5–50 KB that's tens of megabytes of throwaway I/O on every
+// `memory_tree` call. We only need the first ~32 frontmatter lines, so:
+//   1. Skip files larger than 100 KB up-front (huge attached pastes
+//      are very unlikely to be a Wave 13 sample seed and we'd rather
+//      under-tag than blow the perf budget).
+//   2. Read at most the first 4 KB of the file — enough headroom for
+//      32 lines × 120 cols. If frontmatter exceeds that we just say
+//      "not a sample" rather than reading more.
+// === end v1.13.10 round-10 ===
 fn is_sample_md_file(path: &Path) -> bool {
-    let content = match std::fs::read_to_string(path) {
-        Ok(c) => c,
+    // === v1.13.10 round-10 ===
+    // Cheap metadata stat first; bail on huge files before any read.
+    if let Ok(meta) = std::fs::metadata(path) {
+        if meta.len() > 100 * 1024 {
+            return false;
+        }
+    }
+    use std::io::Read;
+    let mut file = match std::fs::File::open(path) {
+        Ok(f) => f,
         Err(_) => return false,
     };
-    let mut lines = content.lines();
+    let mut buf = [0u8; 4096];
+    let n = match file.read(&mut buf) {
+        Ok(n) => n,
+        Err(_) => return false,
+    };
+    let head = match std::str::from_utf8(&buf[..n]) {
+        Ok(s) => s,
+        // Truncated UTF-8 at 4KB boundary → trim trailing partial bytes
+        Err(e) => match std::str::from_utf8(&buf[..e.valid_up_to()]) {
+            Ok(s) => s,
+            Err(_) => return false,
+        },
+    };
+    // === end v1.13.10 round-10 ===
+    let mut lines = head.lines();
     let first = match lines.next() {
         Some(l) => l.trim(),
         None => return false,

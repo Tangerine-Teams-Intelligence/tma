@@ -135,8 +135,18 @@ interface UiSlice {
   localOnly: boolean;
   /** True after `init_memory_with_samples` has run successfully (or no-op). */
   samplesSeeded: boolean;
-  /** True after the user dismisses the in-content sample banner. */
+  /** True after the user dismisses the in-content sample banner.
+   *  v1.13.10 round-10: kept for backward-compat persistence migration.
+   *  New code reads `sampleBannerDismissedPaths` instead — see below. */
   sampleBannerDismissed: boolean;
+  // === v1.13.10 round-10 ===
+  /** Per-file dismissal record — keyed by atom relPath. R10 fix: the
+   *  global bool above caused dismissing the banner on ONE sample file
+   *  to silently hide it on ALL sample files forever, even after the
+   *  user re-seeded a fresh sample set. Per-file dismiss restores user
+   *  control: dismissing a sample file remembers that file only. */
+  sampleBannerDismissedPaths: string[];
+  // === end v1.13.10 round-10 ===
   // === wave 13 ===
   /** Wave 13 — populated-app demo flag. Flips `true` on truly-fresh first
    *  launch (memory dir missing or empty) so the user lands on a populated
@@ -532,7 +542,9 @@ interface UiSlice {
   togglePalette: () => void;
   setLocalOnly: (v: boolean) => void;
   setSamplesSeeded: (v: boolean) => void;
-  dismissSampleBanner: () => void;
+  /** v1.13.10 round-10: optional `path` arg dismisses just that file.
+   *  No-arg call kept for backward compat — flips the legacy global. */
+  dismissSampleBanner: (path?: string) => void;
   // === wave 13 ===
   /** Wave 13 — flip the populated-app demo flag. True = banner shown,
    *  false = user explicitly dismissed (or replaced sample data with real). */
@@ -798,6 +810,9 @@ export const useStore = create<Store>()(
         localOnly: false,
         samplesSeeded: false,
         sampleBannerDismissed: false,
+        // === v1.13.10 round-10 ===
+        sampleBannerDismissedPaths: [],
+        // === end v1.13.10 round-10 ===
         // === wave 13 ===
         // Wave 13 — populated-app demo flag. Defaults false so an existing
         // install without the migration doesn't suddenly show the banner.
@@ -1037,8 +1052,29 @@ export const useStore = create<Store>()(
           set((s) => ({ ui: { ...s.ui, localOnly: v } })),
         setSamplesSeeded: (v) =>
           set((s) => ({ ui: { ...s.ui, samplesSeeded: v } })),
-        dismissSampleBanner: () =>
-          set((s) => ({ ui: { ...s.ui, sampleBannerDismissed: true } })),
+        // === v1.13.10 round-10 ===
+        // Per-file dismiss when `path` is passed; legacy global flip when
+        // not. The MarkdownView always passes a path now; the no-arg form
+        // is preserved for any external caller that hasn't been updated.
+        dismissSampleBanner: (path?: string) =>
+          set((s) => {
+            if (path) {
+              if (s.ui.sampleBannerDismissedPaths.includes(path)) {
+                return s;
+              }
+              return {
+                ui: {
+                  ...s.ui,
+                  sampleBannerDismissedPaths: [
+                    ...s.ui.sampleBannerDismissedPaths,
+                    path,
+                  ],
+                },
+              };
+            }
+            return { ui: { ...s.ui, sampleBannerDismissed: true } };
+          }),
+        // === end v1.13.10 round-10 ===
         // === wave 13 ===
         setDemoMode: (v) =>
           set((s) => ({ ui: { ...s.ui, demoMode: v } })),
@@ -1442,6 +1478,9 @@ export const useStore = create<Store>()(
             memoryRoot: s.ui.memoryRoot,
             samplesSeeded: s.ui.samplesSeeded,
             sampleBannerDismissed: s.ui.sampleBannerDismissed,
+            // === v1.13.10 round-10 ===
+            sampleBannerDismissedPaths: s.ui.sampleBannerDismissedPaths,
+            // === end v1.13.10 round-10 ===
             // === wave 13 ===
             demoMode: s.ui.demoMode,
             demoSeedAttempted: s.ui.demoSeedAttempted,
@@ -1544,6 +1583,9 @@ export const useStore = create<Store>()(
                 memoryRoot?: string;
                 samplesSeeded?: boolean;
                 sampleBannerDismissed?: boolean;
+                // === v1.13.10 round-10 ===
+                sampleBannerDismissedPaths?: string[];
+                // === end v1.13.10 round-10 ===
                 // === wave 13 ===
                 demoMode?: boolean;
                 demoSeedAttempted?: boolean;
@@ -1605,6 +1647,10 @@ export const useStore = create<Store>()(
             samplesSeeded: p?.ui?.samplesSeeded ?? current.ui.samplesSeeded,
             sampleBannerDismissed:
               p?.ui?.sampleBannerDismissed ?? current.ui.sampleBannerDismissed,
+            // === v1.13.10 round-10 ===
+            sampleBannerDismissedPaths:
+              p?.ui?.sampleBannerDismissedPaths ?? current.ui.sampleBannerDismissedPaths,
+            // === end v1.13.10 round-10 ===
             // === wave 13 ===
             demoMode: p?.ui?.demoMode ?? current.ui.demoMode,
             demoSeedAttempted:
