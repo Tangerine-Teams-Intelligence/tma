@@ -35,6 +35,9 @@ import {
   Languages,
   FolderOpen,
   PlayCircle,
+  // === wave 10 ===
+  GitBranch,
+  // === end wave 10 ===
 } from "lucide-react";
 import { signOut } from "@/lib/auth";
 import { useStore } from "@/lib/store";
@@ -42,6 +45,9 @@ import { searchMemory, type MemorySearchHit } from "@/lib/memory";
 import { showInFolder } from "@/lib/tauri";
 import { activeLocale, setLocale } from "@/i18n";
 import { logEvent } from "@/lib/telemetry";
+// === wave 10 === — git auto-sync palette commands.
+import { gitSyncPull, gitSyncPush, gitSyncStatus } from "@/lib/tauri";
+// === end wave 10 ===
 
 interface Props {
   open: boolean;
@@ -291,6 +297,67 @@ export function CommandPalette({ open, onClose }: Props) {
           close();
         },
       },
+      // === wave 10 ===
+      // v1.10 git auto-sync palette commands. The "Initialize git tracking"
+      // entry is gated by an async lookup of the current status — we don't
+      // want to surface "init" when the dir is already a git repo.
+      {
+        id: "action:git-pull-team",
+        kind: "action",
+        label: "Pull from team",
+        search: "git pull team sync fetch update",
+        hint: "git_sync_pull",
+        icon: GitBranch,
+        onSelect: () => {
+          void gitSyncPull();
+          close();
+        },
+      },
+      {
+        id: "action:git-push-team",
+        kind: "action",
+        label: "Push to team",
+        search: "git push team sync upload share",
+        hint: "git_sync_push",
+        icon: GitBranch,
+        onSelect: () => {
+          void gitSyncPush();
+          close();
+        },
+      },
+      {
+        id: "action:git-history",
+        kind: "action",
+        label: "Open git history",
+        search: "git history log commits sidebar popover",
+        hint: "open the sidebar popover",
+        icon: GitBranch,
+        onSelect: () => {
+          // No dedicated route — surface a hint via the click-bubble
+          // mechanism the GitSyncIndicator listens for.
+          window.dispatchEvent(new Event("tangerine:git-sync-popover-open"));
+          close();
+        },
+      },
+      {
+        id: "action:git-init",
+        kind: "action",
+        label: "Initialize git tracking",
+        search: "git init initialize tracking memory dir setup",
+        hint: "memory dir → git",
+        icon: GitBranch,
+        onSelect: async () => {
+          // Best-effort: if status says we're already initialized, skip.
+          const cur = await gitSyncStatus();
+          if (cur.git_initialized) {
+            close();
+            return;
+          }
+          window.dispatchEvent(new Event("tangerine:git-init-banner-open"));
+          close();
+        },
+      },
+      // === end wave 10 ===
       {
         id: "shortcut:settings",
         kind: "shortcut",

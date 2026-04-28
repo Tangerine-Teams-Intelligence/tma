@@ -592,6 +592,32 @@ impl CoThinkerEngine {
         // 9. Update last_heartbeat_ts.
         self.last_heartbeat_ts = Some(started);
 
+        // === wave 10 === — auto-commit the memory dir if it's git-tracked.
+        // Defensive: never block the heartbeat. The helper itself logs +
+        // returns silently on any git error (missing binary / not a repo /
+        // bad config / locked index). `vendors_seen` is derived from the
+        // distinct AI-tool-keyword count in the new atoms' rel_paths.
+        if brain_updated || atoms_seen > 0 {
+            let memory_dir = self.memory_root.clone();
+            let ts = started.to_rfc3339();
+            let vendors_seen = count_vendors_in_atoms(&atoms);
+            // Best-effort: spawn so we don't extend the heartbeat's
+            // wall-clock latency by waiting on git. The throttle has been
+            // released by here, so a slow `git add -A` on a huge memory
+            // dir doesn't keep the next heartbeat waiting either.
+            tokio::spawn(async move {
+                crate::commands::git_sync::auto_commit_after_heartbeat(
+                    &memory_dir,
+                    &ts,
+                    atoms_seen,
+                    vendors_seen,
+                    None,
+                )
+                .await;
+            });
+        }
+        // === end wave 10 ===
+
         Ok(HeartbeatOutcome {
             atoms_seen,
             brain_updated,
@@ -769,6 +795,30 @@ fn walk_dir(
     }
     Ok(())
 }
+
+// === wave 10 ===
+/// Count distinct AI-tool vendors mentioned in the atoms' rel_paths. Used
+/// for the auto-commit message (`X atoms, Y vendors`). The match is a
+/// dumb keyword scan against the rel_path — false positives are fine
+/// because this is a commit-message hint, not a metric. The keyword list
+/// matches `lib/ai-tools-config.ts` on the React side.
+pub fn count_vendors_in_atoms(atoms: &[AtomSummary]) -> u32 {
+    const VENDORS: &[&str] = &[
+        "cursor", "claude", "codex", "windsurf", "chatgpt", "gemini",
+        "copilot", "ollama", "v0", "devin", "replit",
+    ];
+    let mut seen = std::collections::HashSet::new();
+    for atom in atoms {
+        let lower = atom.rel_path.to_lowercase();
+        for v in VENDORS {
+            if lower.contains(v) {
+                seen.insert(*v);
+            }
+        }
+    }
+    seen.len() as u32
+}
+// === end wave 10 ===
 
 /// Read the first non-frontmatter, non-empty line. Capped at 200 chars.
 fn read_blurb(path: &Path) -> String {

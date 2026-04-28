@@ -249,6 +249,29 @@ interface UiSlice {
   showAdvancedSettings: boolean;
   setShowAdvancedSettings: (v: boolean) => void;
   // === end wave 5-α ===
+  // === wave 10 ===
+  /** v1.10 — git auto-sync mode. `unknown` is the fresh-install default; the
+   *  GitInitBanner is shown until the user picks `init`, `skip`, or `later`.
+   *  `init` = git-tracked + auto-sync engaged. `skip` = "I'm on Cloud,
+   *  don't bother me about git" (forward-looking; Cloud isn't shipped yet).
+   *  `later` = banner dismissed for this session only; will re-prompt next
+   *  cold launch. Persisted (except `later` which is per-session). */
+  gitMode: "unknown" | "init" | "skip" | "later";
+  setGitMode: (m: "unknown" | "init" | "skip" | "later") => void;
+  /** v1.10 — auto-pull interval in minutes. The Rust daemon decides the
+   *  actual cadence (foreground 5m / background 15m); this knob lets the
+   *  user override the upper bound. Default 15. */
+  gitAutoPullIntervalMin: number;
+  setGitAutoPullIntervalMin: (n: number) => void;
+  /** v1.10 — auto-commit after every successful co-thinker heartbeat.
+   *  Default ON. When OFF, the user has to commit by hand. */
+  gitAutoCommitOnHeartbeat: boolean;
+  setGitAutoCommitOnHeartbeat: (v: boolean) => void;
+  /** v1.10 — auto-push after each auto-commit (only when remote configured).
+   *  Default ON. */
+  gitAutoPushOnCommit: boolean;
+  setGitAutoPushOnCommit: (v: boolean) => void;
+  // === end wave 10 ===
   setAgiParticipation: (v: boolean) => void;
   setAgiVolume: (v: AgiVolume) => void;
   toggleAgiChannelMute: (channel: string) => void;
@@ -691,6 +714,12 @@ export const useStore = create<Store>()(
         // tabs on every launch.
         showAdvancedSettings: false,
         // === end wave 5-α ===
+        // === wave 10 === — v1.10 git auto-sync defaults.
+        gitMode: "unknown",
+        gitAutoPullIntervalMin: 15,
+        gitAutoCommitOnHeartbeat: true,
+        gitAutoPushOnCommit: true,
+        // === end wave 10 ===
         // v3.0 §1 + §5 — personal-agent capture flags. ALL FALSE by default
         // — opt-in per source. Hydrated from `personal_agents_get_settings`
         // on Settings page mount; the flag map mirrors the Rust persisted
@@ -884,6 +913,22 @@ export const useStore = create<Store>()(
         setShowAdvancedSettings: (v) =>
           set((s) => ({ ui: { ...s.ui, showAdvancedSettings: v } })),
         // === end wave 5-α ===
+        // === wave 10 === — v1.10 git auto-sync setters.
+        setGitMode: (m) => set((s) => ({ ui: { ...s.ui, gitMode: m } })),
+        setGitAutoPullIntervalMin: (n) =>
+          set((s) => ({
+            ui: {
+              ...s.ui,
+              // Clamp to a sane band — anything below 1 min would hammer the
+              // remote, anything above 60 min loses the "auto" point.
+              gitAutoPullIntervalMin: Math.max(1, Math.min(60, Math.round(n))),
+            },
+          })),
+        setGitAutoCommitOnHeartbeat: (v) =>
+          set((s) => ({ ui: { ...s.ui, gitAutoCommitOnHeartbeat: v } })),
+        setGitAutoPushOnCommit: (v) =>
+          set((s) => ({ ui: { ...s.ui, gitAutoPushOnCommit: v } })),
+        // === end wave 10 ===
         // v3.0 §1 — personal-agent capture flag mirror.
         setPersonalAgentsEnabled: (next) =>
           set((s) => ({
@@ -1202,6 +1247,14 @@ export const useStore = create<Store>()(
             // launches (a power user collapses Sources once → stays
             // that way).
             sidebarSections: s.ui.sidebarSections,
+            // === wave 10 === — git auto-sync settings. Persisted so the
+            // user's choices (init/skip + intervals + toggles) survive
+            // cold launches and the GitInitBanner respects "skip" forever.
+            gitMode: s.ui.gitMode,
+            gitAutoPullIntervalMin: s.ui.gitAutoPullIntervalMin,
+            gitAutoCommitOnHeartbeat: s.ui.gitAutoCommitOnHeartbeat,
+            gitAutoPushOnCommit: s.ui.gitAutoPushOnCommit,
+            // === end wave 10 ===
           },
           skills: { meetingConfig: s.skills.meetingConfig },
         }) as unknown as Store,
@@ -1317,6 +1370,25 @@ export const useStore = create<Store>()(
             showAdvancedSettings:
               p?.ui?.showAdvancedSettings ?? current.ui.showAdvancedSettings,
             // === end wave 5-α ===
+            // === wave 10 === — git auto-sync hydration. `later` is a
+            // per-session value (banner re-prompts next launch), so a
+            // persisted `later` collapses back to `unknown`.
+            gitMode: ((): "unknown" | "init" | "skip" | "later" => {
+              const persisted = (p?.ui as { gitMode?: string } | undefined)
+                ?.gitMode;
+              if (persisted === "init" || persisted === "skip") return persisted;
+              return current.ui.gitMode;
+            })(),
+            gitAutoPullIntervalMin:
+              (p?.ui as { gitAutoPullIntervalMin?: number } | undefined)
+                ?.gitAutoPullIntervalMin ?? current.ui.gitAutoPullIntervalMin,
+            gitAutoCommitOnHeartbeat:
+              (p?.ui as { gitAutoCommitOnHeartbeat?: boolean } | undefined)
+                ?.gitAutoCommitOnHeartbeat ?? current.ui.gitAutoCommitOnHeartbeat,
+            gitAutoPushOnCommit:
+              (p?.ui as { gitAutoPushOnCommit?: boolean } | undefined)
+                ?.gitAutoPushOnCommit ?? current.ui.gitAutoPushOnCommit,
+            // === end wave 10 ===
             // v3.0 §1 — personal-agent capture flags. Persisted; the
             // Settings page also calls `personal_agents_get_settings`
             // on mount to reconcile with the Rust source of truth.

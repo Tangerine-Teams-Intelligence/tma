@@ -39,6 +39,9 @@ import {
 } from "@/lib/memory";
 import { MemoryTree } from "@/components/MemoryTree";
 import { SyncStatusIndicator } from "@/components/SyncStatusIndicator";
+// === wave 10 === — v1.10 git auto-sync indicator (above Solo / Settings).
+import { GitSyncIndicatorContainer } from "@/components/GitSyncIndicatorContainer";
+// === end wave 10 ===
 import { AIToolsSection } from "@/components/ai-tools/AIToolsSection";
 // === v2.0-beta.2 ACTIVE AGENTS section ===
 import { ActiveAgentsSection } from "@/components/layout/ActiveAgentsSection";
@@ -296,6 +299,14 @@ export function Sidebar() {
           system controls (sync / settings / theme / sign-out) so the
           eye reads them as a cluster rather than four floating items. */}
       <div className="ti-zone-quiet border-t border-stone-200 px-2 py-2 dark:border-stone-800">
+        {/* === wave 10 === — git auto-sync dot, above the v1.6 team-mode
+            SyncStatusIndicator. The two coexist: the v1.6 indicator surfaces
+            the team-mode push/pull cadence (which uses an OAuth token + a
+            specific team repo), while this one tracks the auto-sync layer
+            on the user's `~/.tangerine-memory/` git repo. Click → opens a
+            popover with branch / last commit / pull-now / push-now /
+            open-shell. */}
+        <GitSyncIndicatorContainer />
         <SyncStatusIndicator />
         <NavLink
           to="/settings"

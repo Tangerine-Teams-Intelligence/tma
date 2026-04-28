@@ -289,6 +289,43 @@ async fn do_heartbeat(cfg: &DaemonConfig, control: &Arc<DaemonControl>) {
         }
     }
 
+    // === wave 10 ===
+    // 1b. v1.10 — auto-pull on the user's `~/.tangerine-memory/` git repo,
+    // gated by foreground (5 min) / background (15 min). Uses the persisted
+    // `git_sync.json` record under `<memory_dir>/.tangerine/` to track the
+    // last successful pull/push so a daemon restart preserves the cadence.
+    // Skips silently when memory dir is not git-tracked or has no remote.
+    let foreground_now = *control.foreground.lock();
+    let pull_threshold = if foreground_now {
+        Duration::from_secs(5 * 60)
+    } else {
+        Duration::from_secs(15 * 60)
+    };
+    let memory_dir = cfg.memory_root.clone();
+    let last_pull = crate::commands::git_sync::read_sync_record(&memory_dir)
+        .and_then(|r| r.last_auto_pull)
+        .and_then(|s| chrono::DateTime::parse_from_rfc3339(&s).ok())
+        .map(|d| d.with_timezone(&Utc));
+    let due = match last_pull {
+        Some(prev) => Utc::now()
+            .signed_duration_since(prev)
+            .to_std()
+            .map(|el| el >= pull_threshold)
+            .unwrap_or(true),
+        None => true, // first ever tick → always pull
+    };
+    if due {
+        let pull = crate::commands::git_sync::auto_pull(&memory_dir).await;
+        if pull.conflict {
+            control.record_error("git_sync_pull", format!("conflict: {}", pull.message));
+        }
+        // Also push any local commits so teammates see fresh atoms without
+        // waiting for the user to manually push. Only fires when there's
+        // something to push.
+        let _ = crate::commands::git_sync::auto_push_if_ahead(&memory_dir).await;
+    }
+    // === end wave 10 ===
+
     // 2. Index refresh — shell out to python CLI.
     if let Err(e) = run_python_subcommand(cfg, "index-rebuild").await {
         control.record_error("index_rebuild", e);

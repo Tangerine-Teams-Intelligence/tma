@@ -165,6 +165,94 @@ export function GeneralSettings({ draft, update, onJumpToAGI }: Props) {
         </p>
       </div>
       {/* === end wave 5-β === */}
+
+      {/* === wave 10 === — git auto-sync settings. */}
+      <GitSyncSettingsBlock />
+      {/* === end wave 10 === */}
     </div>
   );
 }
+
+// === wave 10 ===
+function GitSyncSettingsBlock() {
+  const { t } = useTranslation();
+  const gitAutoPullIntervalMin = useStore((s) => s.ui.gitAutoPullIntervalMin);
+  const setGitAutoPullIntervalMin = useStore(
+    (s) => s.ui.setGitAutoPullIntervalMin,
+  );
+  const gitAutoCommitOnHeartbeat = useStore(
+    (s) => s.ui.gitAutoCommitOnHeartbeat,
+  );
+  const setGitAutoCommitOnHeartbeat = useStore(
+    (s) => s.ui.setGitAutoCommitOnHeartbeat,
+  );
+  const gitAutoPushOnCommit = useStore((s) => s.ui.gitAutoPushOnCommit);
+  const setGitAutoPushOnCommit = useStore((s) => s.ui.setGitAutoPushOnCommit);
+  const setGitMode = useStore((s) => s.ui.setGitMode);
+
+  return (
+    <div
+      data-testid="st-git-sync-block"
+      className="rounded-md border border-[var(--ti-border-default)] bg-[var(--ti-paper-50)] px-3 py-3"
+    >
+      <div className="mb-2 text-[12px] font-semibold text-[var(--ti-ink-700)]">
+        {t("git.settingsHeader")}
+      </div>
+
+      <div className="mb-2">
+        <Label htmlFor="st-git-pull-interval">
+          {t("git.settingsAutoPullInterval")}
+        </Label>
+        <select
+          id="st-git-pull-interval"
+          data-testid="st-git-pull-interval"
+          value={gitAutoPullIntervalMin}
+          onChange={(e) =>
+            setGitAutoPullIntervalMin(parseInt(e.target.value, 10) || 15)
+          }
+          className="mt-1 h-9 w-full rounded-md border border-[var(--ti-border-default)] bg-[var(--ti-paper-50)] px-3 text-sm"
+        >
+          <option value={5}>5</option>
+          <option value={15}>15</option>
+          <option value={30}>30</option>
+        </select>
+      </div>
+
+      <label className="mt-2 flex items-center gap-2 text-[12px] text-[var(--ti-ink-700)]">
+        <input
+          type="checkbox"
+          data-testid="st-git-auto-commit"
+          checked={gitAutoCommitOnHeartbeat}
+          onChange={(e) => setGitAutoCommitOnHeartbeat(e.target.checked)}
+        />
+        {t("git.settingsAutoCommit")}
+      </label>
+
+      <label className="mt-2 flex items-center gap-2 text-[12px] text-[var(--ti-ink-700)]">
+        <input
+          type="checkbox"
+          data-testid="st-git-auto-push"
+          checked={gitAutoPushOnCommit}
+          onChange={(e) => setGitAutoPushOnCommit(e.target.checked)}
+        />
+        {t("git.settingsAutoPush")}
+      </label>
+
+      <button
+        type="button"
+        data-testid="st-git-reset-state"
+        onClick={() => {
+          // Re-prompts the GitInitBanner on next mount.
+          setGitMode("unknown");
+        }}
+        className="mt-3 rounded-md border border-rose-300 px-3 py-1.5 text-[12px] text-rose-700 hover:bg-rose-50 dark:border-rose-800 dark:text-rose-400 dark:hover:bg-rose-950"
+      >
+        {t("git.settingsResetState")}
+      </button>
+      <p className="mt-1 text-[11px] text-[var(--ti-ink-500)]">
+        {t("git.settingsResetWarning")}
+      </p>
+    </div>
+  );
+}
+// === end wave 10 ===

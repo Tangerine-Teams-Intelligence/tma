@@ -20,6 +20,10 @@ import { KeyboardShortcutsOverlay } from "@/components/KeyboardShortcutsOverlay"
 import { WelcomeOverlay } from "@/components/WelcomeOverlay";
 // Wave 3 — offline indicator (OBSERVABILITY_SPEC §8 edge case catalog)
 import { ConnectionBanner } from "@/components/ConnectionBanner";
+// === wave 10 === — v1.10 git-init wizard banner. Mounts in the system
+// banner stack, only renders while `gitMode === "unknown"`.
+import { GitInitBannerContainer } from "@/components/GitInitBannerContainer";
+// === end wave 10 ===
 import { AmbientInputObserver } from "@/components/ambient/AmbientInputObserver";
 // v1.9.0-beta.1 — banner + modal hosts. The bus pushes into bannerStack /
 // modalQueue and these hosts read the top entry. The hosts MUST live
@@ -516,6 +520,12 @@ export function AppShell() {
               briefly on recovery. Above WhatsNewBanner so a network
               drop is the loudest signal in the strip stack. */}
           <ConnectionBanner />
+          {/* === wave 10 === — git-init wizard banner. Self-hides when
+              `gitMode !== "unknown"` or when the memory dir is already a
+              git repo. Sits below ConnectionBanner so a network drop is
+              still the loudest signal. */}
+          <GitInitBannerContainer />
+          {/* === end wave 10 === */}
           <WhatsNewBanner />
           {/* === v2.0-beta.3 co-thinker home strip ===
               Sits between the system banners and the suggestion banner so

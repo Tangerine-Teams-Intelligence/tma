@@ -79,6 +79,16 @@ pub mod sync;
 pub mod invite;
 pub mod ws;
 
+// === wave 10 ===
+// v1.10 — auto-sync layer over the user's `~/.tangerine-memory/` git repo.
+// Glues the heartbeat into a `git add -A && git commit -m ...` and exposes
+// pull/push/status/init/history Tauri commands consumed by the new
+// GitSyncIndicator + GitInitBanner React components. Sits next to the
+// existing `git` module — that one is the team-mode wizard's OAuth-token
+// surface; this one is the always-on auto-sync the daemon drives.
+pub mod git_sync;
+// === end wave 10 ===
+
 // === Phase 2-C real-wire (Notion + Loom + Zoom) ===
 // v1.8 Phase 2: read-side connectors that walk Notion databases, Loom
 // workspace videos, and Zoom cloud recordings, and write atoms into the
@@ -362,6 +372,13 @@ macro_rules! tmi_invoke_handler {
             $crate::commands::sync::sync_stop,
             $crate::commands::sync::sync_kick,
             $crate::commands::sync::sync_status,
+            // === wave 10 === v1.10 git sync auto-layer
+            $crate::commands::git_sync::git_sync_status,
+            $crate::commands::git_sync::git_sync_init,
+            $crate::commands::git_sync::git_sync_pull,
+            $crate::commands::git_sync::git_sync_push,
+            $crate::commands::git_sync::git_sync_history,
+            // === end wave 10 ===
             // v1.6.0 — invite link codec
             $crate::commands::invite::generate_invite,
             $crate::commands::invite::parse_invite,

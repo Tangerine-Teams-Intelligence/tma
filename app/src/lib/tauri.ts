@@ -3230,3 +3230,124 @@ export async function personalAgentsDevinWebhook(args: {
   );
 }
 // === end Wave 3 gap-fill wrappers ===
+
+// === wave 10 ===
+// v1.10 — auto-sync layer over `~/.tangerine-memory/`. Wrappers around the
+// Rust `git_sync_*` Tauri commands. The mocks return shapes that match the
+// Rust side exactly so the GitSyncIndicator + GitInitBanner components
+// render in vitest + browser-only dev mode without the backend.
+//
+// Naming: `gitSyncStatus` etc. (camelCase) to match other wrappers in
+// `lib/git.ts` for the legacy v1.6 team-mode surface.
+
+export type GitSyncState = "not_initialized" | "clean" | "ahead" | "conflict";
+
+export interface GitSyncStatus {
+  state: GitSyncState;
+  memory_dir: string | null;
+  git_available: boolean;
+  git_initialized: boolean;
+  has_remote: boolean;
+  branch: string | null;
+  ahead: number;
+  behind: number;
+  last_commit_msg: string | null;
+  last_commit_ts: string | null;
+  last_auto_pull: string | null;
+  last_auto_push: string | null;
+  last_error: string | null;
+}
+
+export async function gitSyncStatus(): Promise<GitSyncStatus> {
+  return safeInvoke<GitSyncStatus>("git_sync_status", undefined, () => ({
+    state: "not_initialized",
+    memory_dir: "~/.tangerine-memory",
+    git_available: true,
+    git_initialized: false,
+    has_remote: false,
+    branch: null,
+    ahead: 0,
+    behind: 0,
+    last_commit_msg: null,
+    last_commit_ts: null,
+    last_auto_pull: null,
+    last_auto_push: null,
+    last_error: null,
+  }));
+}
+
+export async function gitSyncInit(args: {
+  remoteUrl?: string | null;
+  defaultUserAlias?: string | null;
+}): Promise<GitSyncStatus> {
+  return safeInvoke<GitSyncStatus>(
+    "git_sync_init",
+    {
+      args: {
+        remote_url: args.remoteUrl ?? null,
+        default_user_alias: args.defaultUserAlias ?? null,
+      },
+    },
+    () => ({
+      state: "clean",
+      memory_dir: "~/.tangerine-memory",
+      git_available: true,
+      git_initialized: true,
+      has_remote: !!args.remoteUrl,
+      branch: "main",
+      ahead: 0,
+      behind: 0,
+      last_commit_msg: "Tangerine memory init",
+      last_commit_ts: new Date().toISOString(),
+      last_auto_pull: null,
+      last_auto_push: null,
+      last_error: null,
+    })
+  );
+}
+
+export interface GitSyncPullResult {
+  ok: boolean;
+  conflict: boolean;
+  message: string;
+}
+
+export async function gitSyncPull(): Promise<GitSyncPullResult> {
+  return safeInvoke<GitSyncPullResult>(
+    "git_sync_pull",
+    { args: {} },
+    () => ({ ok: true, conflict: false, message: "pulled (mock)" })
+  );
+}
+
+export interface GitSyncPushResult {
+  ok: boolean;
+  rejected: boolean;
+  message: string;
+}
+
+export async function gitSyncPush(): Promise<GitSyncPushResult> {
+  return safeInvoke<GitSyncPushResult>(
+    "git_sync_push",
+    { args: {} },
+    () => ({ ok: true, rejected: false, message: "pushed (mock)" })
+  );
+}
+
+export interface GitSyncCommitInfo {
+  sha: string;
+  message: string;
+  ts: string;
+  author: string;
+}
+
+export async function gitSyncHistory(args: {
+  limit?: number;
+}): Promise<GitSyncCommitInfo[]> {
+  return safeInvoke<GitSyncCommitInfo[]>(
+    "git_sync_history",
+    { args: { limit: args.limit ?? 10 } },
+    () => []
+  );
+}
+// === end wave 10 ===
