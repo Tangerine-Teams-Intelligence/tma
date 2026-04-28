@@ -51,6 +51,53 @@ pub type SampleCache = Arc<RwLock<HashMap<PathBuf, (SystemTime, bool)>>>;
 const SAMPLE_CACHE_MAX_ENTRIES: usize = 10_000;
 // === end v1.14.1 round-2 ===
 
+// === v1.14.4 round-5 ===
+/// What we cache per .md file for the backlinks scan. Built by reading
+/// the file once; reused across every `compute_backlinks` call until the
+/// file's mtime advances. Designed so `walk_for_backlinks_cached` can
+/// answer "does this file cite target X?" without ever touching disk.
+///
+/// Wrapped in `Arc` at the cache layer so reads can clone the handle out
+/// from under the read lock without copying the body string.
+#[derive(Debug, Clone)]
+pub struct CachedFileLinks {
+    /// Lowercased body — used for substring matches against target paths.
+    /// We keep the lowercased form so each backlinks call doesn't redo the
+    /// `.to_lowercase()` allocation.
+    pub body_lower: String,
+    /// Raw body — needed to produce the snippet around the first match.
+    /// Kept alongside `body_lower` (2× the size) because the alternative
+    /// is to re-read from disk for the snippet, defeating the cache.
+    pub body_raw: String,
+    /// Frontmatter `title:` field if present. Used for the BacklinkHit.
+    pub title: Option<String>,
+    /// Lowercased inner text of every `[[wiki link]]`. Pre-extracted so
+    /// title matching is a HashSet check rather than a string scan.
+    pub wiki_links_lower: Vec<String>,
+}
+
+/// Type alias for the in-process per-file link cache held in `AppState`.
+/// Key = absolute file path; value = (mtime at last read, cached extract).
+/// See `read_cached_links` for the read/write protocol.
+pub type LinkCache = Arc<RwLock<HashMap<PathBuf, (SystemTime, Arc<CachedFileLinks>)>>>;
+
+/// Soft cap on link-cache entries. Same wipe-and-rebuild eviction as the
+/// sample cache. We cap files we'll cache at `LINK_CACHE_MAX_FILE_BYTES`
+/// up-front so the worst-case RAM footprint is bounded:
+/// 10_000 entries × 32 KB × 2 (lower + raw) ≈ 640 MB worst case, but the
+/// realistic median is closer to 5 KB per atom → ~100 MB at full cap.
+/// Memory dirs that big are pathological — UI calls hit the file-count
+/// cap (BACKLINKS_MAX_FILES = 1000) long before the entry cap matters.
+const LINK_CACHE_MAX_ENTRIES: usize = 10_000;
+
+/// Skip caching files larger than this. Mirrors the 100 KB cap from R2's
+/// sample cache but tighter — backlink targets in real atoms are short
+/// markdown files, and a 100 KB body × 2 (raw + lowercased) per entry
+/// would balloon worst-case RAM. Files over this cap fall through to the
+/// uncached read-and-scan path so they still appear in results.
+const LINK_CACHE_MAX_FILE_BYTES: u64 = 32 * 1024;
+// === end v1.14.4 round-5 ===
+
 /// Default memory root: `<home>/.tangerine-memory/`. Created on demand.
 fn memory_root() -> Result<PathBuf, AppError> {
     let home = dirs::home_dir()
@@ -808,8 +855,21 @@ pub struct BacklinksResult {
 ///
 /// Bounded at 1000 files walked to match search.rs. The target atom itself
 /// is always excluded from the result.
+///
+/// === v1.14.4 round-5 ===
+/// R5 perf: takes `State<'_, AppState>` so we can thread the in-process
+/// `link_cache` into the walker. R2 already nuked the per-file head read
+/// in `memory_tree`; the next-weakest hot path was this command's
+/// unconditional `read_to_string` on every .md file every call. R5 caches
+/// the parsed body + extracted wiki links per file keyed by mtime, so a
+/// repeat backlinks query (very common — opening atoms in the /brain
+/// preview pane fires this once per click) hits the cache and skips disk.
+/// === end v1.14.4 round-5 ===
 #[tauri::command(rename_all = "snake_case")]
 pub async fn compute_backlinks(
+    // === v1.14.4 round-5 ===
+    state: State<'_, AppState>,
+    // === end v1.14.4 round-5 ===
     args: Option<BacklinksArgs>,
 ) -> Result<BacklinksResult, AppError> {
     let args = args.unwrap_or(BacklinksArgs {
@@ -844,6 +904,9 @@ pub async fn compute_backlinks(
         target_title.as_deref(),
         &mut hits,
         &mut files_seen,
+        // === v1.14.4 round-5 ===
+        Some(&state.link_cache),
+        // === end v1.14.4 round-5 ===
     );
 
     Ok(BacklinksResult {
@@ -865,6 +928,12 @@ fn derive_title_from_path(rel: &str) -> String {
 const BACKLINKS_MAX_FILES: usize = 1000;
 const BACKLINKS_MAX_HITS: usize = 50;
 
+// === v1.14.4 round-5 ===
+// R5 perf: walker now takes an optional `link_cache`. Production callers
+// (the `compute_backlinks` Tauri command) pass `Some`; tests pass `None`
+// so they exercise the uncached path directly without spinning up an
+// `AppState`.
+#[allow(clippy::too_many_arguments)]
 fn walk_for_backlinks(
     memory_root: &Path,
     abs_dir: &Path,
@@ -873,7 +942,9 @@ fn walk_for_backlinks(
     target_title: Option<&str>,
     hits: &mut Vec<BacklinkHit>,
     files_seen: &mut usize,
+    cache: Option<&LinkCache>,
 ) {
+    // === end v1.14.4 round-5 ===
     if hits.len() >= BACKLINKS_MAX_HITS || *files_seen >= BACKLINKS_MAX_FILES {
         return;
     }
@@ -907,6 +978,9 @@ fn walk_for_backlinks(
                 target_title,
                 hits,
                 files_seen,
+                // === v1.14.4 round-5 ===
+                cache,
+                // === end v1.14.4 round-5 ===
             );
             continue;
         }
@@ -921,15 +995,27 @@ fn walk_for_backlinks(
             }
         }
         *files_seen += 1;
-        let raw = match std::fs::read_to_string(&path) {
-            Ok(s) => s,
-            Err(_) => continue,
+        // === v1.14.4 round-5 ===
+        // Cache hit → matcher reads from the cached lowercased body and
+        // pre-extracted wiki-link list, no disk touch. Cache miss → we do
+        // the same single read_to_string we used to do, then populate the
+        // cache so subsequent calls are free. Files over the size cap fall
+        // through to the uncached path so they still surface in results.
+        let cached = read_cached_links(&path, cache);
+        let snippet = match cached.as_ref() {
+            Some(c) => find_backlink_match_cached(c, target_path, target_title),
+            None => match std::fs::read_to_string(&path) {
+                Ok(raw) => find_backlink_match(&raw, target_path, target_title)
+                    .map(|s| (s, parse_title(&raw))),
+                Err(_) => continue,
+            },
         };
-        let snippet = match find_backlink_match(&raw, target_path, target_title) {
+        let (snippet, title_opt) = match snippet {
             Some(s) => s,
             None => continue,
         };
-        let title = parse_title(&raw).unwrap_or_else(|| derive_title_from_path(&rel));
+        let title = title_opt.unwrap_or_else(|| derive_title_from_path(&rel));
+        // === end v1.14.4 round-5 ===
         hits.push(BacklinkHit {
             path: rel,
             title,
@@ -937,6 +1023,120 @@ fn walk_for_backlinks(
         });
     }
 }
+
+// === v1.14.4 round-5 ===
+/// Cache-aware reader for one file. Hot path on a cache hit: a single
+/// `metadata()` syscall (`GetFileAttributesEx` on Windows, `lstat` on
+/// Unix) and a HashMap lookup — no `read_to_string`, no UTF-8 validation,
+/// no allocation beyond the Arc clone. Cache miss path reads the file
+/// once + writes the parsed/extracted form back. Files over
+/// `LINK_CACHE_MAX_FILE_BYTES` skip the cache entirely (caller falls
+/// through to its own uncached read).
+///
+/// Returns `None` on:
+///   - missing/unreadable file (caller should `continue` to next entry)
+///   - file larger than the cache cap (caller should fall back to a
+///     direct read so big files still get matched, just not cached)
+///   - no cache supplied (tests; caller should fall back to direct read)
+pub(crate) fn read_cached_links(
+    path: &Path,
+    cache: Option<&LinkCache>,
+) -> Option<Arc<CachedFileLinks>> {
+    let cache = cache?;
+    // Stat first. If stat fails (deleted mid-walk, perm error) bail —
+    // caller will then try a direct read which will also fail, matching
+    // the pre-cache behaviour of just skipping the entry.
+    let meta = std::fs::metadata(path).ok()?;
+    if meta.len() > LINK_CACHE_MAX_FILE_BYTES {
+        // Don't cache or even attempt to populate. Caller falls through
+        // to an unbounded read for huge files (rare in real memory dirs).
+        return None;
+    }
+    let mtime = meta.modified().ok()?;
+
+    // Read lock: hot path. Hit when both path AND mtime match.
+    {
+        let guard = cache.read();
+        if let Some((cached_mtime, cached_val)) = guard.get(path) {
+            if *cached_mtime == mtime {
+                return Some(cached_val.clone());
+            }
+        }
+    }
+    // Miss. Read + parse outside any lock so concurrent walks of disjoint
+    // files run in parallel.
+    let body_raw = std::fs::read_to_string(path).ok()?;
+    let body_lower = body_raw.to_lowercase();
+    let title = parse_title(&body_raw);
+    let wiki_links_lower: Vec<String> = extract_wiki_links(&body_raw)
+        .into_iter()
+        .map(|s| s.to_lowercase())
+        .collect();
+    let entry = Arc::new(CachedFileLinks {
+        body_lower,
+        body_raw,
+        title,
+        wiki_links_lower,
+    });
+
+    // Write lock to insert. Same wipe-and-rebuild eviction as
+    // `is_sample_md_file_cached` — realistic vaults are well under 10K.
+    {
+        let mut guard = cache.write();
+        if guard.len() >= LINK_CACHE_MAX_ENTRIES {
+            guard.clear();
+        }
+        guard.insert(path.to_path_buf(), (mtime, entry.clone()));
+    }
+    Some(entry)
+}
+
+/// Cache-fed version of `find_backlink_match`. Same matching contract as
+/// the uncached one — bare path mention OR wiki-link title — but reads
+/// the lowercased body + pre-extracted wiki links from the cached entry,
+/// avoiding the per-call `to_lowercase()` and `[[...]]` scan.
+///
+/// Returns `(snippet, title)` so the caller doesn't have to re-parse the
+/// frontmatter for the title separately.
+pub(crate) fn find_backlink_match_cached(
+    cached: &CachedFileLinks,
+    target_path: Option<&str>,
+    target_title: Option<&str>,
+) -> Option<(String, Option<String>)> {
+    let body = &cached.body_raw;
+    let lower = &cached.body_lower;
+    let mut match_idx: Option<usize> = None;
+
+    if let Some(tp) = target_path {
+        let needle = tp.to_lowercase();
+        if let Some(i) = lower.find(&needle) {
+            match_idx = Some(i);
+        }
+    }
+    if match_idx.is_none() {
+        if let Some(tt) = target_title {
+            let tt_lc = tt.to_lowercase();
+            // First check pre-extracted wiki links (cheap HashSet-style
+            // scan over a small Vec). Cache stored the inner text only,
+            // so this is a direct equality match.
+            let has_wiki = cached.wiki_links_lower.iter().any(|w| {
+                // Drop pipe alias: [[Title|alias]] cached as "title|alias".
+                let trimmed = w.split('|').next().unwrap_or(w).trim();
+                trimmed == tt_lc
+            });
+            if has_wiki {
+                // Re-locate position in the lowercased body for the snippet.
+                let wiki = format!("[[{}", tt_lc);
+                if let Some(i) = lower.find(&wiki) {
+                    match_idx = Some(i);
+                }
+            }
+        }
+    }
+    let i = match_idx?;
+    Some((snippet_around(body, i, 120), cached.title.clone()))
+}
+// === end v1.14.4 round-5 ===
 
 /// Return a snippet around the first backlink reference found in `body`,
 /// or None if none match.
@@ -2065,4 +2265,256 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
     // === end v1.14.1 round-2 ===
+
+    // === v1.14.4 round-5 ===
+    /// LinkCache hit must avoid re-reading the file. Same shape as the
+    /// equivalent SampleCache test from R2: prime the cache, then poison
+    /// the cached entry to a forged value and assert the hit path
+    /// returns the forged value rather than re-reading from disk.
+    #[test]
+    fn link_cache_hits_skip_file_read() {
+        let root = fresh_root();
+        let p = root.join("a.md");
+        std::fs::write(
+            &p,
+            "---\ntitle: A\n---\nbody refers to team/decisions/foo.md here.",
+        )
+        .unwrap();
+        let cache: LinkCache = Arc::new(RwLock::new(HashMap::new()));
+
+        // 1. Cold call → reads file, parses, caches. We confirm the
+        //    cached entry holds the lowercased body we expect.
+        let cold = read_cached_links(&p, Some(&cache)).expect("cold read");
+        assert!(cold.body_lower.contains("team/decisions/foo.md"));
+        assert_eq!(cache.read().len(), 1);
+
+        // 2. Forge the cached entry: lowercased body that says NOTHING
+        //    about the original target. mtime must match disk so the
+        //    cache key still hits.
+        let disk_mtime = std::fs::metadata(&p).unwrap().modified().unwrap();
+        let forged = Arc::new(CachedFileLinks {
+            body_lower: "totally different cached content".to_string(),
+            body_raw: "totally different cached content".to_string(),
+            title: Some("Forged".to_string()),
+            wiki_links_lower: Vec::new(),
+        });
+        cache.write().insert(p.clone(), (disk_mtime, forged));
+
+        // 3. Cache HIT must return the forged value — proving we skipped
+        //    the disk read entirely.
+        let hot = read_cached_links(&p, Some(&cache)).expect("hot read");
+        assert_eq!(hot.body_lower, "totally different cached content");
+        assert_eq!(hot.title.as_deref(), Some("Forged"));
+        // The matcher should NOT find the original target since the
+        // forged body doesn't mention it.
+        let m =
+            find_backlink_match_cached(&hot, Some("team/decisions/foo.md"), None);
+        assert!(m.is_none(), "matcher must use cached body, not disk");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Cache miss path: when mtime advances, the cached entry must be
+    /// invalidated and a fresh read performed. Mirrors the equivalent
+    /// SampleCache test from R2.
+    #[test]
+    fn link_cache_invalidates_on_modify() {
+        let root = fresh_root();
+        let p = root.join("b.md");
+        // Start with a body that does NOT mention our target.
+        std::fs::write(&p, "---\ntitle: B\n---\nplain body line.\n").unwrap();
+        let cache: LinkCache = Arc::new(RwLock::new(HashMap::new()));
+
+        // 1. Cold call → caches the v1 body.
+        let v1 = read_cached_links(&p, Some(&cache)).expect("cold v1");
+        assert!(!v1.body_lower.contains("team/decisions/foo.md"));
+        let mtime_v1 = cache.read().get(&p).map(|(t, _)| *t).unwrap();
+
+        // 2. Sleep enough to guarantee a mtime tick (FAT-friendly slack).
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+
+        // 3. Rewrite with body that DOES mention the target. mtime
+        //    advances, so the next read must MISS the cache + re-read.
+        std::fs::write(
+            &p,
+            "---\ntitle: B\n---\nbody now refers to team/decisions/foo.md.\n",
+        )
+        .unwrap();
+        let disk_mtime_v2 = std::fs::metadata(&p).unwrap().modified().unwrap();
+        assert!(
+            disk_mtime_v2 > mtime_v1,
+            "test setup: disk mtime did not advance ({:?} -> {:?})",
+            mtime_v1, disk_mtime_v2
+        );
+
+        // 4. Cached call must MISS, re-read, return v2 body.
+        let v2 = read_cached_links(&p, Some(&cache)).expect("hot v2");
+        assert!(
+            v2.body_lower.contains("team/decisions/foo.md"),
+            "cache MISS on mtime change must re-read and see v2 body"
+        );
+
+        // 5. Cache entry must now hold the fresh mtime + v2 content.
+        let (cached_mtime_v2, cached_val_v2) =
+            cache.read().get(&p).cloned().unwrap();
+        assert_eq!(cached_mtime_v2, disk_mtime_v2, "cache must store the new mtime");
+        assert!(cached_val_v2
+            .body_lower
+            .contains("team/decisions/foo.md"));
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Files larger than `LINK_CACHE_MAX_FILE_BYTES` (32 KB) bypass the
+    /// cache entirely. The caller is expected to fall through to a
+    /// direct uncached read; we verify here that the cache stays empty
+    /// and the helper returns `None`.
+    #[test]
+    fn link_cache_skips_oversized_files() {
+        let root = fresh_root();
+        let p = root.join("huge.md");
+        // 64 KB body — well over the 32 KB cap.
+        let body = "a".repeat(64 * 1024);
+        std::fs::write(&p, &body).unwrap();
+        let cache: LinkCache = Arc::new(RwLock::new(HashMap::new()));
+
+        let result = read_cached_links(&p, Some(&cache));
+        assert!(result.is_none(), "huge files must skip the cache");
+        assert_eq!(cache.read().len(), 0, "cache must stay empty");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Eviction: same wipe-and-rebuild policy as `SampleCache`. Pre-fill
+    /// to exactly the cap then trigger one more insert through the
+    /// cached helper.
+    #[test]
+    fn link_cache_evicts_when_over_capacity() {
+        let cache: LinkCache = Arc::new(RwLock::new(HashMap::new()));
+        // Pre-fill to exactly the cap with junk entries.
+        {
+            let mut g = cache.write();
+            for i in 0..LINK_CACHE_MAX_ENTRIES {
+                let pb = PathBuf::from(format!("/tmp/junk-{}.md", i));
+                let entry = Arc::new(CachedFileLinks {
+                    body_lower: String::new(),
+                    body_raw: String::new(),
+                    title: None,
+                    wiki_links_lower: Vec::new(),
+                });
+                g.insert(pb, (SystemTime::UNIX_EPOCH, entry));
+            }
+            assert_eq!(g.len(), LINK_CACHE_MAX_ENTRIES);
+        }
+        // One more insert through the cached helper triggers wipe.
+        let root = fresh_root();
+        let p = root.join("trip.md");
+        std::fs::write(&p, "---\ntitle: T\n---\nbody.\n").unwrap();
+        let _ = read_cached_links(&p, Some(&cache));
+        assert_eq!(
+            cache.read().len(),
+            1,
+            "eviction must wipe + leave only the just-inserted entry"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// End-to-end: walker uses the cache + finds the same hits whether
+    /// cold or hot. Smoke test for the integration glue between
+    /// `walk_for_backlinks`, `read_cached_links`, and
+    /// `find_backlink_match_cached`.
+    #[test]
+    fn walk_for_backlinks_uses_cache_and_finds_same_hits() {
+        let root = fresh_root();
+        let dir = root.join("team").join("decisions");
+        std::fs::create_dir_all(&dir).unwrap();
+        // foo.md is the target; bar.md cites it via path; baz.md cites
+        // it via wiki link; quux.md is a no-op.
+        std::fs::write(dir.join("foo.md"), "---\ntitle: Foo\n---\nbody").unwrap();
+        std::fs::write(
+            dir.join("bar.md"),
+            "---\ntitle: Bar\n---\nrefers to team/decisions/foo.md here",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("baz.md"),
+            "---\ntitle: Baz\n---\ncites [[Foo]] inline",
+        )
+        .unwrap();
+        std::fs::write(dir.join("quux.md"), "---\ntitle: Quux\n---\nplain").unwrap();
+
+        let cache: LinkCache = Arc::new(RwLock::new(HashMap::new()));
+
+        // Cold pass: cache empty → walker reads + caches every file.
+        let mut hits1: Vec<BacklinkHit> = Vec::new();
+        let mut seen1: usize = 0;
+        walk_for_backlinks(
+            &root,
+            &root,
+            "",
+            Some("team/decisions/foo.md"),
+            Some("Foo"),
+            &mut hits1,
+            &mut seen1,
+            Some(&cache),
+        );
+        // bar (path) + baz (wiki) cite foo — quux does not, foo skipped
+        // (target atom excluded from its own backlinks). Cache holds the
+        // 3 non-target files we actually read.
+        assert_eq!(hits1.len(), 2, "cold: got {:?}", hits1);
+        assert_eq!(cache.read().len(), 3, "cold: should cache 3 non-target files");
+
+        // Hot pass: cache primed → identical hits, no fresh reads needed.
+        let mut hits2: Vec<BacklinkHit> = Vec::new();
+        let mut seen2: usize = 0;
+        walk_for_backlinks(
+            &root,
+            &root,
+            "",
+            Some("team/decisions/foo.md"),
+            Some("Foo"),
+            &mut hits2,
+            &mut seen2,
+            Some(&cache),
+        );
+        assert_eq!(hits2.len(), hits1.len(), "hot pass must agree with cold");
+        let mut paths1: Vec<&str> = hits1.iter().map(|h| h.path.as_str()).collect();
+        let mut paths2: Vec<&str> = hits2.iter().map(|h| h.path.as_str()).collect();
+        paths1.sort();
+        paths2.sort();
+        assert_eq!(paths1, paths2, "same set of citing paths");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// `find_backlink_match_cached` parity with the uncached
+    /// `find_backlink_match` for the basic path + wiki cases.
+    #[test]
+    fn find_backlink_match_cached_matches_uncached_behaviour() {
+        let body = "see also team/decisions/foo.md and [[Foo]] inline.";
+        let body_lower = body.to_lowercase();
+        let cached = CachedFileLinks {
+            body_lower,
+            body_raw: body.to_string(),
+            title: Some("Citer".to_string()),
+            wiki_links_lower: vec!["foo".to_string()],
+        };
+
+        // Path match.
+        let r1 =
+            find_backlink_match_cached(&cached, Some("team/decisions/foo.md"), None);
+        assert!(r1.is_some());
+        let (snip1, title1) = r1.unwrap();
+        assert!(snip1.contains("team/decisions/foo.md"));
+        assert_eq!(title1.as_deref(), Some("Citer"));
+
+        // Wiki-link match (path absent).
+        let r2 = find_backlink_match_cached(&cached, None, Some("Foo"));
+        assert!(r2.is_some());
+
+        // No match.
+        let r3 = find_backlink_match_cached(&cached, None, Some("Bar"));
+        assert!(r3.is_none());
+    }
+    // === end v1.14.4 round-5 ===
 }

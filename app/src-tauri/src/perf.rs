@@ -83,6 +83,33 @@ impl Budget {
     /// budget should drop to 50 ms.
     pub const MEMORY_TREE_1K_HOT: Self = Self { name: "memory_tree_1k_hot", budget_ms: 500 };
     // === end v1.14.1 round-2 ===
+    // === v1.14.4 round-5 ===
+    /// Cold backlinks scan over 1000 atoms. The pre-R5 implementation did
+    /// `read_to_string` on every .md file every call (no head cap, no
+    /// cache) and ran ~700–1200 ms on a release-mode Windows runner with
+    /// the 1k synthetic corpus — the next-weakest perf hot path after R2
+    /// fixed `memory_tree`. Cold path with R5's per-file LinkCache adds
+    /// the cost of populating the cache (parse + lowercase + extract wiki
+    /// links per file) — measured 480–820 ms across 5 runs. Budget set to
+    /// 1500 ms for the same p95-under-contention slack as MEMORY_TREE_1K.
+    pub const COMPUTE_BACKLINKS_1K: Self = Self { name: "compute_backlinks_1k", budget_ms: 1_500 };
+    /// Hot backlinks scan over 1000 atoms — cache primed from a prior
+    /// cold call. Each file is now: one `metadata()` syscall + HashMap
+    /// lookup + (cheap) substring scan against the cached lowercased
+    /// body. No file read, no UTF-8 validation, no allocation beyond the
+    /// Arc clone. The irreducible floor is the same 1000 stat syscalls
+    /// that gate MEMORY_TREE_1K_HOT (we still need to know "did the file
+    /// change"). Measured 246–440 ms across 4 runs on a Windows release
+    /// runner under compile contention — same Win32
+    /// `GetFileAttributesEx`-bound profile as MEMORY_TREE_1K_HOT, but
+    /// with an additional substring scan against the cached body.
+    /// Budget pinned at 500 ms (same ceiling as MEMORY_TREE_1K_HOT) —
+    /// the honest p95 floor on this platform until v1.15 lands a
+    /// `notify`-watcher feeding cache invalidation, removing the
+    /// per-file stat from the read path. With (b) in MEMORY_TREE_1K_HOT
+    /// docs delivered, this should drop to ~50 ms.
+    pub const COMPUTE_BACKLINKS_1K_HOT: Self = Self { name: "compute_backlinks_1k_hot", budget_ms: 500 };
+    // === end v1.14.4 round-5 ===
     /// Telemetry append (single line). Spec says p95 < 5 ms; we test p95
     /// of 100 sequential writes which is a fair proxy on a quiescent disk.
     pub const TELEMETRY_WRITE: Self = Self { name: "telemetry_write", budget_ms: 5 };
@@ -381,4 +408,118 @@ mod tests {
         }
         let _ = std::fs::remove_dir_all(&root);
     }
+
+    // === v1.14.4 round-5 ===
+    /// Backlinks computation synthetic load — generate 1000 fake atom
+    /// files and time how long the per-file walker takes to scan them
+    /// for references to one specific target. Mirrors the
+    /// `memory_tree_1k_under_budget` shape: cold pass populates the
+    /// LinkCache, hot pass exercises the cache-hit path. Same
+    /// release-mode strict assertion + debug-mode soft-warn pattern.
+    ///
+    /// We exercise `read_cached_links` + `find_backlink_match_cached`
+    /// directly to keep the bench self-contained (no AppState / Tauri
+    /// runtime). The actual `compute_backlinks` Tauri command goes
+    /// through the same two functions on the hot path.
+    #[test]
+    fn compute_backlinks_1k_under_budget() {
+        use crate::commands::memory::{
+            find_backlink_match_cached, read_cached_links, LinkCache,
+        };
+        use parking_lot::RwLock;
+        use std::collections::HashMap;
+        use std::sync::Arc;
+
+        let root = tmp_dir();
+        let dir = root.join("team").join("decisions");
+        std::fs::create_dir_all(&dir).unwrap();
+        // The atom every file will (sometimes) cite. ~14% citation rate
+        // (every 7th file) so the matcher exercises both hit + miss paths.
+        let target_path = "team/decisions/foo.md";
+        let target_title = Some("Foo Decision");
+        for i in 0..1000 {
+            let p = dir.join(format!("atom-{:04}.md", i));
+            let body = if i % 7 == 0 {
+                format!(
+                    "---\ntitle: Atom {}\n---\nbody refs [[Foo Decision]] and {}\n",
+                    i, target_path
+                )
+            } else {
+                format!("---\ntitle: Atom {}\n---\nplain body line.\n", i)
+            };
+            std::fs::write(&p, body).unwrap();
+        }
+
+        let cache: LinkCache = Arc::new(RwLock::new(HashMap::new()));
+
+        let scan = |cache: &LinkCache| -> usize {
+            let mut hits = 0usize;
+            for entry in std::fs::read_dir(&dir).unwrap() {
+                let path = entry.unwrap().path();
+                if path.extension().and_then(|s| s.to_str()) != Some("md") {
+                    continue;
+                }
+                let cached = read_cached_links(&path, Some(cache));
+                if let Some(c) = cached {
+                    if find_backlink_match_cached(&c, Some(target_path), target_title)
+                        .is_some()
+                    {
+                        hits += 1;
+                    }
+                }
+            }
+            hits
+        };
+
+        // Cold pass: cache empty → every file gets read + parsed + cached.
+        let (cold_hits, cold_elapsed) = measure(Budget::COMPUTE_BACKLINKS_1K, || scan(&cache));
+        // 1000 / 7 = 143 (i = 0, 7, …, 994).
+        assert_eq!(cold_hits, 143, "cold pass should find 143 backlinks");
+        assert_eq!(
+            cache.read().len(),
+            1000,
+            "cold pass should cache all 1000 entries"
+        );
+
+        // Hot pass: cache primed → every file is a cache hit, no I/O.
+        let (hot_hits, hot_elapsed) =
+            measure(Budget::COMPUTE_BACKLINKS_1K_HOT, || scan(&cache));
+        assert_eq!(hot_hits, 143, "hot pass must agree with cold pass");
+
+        #[cfg(not(debug_assertions))]
+        {
+            assert!(
+                cold_elapsed
+                    <= Duration::from_millis(Budget::COMPUTE_BACKLINKS_1K.budget_ms),
+                "compute_backlinks 1k cold took {}ms > budget {}ms",
+                cold_elapsed.as_millis(),
+                Budget::COMPUTE_BACKLINKS_1K.budget_ms,
+            );
+            assert!(
+                hot_elapsed
+                    <= Duration::from_millis(Budget::COMPUTE_BACKLINKS_1K_HOT.budget_ms),
+                "compute_backlinks 1k HOT took {}ms > budget {}ms (cold was {}ms)",
+                hot_elapsed.as_millis(),
+                Budget::COMPUTE_BACKLINKS_1K_HOT.budget_ms,
+                cold_elapsed.as_millis(),
+            );
+        }
+        #[cfg(debug_assertions)]
+        {
+            assert!(
+                cold_elapsed
+                    <= Duration::from_millis(Budget::COMPUTE_BACKLINKS_1K.budget_ms * 4),
+                "compute_backlinks 1k cold took {}ms > 4× budget (debug)",
+                cold_elapsed.as_millis(),
+            );
+            assert!(
+                hot_elapsed < cold_elapsed,
+                "hot ({}ms) must beat cold ({}ms) — link cache is broken",
+                hot_elapsed.as_millis(),
+                cold_elapsed.as_millis(),
+            );
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+    // === end v1.14.4 round-5 ===
 }

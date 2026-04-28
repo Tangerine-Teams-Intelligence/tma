@@ -398,6 +398,17 @@ pub struct AppState {
     // we wipe and rebuild — realistic memory dirs are well under that.
     pub sample_cache: Arc<RwLock<HashMap<PathBuf, (SystemTime, bool)>>>,
     // === end v1.14.1 round-2 ===
+    // === v1.14.4 round-5 ===
+    // v1.14 R5 perf — sibling cache for `compute_backlinks`. R2 nuked the
+    // per-file head read cost in `memory_tree`; R5 nukes the equivalent in
+    // backlinks (which was the next-weakest hot path: read_to_string on
+    // every .md every call, no head cap, O(N·BodySize)).
+    // Key = absolute file path; value = (mtime, Arc<CachedFileLinks>).
+    // Same eviction policy + same RwLock contract as `sample_cache`. The
+    // value is `Arc` so concurrent reads can clone the handle out from
+    // under the read lock without copying the cached body string.
+    pub link_cache: crate::commands::memory::LinkCache,
+    // === end v1.14.4 round-5 ===
 }
 
 impl AppState {
@@ -420,6 +431,9 @@ impl AppState {
             // === v1.14.1 round-2 ===
             sample_cache: Arc::new(RwLock::new(HashMap::new())),
             // === end v1.14.1 round-2 ===
+            // === v1.14.4 round-5 ===
+            link_cache: Arc::new(RwLock::new(HashMap::new())),
+            // === end v1.14.4 round-5 ===
         })
     }
 }
