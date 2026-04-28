@@ -200,6 +200,116 @@ describe("SetupWizard", () => {
     expect(screen.getByTestId("setup-wizard-test-pick-different")).toBeInTheDocument();
   });
 
+  // === wave 11.1 ===
+  it("Step 3 renders an explicit restart gate (Quit/Reopen/Wait) for MCP channels", async () => {
+    render(<SetupWizard open={true} onClose={() => undefined} />);
+    fireEvent.click(screen.getByTestId("setup-wizard-welcome-continue"));
+    await waitFor(() => screen.getByTestId("setup-wizard-channel-mcp-cursor"));
+    fireEvent.click(screen.getByTestId("setup-wizard-detect-continue"));
+    await waitFor(() => screen.getByTestId("setup-wizard-mcp-auto"));
+    fireEvent.click(screen.getByTestId("setup-wizard-mcp-auto"));
+    await waitFor(() =>
+      expect(screen.getByTestId("setup-wizard-mcp-restart-gate")).toBeInTheDocument(),
+    );
+    // The numbered checklist must mention the restart steps.
+    const gate = screen.getByTestId("setup-wizard-mcp-restart-gate");
+    expect(gate.textContent ?? "").toMatch(/Quit/i);
+    expect(gate.textContent ?? "").toMatch(/Reopen/i);
+    // The CTA must NOT auto-advance the test — only the button click does.
+    expect(screen.queryByTestId("setup-wizard-step-test")).toBeNull();
+    // The CTA exists with the new "I restarted X — run test" copy.
+    expect(screen.getByTestId("setup-wizard-mcp-restarted")).toBeInTheDocument();
+  });
+
+  // === wave 11.1 ===
+  it("Step 4 fail renders friendly error tied to error_kind, not raw text", async () => {
+    const tauri = await import("../src/lib/tauri");
+    (tauri.setupWizardTestChannel as unknown as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        ok: false,
+        channel_used: "mcp_sampling",
+        response_preview: "",
+        latency_ms: 42,
+        error: "fallback raw error",
+        diagnostic: {
+          channel_attempted: "mcp_sampling",
+          tool_id: "claude-code",
+          sampler_registered: false,
+          elapsed_ms: 42,
+          error_kind: "mcp_sampler_not_registered",
+          raw_error: "claude-code: MCP sampler not registered",
+          extra: null,
+        },
+      });
+
+    render(<SetupWizard open={true} onClose={() => undefined} />);
+    fireEvent.click(screen.getByTestId("setup-wizard-welcome-continue"));
+    await waitFor(() => screen.getByTestId("setup-wizard-channel-mcp-cursor"));
+    fireEvent.click(screen.getByTestId("setup-wizard-detect-continue"));
+    await waitFor(() => screen.getByTestId("setup-wizard-mcp-auto"));
+    fireEvent.click(screen.getByTestId("setup-wizard-mcp-auto"));
+    await waitFor(() => screen.getByTestId("setup-wizard-mcp-restarted"));
+    fireEvent.click(screen.getByTestId("setup-wizard-mcp-restarted"));
+    await waitFor(() =>
+      expect(screen.getByTestId("setup-wizard-test-fail")).toBeInTheDocument(),
+    );
+    // Friendly copy renders, not the raw "fallback raw error".
+    expect(
+      screen.getByTestId("setup-wizard-test-fail").textContent ?? "",
+    ).toMatch(/Claude Code/);
+    // CRITICAL: must not display "ollama" — the original v1.10.2 bug.
+    expect(
+      (screen.getByTestId("setup-wizard-test-fail").textContent ?? "").toLowerCase(),
+    ).not.toMatch(/ollama/);
+  });
+
+  // === wave 11.1 ===
+  it("Step 4 fail renders a diagnostic expander with sampler_registered + raw error", async () => {
+    const tauri = await import("../src/lib/tauri");
+    (tauri.setupWizardTestChannel as unknown as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        ok: false,
+        channel_used: "mcp_sampling",
+        response_preview: "",
+        latency_ms: 99,
+        error: "raw text",
+        diagnostic: {
+          channel_attempted: "mcp_sampling",
+          tool_id: "claude-code",
+          sampler_registered: false,
+          elapsed_ms: 99,
+          error_kind: "mcp_sampler_not_registered",
+          raw_error: "claude-code: MCP sampler not registered",
+          extra: { foo: "bar" },
+        },
+      });
+
+    render(<SetupWizard open={true} onClose={() => undefined} />);
+    fireEvent.click(screen.getByTestId("setup-wizard-welcome-continue"));
+    await waitFor(() => screen.getByTestId("setup-wizard-channel-mcp-cursor"));
+    fireEvent.click(screen.getByTestId("setup-wizard-detect-continue"));
+    await waitFor(() => screen.getByTestId("setup-wizard-mcp-auto"));
+    fireEvent.click(screen.getByTestId("setup-wizard-mcp-auto"));
+    await waitFor(() => screen.getByTestId("setup-wizard-mcp-restarted"));
+    fireEvent.click(screen.getByTestId("setup-wizard-mcp-restarted"));
+    await waitFor(() =>
+      expect(screen.getByTestId("setup-wizard-test-fail")).toBeInTheDocument(),
+    );
+    expect(
+      screen.getByTestId("setup-wizard-diagnostic-toggle"),
+    ).toBeInTheDocument();
+    // Collapsed by default.
+    expect(screen.queryByTestId("setup-wizard-diagnostic-panel")).toBeNull();
+    fireEvent.click(screen.getByTestId("setup-wizard-diagnostic-toggle"));
+    const panel = screen.getByTestId("setup-wizard-diagnostic-panel");
+    expect(panel.textContent ?? "").toMatch(/mcp_sampling/);
+    expect(panel.textContent ?? "").toMatch(/claude-code/);
+    expect(panel.textContent ?? "").toMatch(/sampler_registered/);
+    expect(panel.textContent ?? "").toMatch(/false/);
+    expect(panel.textContent ?? "").toMatch(/foo/);
+    expect(panel.textContent ?? "").toMatch(/bar/);
+  });
+
   it("step 5 (done) flips setupWizardChannelReady + records primary_channel", async () => {
     render(<SetupWizard open={true} onClose={() => undefined} />);
     fireEvent.click(screen.getByTestId("setup-wizard-welcome-continue"));

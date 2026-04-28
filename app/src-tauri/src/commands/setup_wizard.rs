@@ -40,7 +40,16 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 
 use super::AppError;
-use crate::agi::session_borrower::{dispatch, BorrowError, LlmRequest};
+// === wave 11.1 ===
+// Test mode now uses the new `dispatch_specific_channel` so the wizard
+// honors the user's selected channel and never silently falls through to
+// a different one (e.g. ollama 404 when the user picked Claude Code MCP).
+use crate::agi::session_borrower::{
+    dispatch, dispatch_specific_channel, BorrowError, LlmRequest,
+    PrimaryUnreachableCause, SpecificChannel,
+};
+#[cfg(test)]
+use crate::agi::session_borrower::dispatch_specific_channel_with_base_url;
 
 // ---------------------------------------------------------------------------
 // Types — every shape mirrored on the React side in `lib/tauri.ts`.
@@ -102,6 +111,52 @@ pub struct SetupWizardTestResult {
     pub response_preview: String,
     pub latency_ms: u64,
     pub error: Option<String>,
+    // === wave 11.1 ===
+    /// Structured diagnostic the React side surfaces in the "What did
+    /// Tangerine try?" expander on failure. Always present (even on
+    /// success) so the wizard can render the same info on the OK card too.
+    #[serde(default)]
+    pub diagnostic: Option<SetupWizardDiagnostic>,
+}
+
+/// === wave 11.1 ===
+/// Detailed account of what the test attempted. Used by the React side to
+/// render the "show me what's wrong" expander on Step 4. The `cause` field
+/// is what powers the user-readable error message — see the
+/// `friendly_error_for` helper.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SetupWizardDiagnostic {
+    /// Logical channel attempted: "mcp_sampling" / "ollama_http" / "browser_ext".
+    pub channel_attempted: String,
+    /// Tool id (only meaningful for mcp_sampling — empty otherwise).
+    pub tool_id: String,
+    /// True iff a sampler is currently registered for `tool_id`. False for
+    /// non-MCP channels.
+    pub sampler_registered: bool,
+    /// How long the test ran end-to-end.
+    pub elapsed_ms: u64,
+    /// Stable error category — drives which i18n key the React side picks.
+    /// One of:
+    ///   "ok"
+    ///   "mcp_sampler_not_registered"
+    ///   "mcp_sampler_timeout"
+    ///   "mcp_sampler_disconnected"
+    ///   "mcp_host_rejected"
+    ///   "mcp_bridge_internal"
+    ///   "ollama_client_init"
+    ///   "ollama_connection_refused"
+    ///   "ollama_http_status"
+    ///   "ollama_parse_error"
+    ///   "browser_ext_not_implemented"
+    ///   "all_channels_exhausted"
+    ///   "unknown"
+    pub error_kind: String,
+    /// Free-form raw Rust error — the React side renders this verbatim
+    /// inside the expander for debugging. Not user-facing copy.
+    pub raw_error: Option<String>,
+    /// Optional metadata: HTTP status code, timeout duration, etc.
+    /// Renders as "key: value" lines under the raw error.
+    pub extra: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -613,23 +668,28 @@ pub struct TestChannelArgs {
     pub tool_id: Option<String>,
 }
 
-/// Send the canonical test prompt through the session borrower and report
-/// the first 200 chars of the response. We intentionally route through the
-/// real dispatcher (not a separate single-channel call) so the test result
-/// matches what the heartbeat would actually see.
+// === wave 11.1 ===
+/// Send the canonical test prompt through the channel the user explicitly
+/// selected. NEVER falls through to other channels — when the user picks
+/// Claude Code MCP and that fails, the wizard must say "Claude Code didn't
+/// respond" not "ollama 404". The single biggest UX bug in v1.10.2.
+///
+/// Behavior:
+///   * `args.channel == Some("mcp_sampling")` + `tool_id` → directly call
+///     `dispatch_specific_channel(McpSampling, tool_id)`. On failure,
+///     return a tool-specific friendly error.
+///   * `args.channel == Some("ollama")` → directly probe Ollama. On failure
+///     (404 / connection refused / etc.), return Ollama-specific copy.
+///   * `args.channel == Some("browser_ext")` → return the not-implemented
+///     message immediately.
+///   * `args.channel == None | Some("auto")` → legacy behavior: full
+///     fall-through dispatcher. Kept so existing call sites that don't
+///     pass `channel` (early adopters of the API) still work.
 #[tauri::command]
 pub async fn setup_wizard_test_channel(
     args: TestChannelArgs,
 ) -> Result<SetupWizardTestResult, AppError> {
     let start = Instant::now();
-    let primary_tool_id = args.tool_id.clone().or_else(|| {
-        // When the user picked an Ollama-only path, set the primary to
-        // "ollama" so the dispatcher tries it first.
-        match args.channel.as_deref() {
-            Some("ollama") => Some("ollama".to_string()),
-            _ => None,
-        }
-    });
     let request = LlmRequest {
         system_prompt: "You are a setup wizard test probe.".to_string(),
         user_prompt: TEST_PROMPT.to_string(),
@@ -637,7 +697,146 @@ pub async fn setup_wizard_test_channel(
         temperature: Some(0.0),
     };
 
-    match dispatch(request, primary_tool_id).await {
+    let channel_arg = args.channel.as_deref().unwrap_or("auto");
+    let tool_id = args.tool_id.clone();
+
+    match channel_arg {
+        "mcp_sampling" => {
+            run_mcp_sampling_test(request, tool_id, start).await
+        }
+        "ollama" | "ollama_http" => run_ollama_test(request, start).await,
+        "browser_ext" => Ok(browser_ext_not_implemented_result(start, tool_id)),
+        // Legacy fall-through path (old call sites without `channel`).
+        _ => run_legacy_dispatch(request, tool_id, start).await,
+    }
+}
+
+// === wave 11.1 ===
+async fn run_mcp_sampling_test(
+    request: LlmRequest,
+    tool_id: Option<String>,
+    start: Instant,
+) -> Result<SetupWizardTestResult, AppError> {
+    let tid = tool_id.clone().unwrap_or_default();
+    // Snapshot whether a sampler is registered NOW for the diagnostic
+    // panel — this is the single most useful debug line ("did the editor
+    // actually phone home?").
+    let sampler_registered = if !tid.is_empty() {
+        crate::agi::sampling_bridge::global().has(&tid)
+    } else {
+        false
+    };
+
+    let res = dispatch_specific_channel(
+        request,
+        SpecificChannel::McpSampling,
+        tool_id.clone(),
+    )
+    .await;
+    let elapsed_ms = start.elapsed().as_millis() as u64;
+
+    match res {
+        Ok(resp) => Ok(SetupWizardTestResult {
+            ok: true,
+            channel_used: resp.channel_used,
+            response_preview: resp.text.chars().take(200).collect(),
+            latency_ms: resp.latency_ms,
+            error: None,
+            diagnostic: Some(SetupWizardDiagnostic {
+                channel_attempted: "mcp_sampling".to_string(),
+                tool_id: tid,
+                sampler_registered: true,
+                elapsed_ms,
+                error_kind: "ok".to_string(),
+                raw_error: None,
+                extra: None,
+            }),
+        }),
+        Err(e) => Ok(borrow_error_to_result(
+            e,
+            "mcp_sampling",
+            tid,
+            sampler_registered,
+            elapsed_ms,
+        )),
+    }
+}
+
+// === wave 11.1 ===
+async fn run_ollama_test(
+    request: LlmRequest,
+    start: Instant,
+) -> Result<SetupWizardTestResult, AppError> {
+    let res = dispatch_specific_channel(
+        request,
+        SpecificChannel::Ollama,
+        Some("ollama".to_string()),
+    )
+    .await;
+    let elapsed_ms = start.elapsed().as_millis() as u64;
+    match res {
+        Ok(resp) => Ok(SetupWizardTestResult {
+            ok: true,
+            channel_used: resp.channel_used,
+            response_preview: resp.text.chars().take(200).collect(),
+            latency_ms: resp.latency_ms,
+            error: None,
+            diagnostic: Some(SetupWizardDiagnostic {
+                channel_attempted: "ollama_http".to_string(),
+                tool_id: "ollama".to_string(),
+                sampler_registered: false,
+                elapsed_ms,
+                error_kind: "ok".to_string(),
+                raw_error: None,
+                extra: None,
+            }),
+        }),
+        Err(e) => Ok(borrow_error_to_result(
+            e,
+            "ollama_http",
+            "ollama".to_string(),
+            false,
+            elapsed_ms,
+        )),
+    }
+}
+
+// === wave 11.1 ===
+fn browser_ext_not_implemented_result(
+    start: Instant,
+    tool_id: Option<String>,
+) -> SetupWizardTestResult {
+    let elapsed_ms = start.elapsed().as_millis() as u64;
+    SetupWizardTestResult {
+        ok: false,
+        channel_used: "browser_ext".to_string(),
+        response_preview: String::new(),
+        latency_ms: elapsed_ms,
+        error: Some(friendly_error_for_kind("browser_ext_not_implemented", "")),
+        diagnostic: Some(SetupWizardDiagnostic {
+            channel_attempted: "browser_ext".to_string(),
+            tool_id: tool_id.unwrap_or_default(),
+            sampler_registered: false,
+            elapsed_ms,
+            error_kind: "browser_ext_not_implemented".to_string(),
+            raw_error: Some(
+                "browser_ext channel for the requested tool wires in v2.0".to_string(),
+            ),
+            extra: None,
+        }),
+    }
+}
+
+// === wave 11.1 ===
+/// Legacy fall-through (used by callers that don't pass `channel`). Kept
+/// strictly for backwards compatibility — the wizard always passes a
+/// concrete channel now.
+async fn run_legacy_dispatch(
+    request: LlmRequest,
+    tool_id: Option<String>,
+    start: Instant,
+) -> Result<SetupWizardTestResult, AppError> {
+    match dispatch(request, tool_id.clone()).await {
         Ok(resp) => {
             let preview = resp.text.chars().take(200).collect::<String>();
             Ok(SetupWizardTestResult {
@@ -646,11 +845,12 @@ pub async fn setup_wizard_test_channel(
                 response_preview: preview,
                 latency_ms: resp.latency_ms,
                 error: None,
+                diagnostic: None,
             })
         }
         Err(e) => {
             let (code, msg) = match e {
-                BorrowError::PrimaryUnreachable { tool_id, reason } => {
+                BorrowError::PrimaryUnreachable { tool_id, reason, .. } => {
                     ("primary_unreachable", format!("{tool_id}: {reason}"))
                 }
                 BorrowError::AllExhausted => {
@@ -664,8 +864,178 @@ pub async fn setup_wizard_test_channel(
                 response_preview: String::new(),
                 latency_ms: start.elapsed().as_millis() as u64,
                 error: Some(msg),
+                diagnostic: None,
             })
         }
+    }
+}
+
+// === wave 11.1 ===
+/// Translate a BorrowError into a friendly result. Pure function so the
+/// unit tests can drive every variant without spinning up a real channel.
+fn borrow_error_to_result(
+    err: BorrowError,
+    channel_attempted: &str,
+    tool_id: String,
+    sampler_registered: bool,
+    elapsed_ms: u64,
+) -> SetupWizardTestResult {
+    let (kind, raw, extra) = classify_borrow_error(&err);
+    let friendly = friendly_error_for_kind(&kind, &tool_id);
+    SetupWizardTestResult {
+        ok: false,
+        channel_used: channel_attempted.to_string(),
+        response_preview: String::new(),
+        latency_ms: elapsed_ms,
+        error: Some(friendly),
+        diagnostic: Some(SetupWizardDiagnostic {
+            channel_attempted: channel_attempted.to_string(),
+            tool_id,
+            sampler_registered,
+            elapsed_ms,
+            error_kind: kind,
+            raw_error: Some(raw),
+            extra,
+        }),
+    }
+}
+
+// === wave 11.1 ===
+/// Map a BorrowError to (kind, raw_message, extra_metadata).
+fn classify_borrow_error(
+    err: &BorrowError,
+) -> (String, String, Option<serde_json::Value>) {
+    match err {
+        BorrowError::PrimaryUnreachable { tool_id, reason, cause } => match cause {
+            PrimaryUnreachableCause::McpSamplerNotRegistered => (
+                "mcp_sampler_not_registered".to_string(),
+                format!("{tool_id}: {reason}"),
+                None,
+            ),
+            PrimaryUnreachableCause::McpSamplerTimeout { timeout_ms } => (
+                "mcp_sampler_timeout".to_string(),
+                format!("{tool_id}: {reason}"),
+                Some(serde_json::json!({ "timeout_ms": timeout_ms })),
+            ),
+            PrimaryUnreachableCause::McpSamplerDisconnected => (
+                "mcp_sampler_disconnected".to_string(),
+                format!("{tool_id}: {reason}"),
+                None,
+            ),
+            PrimaryUnreachableCause::McpHostRejected { detail } => (
+                "mcp_host_rejected".to_string(),
+                format!("{tool_id}: {reason}"),
+                Some(serde_json::json!({ "host_detail": detail })),
+            ),
+            PrimaryUnreachableCause::McpBridgeInternal { detail } => (
+                "mcp_bridge_internal".to_string(),
+                format!("{tool_id}: {reason}"),
+                Some(serde_json::json!({ "internal": detail })),
+            ),
+            PrimaryUnreachableCause::OllamaClientInit { detail } => (
+                "ollama_client_init".to_string(),
+                format!("ollama: {reason}"),
+                Some(serde_json::json!({ "detail": detail })),
+            ),
+            PrimaryUnreachableCause::OllamaConnectionRefused { detail } => (
+                "ollama_connection_refused".to_string(),
+                format!("ollama: {reason}"),
+                Some(serde_json::json!({ "detail": detail })),
+            ),
+            PrimaryUnreachableCause::OllamaHttpStatus { status, detail } => {
+                let kind = if *status == 404 {
+                    // 404 from Ollama almost always means "model not pulled".
+                    "ollama_http_status".to_string()
+                } else {
+                    "ollama_http_status".to_string()
+                };
+                (
+                    kind,
+                    format!("ollama: {reason}"),
+                    Some(serde_json::json!({ "status": status, "detail": detail })),
+                )
+            }
+            PrimaryUnreachableCause::OllamaParseError { detail } => (
+                "ollama_parse_error".to_string(),
+                format!("ollama: {reason}"),
+                Some(serde_json::json!({ "detail": detail })),
+            ),
+            PrimaryUnreachableCause::Unknown => (
+                "unknown".to_string(),
+                format!("{tool_id}: {reason}"),
+                None,
+            ),
+        },
+        BorrowError::AllExhausted => (
+            "all_channels_exhausted".to_string(),
+            "no AI tool channel succeeded".to_string(),
+            None,
+        ),
+        BorrowError::NotImplemented(msg) => (
+            "browser_ext_not_implemented".to_string(),
+            msg.clone(),
+            None,
+        ),
+    }
+}
+
+// === wave 11.1 ===
+/// Render a friendly user-facing string for an error_kind. We DO NOT
+/// localize here — the React side uses `error_kind` to pick its own i18n
+/// key. This is the fallback English string emitted into `error` for
+/// older clients that don't read the diagnostic.
+fn friendly_error_for_kind(kind: &str, tool_id: &str) -> String {
+    let display = display_name_for_tool(tool_id);
+    match kind {
+        "mcp_sampler_not_registered" => format!(
+            "{display} hasn't connected to Tangerine yet. Did you fully close + reopen {display} after auto-configure? It needs a restart to load the new MCP config."
+        ),
+        "mcp_sampler_timeout" => format!(
+            "{display} connected but didn't respond within 10s. Try again or check {display}'s logs."
+        ),
+        "mcp_sampler_disconnected" => format!(
+            "{display} dropped the connection mid-request. Reopen {display} and try again."
+        ),
+        "mcp_host_rejected" => format!(
+            "{display} returned an error. Check its console for details."
+        ),
+        "mcp_bridge_internal" => {
+            "Internal MCP bridge error. Restart Tangerine and try again.".to_string()
+        }
+        "ollama_client_init" => {
+            "Couldn't initialize the HTTP client for Ollama. Restart Tangerine and try again."
+                .to_string()
+        }
+        "ollama_connection_refused" => {
+            "Ollama is not running on 127.0.0.1:11434. Start Ollama (`ollama serve`) or pick a different channel.".to_string()
+        }
+        "ollama_http_status" => {
+            "Ollama is running but the model isn't pulled. Run `ollama pull llama3.1:8b-instruct-q4_K_M` then retry.".to_string()
+        }
+        "ollama_parse_error" => {
+            "Ollama responded but the body wasn't valid JSON. The version on this machine may be too old.".to_string()
+        }
+        "browser_ext_not_implemented" => {
+            "Browser extension channel is not yet implemented (coming v2.0).".to_string()
+        }
+        "all_channels_exhausted" => {
+            "Every channel failed. Open Setup again and pick one to fix.".to_string()
+        }
+        _ => "Unknown error. Check Tangerine's logs for details.".to_string(),
+    }
+}
+
+// === wave 11.1 ===
+/// Pretty display name for a tool id. Mirrors `MCP_CATALOG` so we don't
+/// have to plumb the catalog through. For unknown ids returns "the tool".
+fn display_name_for_tool(tool_id: &str) -> &str {
+    match tool_id {
+        "cursor" => "Cursor",
+        "claude-code" => "Claude Code",
+        "codex" => "Codex",
+        "windsurf" => "Windsurf",
+        "ollama" => "Ollama",
+        _ => "the tool",
     }
 }
 
@@ -923,5 +1293,227 @@ mod tests {
         // recommended_channel is always Some — even "no channel" is an
         // explicit Some(NoChannelAvailable).
         assert!(det.recommended_channel.is_some());
+    }
+
+    // === wave 11.1 ===
+    // Friendly error mapping tests. These drive `classify_borrow_error` and
+    // `friendly_error_for_kind` against every variant so a future refactor
+    // can't silently break the user-facing copy.
+
+    #[test]
+    fn friendly_error_mcp_sampler_not_registered_mentions_restart() {
+        let msg = friendly_error_for_kind("mcp_sampler_not_registered", "claude-code");
+        assert!(msg.contains("Claude Code"), "got {msg}");
+        assert!(msg.to_lowercase().contains("restart") || msg.to_lowercase().contains("close"), "got {msg}");
+    }
+
+    #[test]
+    fn friendly_error_ollama_connection_refused_mentions_serve_command() {
+        let msg = friendly_error_for_kind("ollama_connection_refused", "ollama");
+        assert!(msg.contains("ollama serve"), "got {msg}");
+        assert!(msg.contains("11434"), "got {msg}");
+    }
+
+    #[test]
+    fn friendly_error_ollama_http_status_mentions_pull() {
+        let msg = friendly_error_for_kind("ollama_http_status", "ollama");
+        assert!(msg.to_lowercase().contains("pull"), "got {msg}");
+    }
+
+    #[test]
+    fn friendly_error_browser_ext_not_implemented_mentions_v2() {
+        let msg = friendly_error_for_kind("browser_ext_not_implemented", "");
+        assert!(msg.contains("v2.0"), "got {msg}");
+    }
+
+    #[test]
+    fn friendly_error_unknown_kind_returns_generic() {
+        let msg = friendly_error_for_kind("not-a-real-kind", "ollama");
+        assert!(msg.to_lowercase().contains("unknown"), "got {msg}");
+    }
+
+    #[test]
+    fn classify_mcp_sampler_not_registered_returns_correct_kind() {
+        let err = BorrowError::PrimaryUnreachable {
+            tool_id: "claude-code".to_string(),
+            reason: "MCP sampler not registered".to_string(),
+            cause: PrimaryUnreachableCause::McpSamplerNotRegistered,
+        };
+        let (kind, raw, _extra) = classify_borrow_error(&err);
+        assert_eq!(kind, "mcp_sampler_not_registered");
+        assert!(raw.contains("claude-code"));
+    }
+
+    #[test]
+    fn classify_ollama_404_returns_http_status_kind_with_extra() {
+        let err = BorrowError::PrimaryUnreachable {
+            tool_id: "ollama".to_string(),
+            reason: "http 404 Not Found".to_string(),
+            cause: PrimaryUnreachableCause::OllamaHttpStatus {
+                status: 404,
+                detail: "Not Found".to_string(),
+            },
+        };
+        let (kind, _raw, extra) = classify_borrow_error(&err);
+        assert_eq!(kind, "ollama_http_status");
+        let extra = extra.expect("extra populated");
+        assert_eq!(extra["status"].as_u64().unwrap(), 404);
+    }
+
+    #[test]
+    fn classify_ollama_connection_refused_carries_detail() {
+        let err = BorrowError::PrimaryUnreachable {
+            tool_id: "ollama".to_string(),
+            reason: "connect: tcp connection refused".to_string(),
+            cause: PrimaryUnreachableCause::OllamaConnectionRefused {
+                detail: "tcp connection refused".to_string(),
+            },
+        };
+        let (kind, _raw, extra) = classify_borrow_error(&err);
+        assert_eq!(kind, "ollama_connection_refused");
+        assert!(extra.is_some());
+    }
+
+    #[test]
+    fn classify_all_exhausted_returns_generic_kind() {
+        let err = BorrowError::AllExhausted;
+        let (kind, _raw, _extra) = classify_borrow_error(&err);
+        assert_eq!(kind, "all_channels_exhausted");
+    }
+
+    #[test]
+    fn classify_not_implemented_returns_browser_ext_kind() {
+        let err = BorrowError::NotImplemented("browser_ext channel for foo".to_string());
+        let (kind, _raw, _extra) = classify_borrow_error(&err);
+        assert_eq!(kind, "browser_ext_not_implemented");
+    }
+
+    #[test]
+    fn borrow_error_to_result_preserves_diagnostic_fields() {
+        let err = BorrowError::PrimaryUnreachable {
+            tool_id: "cursor".to_string(),
+            reason: "timed out".to_string(),
+            cause: PrimaryUnreachableCause::McpSamplerTimeout { timeout_ms: 10_000 },
+        };
+        let r = borrow_error_to_result(err, "mcp_sampling", "cursor".to_string(), true, 250);
+        assert!(!r.ok);
+        assert_eq!(r.channel_used, "mcp_sampling");
+        assert_eq!(r.latency_ms, 250);
+        let diag = r.diagnostic.expect("diagnostic populated");
+        assert_eq!(diag.channel_attempted, "mcp_sampling");
+        assert_eq!(diag.tool_id, "cursor");
+        assert!(diag.sampler_registered);
+        assert_eq!(diag.error_kind, "mcp_sampler_timeout");
+        let extra = diag.extra.expect("extra populated");
+        assert_eq!(extra["timeout_ms"].as_u64().unwrap(), 10_000);
+    }
+
+    #[tokio::test]
+    async fn test_channel_browser_ext_returns_friendly_v2_message() {
+        // No registry / no Ollama needed — browser_ext path is short-circuited.
+        let result = setup_wizard_test_channel(TestChannelArgs {
+            channel: Some("browser_ext".to_string()),
+            tool_id: None,
+        })
+        .await
+        .expect("test_channel never errors at the AppError layer");
+        assert!(!result.ok);
+        let err = result.error.expect("friendly error populated");
+        assert!(err.contains("v2.0"), "got: {err}");
+        let diag = result.diagnostic.expect("diagnostic populated");
+        assert_eq!(diag.error_kind, "browser_ext_not_implemented");
+        assert_eq!(diag.channel_attempted, "browser_ext");
+    }
+
+    #[tokio::test]
+    async fn test_channel_mcp_sampling_no_registered_sampler_returns_friendly() {
+        // Wipe any sampler that other tests might have left around.
+        let registry = crate::agi::sampling_bridge::global();
+        registry.deregister("claude-code");
+        let result = setup_wizard_test_channel(TestChannelArgs {
+            channel: Some("mcp_sampling".to_string()),
+            tool_id: Some("claude-code".to_string()),
+        })
+        .await
+        .expect("ok envelope");
+        assert!(!result.ok);
+        let err = result.error.expect("friendly error populated");
+        // CRITICAL: must NOT mention ollama. The whole point of the fix.
+        assert!(
+            !err.to_lowercase().contains("ollama"),
+            "friendly error for MCP failure must not mention ollama; got: {err}"
+        );
+        assert!(err.contains("Claude Code"), "got: {err}");
+        let diag = result.diagnostic.expect("diagnostic populated");
+        assert_eq!(diag.channel_attempted, "mcp_sampling");
+        assert_eq!(diag.error_kind, "mcp_sampler_not_registered");
+        assert!(!diag.sampler_registered);
+    }
+
+    #[tokio::test]
+    async fn test_channel_mcp_sampling_with_unknown_tool_id_returns_friendly() {
+        let result = setup_wizard_test_channel(TestChannelArgs {
+            channel: Some("mcp_sampling".to_string()),
+            tool_id: Some("not-a-real-editor".to_string()),
+        })
+        .await
+        .expect("ok envelope");
+        assert!(!result.ok);
+        // Unknown tool id is treated as "not registered" (it isn't).
+        let err = result.error.expect("friendly error populated");
+        assert!(
+            !err.to_lowercase().contains("ollama"),
+            "must not mention ollama; got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_channel_mcp_sampling_without_tool_id_returns_friendly() {
+        let result = setup_wizard_test_channel(TestChannelArgs {
+            channel: Some("mcp_sampling".to_string()),
+            tool_id: None,
+        })
+        .await
+        .expect("ok envelope");
+        assert!(!result.ok);
+        let diag = result.diagnostic.expect("diagnostic populated");
+        // Either way it must not be an ollama error.
+        assert_ne!(diag.channel_attempted, "ollama_http");
+        assert_ne!(diag.error_kind, "ollama_connection_refused");
+    }
+
+    #[tokio::test]
+    async fn dispatch_specific_channel_does_not_fall_through_on_mcp_failure() {
+        // The original bug: select Claude Code MCP, no sampler registered,
+        // dispatcher silently routes to Ollama and returns "ollama 404".
+        // dispatch_specific_channel must NOT do that.
+        let registry = crate::agi::sampling_bridge::global();
+        registry.deregister("claude-code");
+
+        let request = LlmRequest {
+            system_prompt: "test".to_string(),
+            user_prompt: "test".to_string(),
+            max_tokens: Some(8),
+            temperature: Some(0.0),
+        };
+        let result = dispatch_specific_channel_with_base_url(
+            request,
+            SpecificChannel::McpSampling,
+            Some("claude-code".to_string()),
+            "http://127.0.0.1:1", // unreachable — would ECONNREFUSE if hit
+        )
+        .await;
+        // Must error because MCP failed, NOT silently succeed via Ollama.
+        let err = result.expect_err("must fail when no MCP sampler registered");
+        match err {
+            BorrowError::PrimaryUnreachable { tool_id, cause, .. } => {
+                assert_eq!(tool_id, "claude-code");
+                assert!(
+                    matches!(cause, PrimaryUnreachableCause::McpSamplerNotRegistered),
+                    "expected McpSamplerNotRegistered, got {cause:?}"
+                );
+            }
+            other => panic!("expected PrimaryUnreachable, got {other:?}"),
+        }
     }
 }

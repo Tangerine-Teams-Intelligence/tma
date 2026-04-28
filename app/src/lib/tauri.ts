@@ -3392,12 +3392,43 @@ export interface SetupWizardAutoConfigResult {
   error: string | null;
 }
 
+// === wave 11.1 ===
+/** Stable error_kind union the SetupWizard maps to i18n keys. Mirrors the
+ *  string set produced by `friendly_error_for_kind` on the Rust side. */
+export type SetupWizardErrorKind =
+  | "ok"
+  | "mcp_sampler_not_registered"
+  | "mcp_sampler_timeout"
+  | "mcp_sampler_disconnected"
+  | "mcp_host_rejected"
+  | "mcp_bridge_internal"
+  | "ollama_client_init"
+  | "ollama_connection_refused"
+  | "ollama_http_status"
+  | "ollama_parse_error"
+  | "browser_ext_not_implemented"
+  | "all_channels_exhausted"
+  | "unknown";
+
+// === wave 11.1 ===
+export interface SetupWizardDiagnostic {
+  channel_attempted: string;
+  tool_id: string;
+  sampler_registered: boolean;
+  elapsed_ms: number;
+  error_kind: SetupWizardErrorKind;
+  raw_error: string | null;
+  extra: Record<string, unknown> | null;
+}
+
 export interface SetupWizardTestResult {
   ok: boolean;
   channel_used: string;
   response_preview: string;
   latency_ms: number;
   error: string | null;
+  // === wave 11.1 ===
+  diagnostic?: SetupWizardDiagnostic | null;
 }
 
 export interface InstallHintResult {

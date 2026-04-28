@@ -68,6 +68,8 @@ import {
   type RecommendedChannel,
   type DetectedMcpTool,
   type InstallHintResult,
+  // === wave 11.1 ===
+  type SetupWizardDiagnostic,
 } from "@/lib/tauri";
 
 type WizardStep = "welcome" | "detect" | "configure" | "test" | "done";
@@ -997,19 +999,84 @@ function McpConfigurePane({
         </div>
       )}
 
+      {/* === wave 11.1 === explicit restart gate. The original Wave 11
+          wizard let the user advance straight from "auto-configure ok" into
+          the Test step — but the MCP server only spawns on next editor
+          launch, so the test fired against an empty registry and silently
+          fell through to Ollama (404). Now we render a numbered restart
+          checklist + a primary CTA that explicitly says "I restarted, run
+          test". User MUST acknowledge before the test runs. */}
       {(autoConfigStatus === "ok" || showSnippet) && (
-        <div className="border-t border-stone-200 pt-3 dark:border-stone-800">
-          <Button
-            onClick={onContinueAfterRestart}
-            data-testid="setup-wizard-mcp-restarted"
-          >
-            {t("setupWizard.restartedContinue", { tool: toolId })}
-            <ChevronRight size={16} aria-hidden />
-          </Button>
+        <div
+          className="rounded-md border border-[var(--ti-orange-500)]/40 bg-[var(--ti-orange-50)]/30 p-4 dark:border-[var(--ti-orange-500)]/40 dark:bg-stone-800/40"
+          data-testid="setup-wizard-mcp-restart-gate"
+        >
+          <h3 className="text-[13px] font-medium text-[var(--ti-ink-900)] dark:text-stone-200">
+            {t("setupWizard.restartGateTitle", { tool: displayNameForToolId(toolId) })}
+          </h3>
+          <ol className="mt-3 space-y-2 text-[12px] text-[var(--ti-ink-700)] dark:text-stone-300">
+            <li className="flex gap-2">
+              <span aria-hidden className="font-mono text-[var(--ti-orange-500)]">
+                1.
+              </span>
+              <span>
+                {t("setupWizard.restartStep1", {
+                  tool: displayNameForToolId(toolId),
+                })}
+              </span>
+            </li>
+            <li className="flex gap-2">
+              <span aria-hidden className="font-mono text-[var(--ti-orange-500)]">
+                2.
+              </span>
+              <span>
+                {t("setupWizard.restartStep2", {
+                  tool: displayNameForToolId(toolId),
+                })}
+              </span>
+            </li>
+            <li className="flex gap-2">
+              <span aria-hidden className="font-mono text-[var(--ti-orange-500)]">
+                3.
+              </span>
+              <span>{t("setupWizard.restartStep3")}</span>
+            </li>
+          </ol>
+          <div className="mt-4">
+            <Button
+              onClick={onContinueAfterRestart}
+              data-testid="setup-wizard-mcp-restarted"
+            >
+              {t("setupWizard.restartGateCta", {
+                tool: displayNameForToolId(toolId),
+              })}
+              <ChevronRight size={16} aria-hidden />
+            </Button>
+          </div>
         </div>
       )}
     </div>
   );
+}
+
+// === wave 11.1 ===
+/** Catalog of pretty display names — must mirror MCP_CATALOG on the Rust
+ *  side. Falls back to the raw tool_id for unknown ones. */
+function displayNameForToolId(toolId: string): string {
+  switch (toolId) {
+    case "cursor":
+      return "Cursor";
+    case "claude-code":
+      return "Claude Code";
+    case "codex":
+      return "Codex";
+    case "windsurf":
+      return "Windsurf";
+    case "ollama":
+      return "Ollama";
+    default:
+      return toolId;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1095,10 +1162,18 @@ function TestStep({
               <p className="text-[13px] font-medium text-rose-700 dark:text-rose-300">
                 {t("setupWizard.testFailed")}
               </p>
+              {/* === wave 11.1 === Render channel-specific friendly copy
+                  driven by the structured `error_kind` from the Rust side.
+                  Falls back to the raw `error` string for legacy responses
+                  that don't carry a diagnostic. */}
               {result.error && (
-                <p className="mt-1 font-mono text-[11px] text-rose-700/80 dark:text-rose-300/80">
-                  {result.error}
+                <p className="mt-1 text-[12px] text-rose-700/90 dark:text-rose-300/90">
+                  {friendlyErrorCopy(t, result)}
                 </p>
+              )}
+              {/* === wave 11.1 === diagnostic expander */}
+              {result.diagnostic && (
+                <DiagnosticExpander diagnostic={result.diagnostic} />
               )}
             </div>
           </div>
@@ -1230,6 +1305,94 @@ function shortenPath(p: string): string {
   const parts = p.split(/[\\/]/);
   if (parts.length <= 3) return p;
   return ".../" + parts.slice(-3).join("/");
+}
+
+// === wave 11.1 ===
+/** Pick the localized friendly error copy for a given test result. The
+ *  `diagnostic.error_kind` enum drives the i18n key; for legacy results
+ *  without a diagnostic we fall back to the raw `error` string the Rust
+ *  side already populated (also human-readable, just not localized). */
+function friendlyErrorCopy(
+  t: ReturnType<typeof useTranslation>["t"],
+  result: SetupWizardTestResult,
+): string {
+  const diag = result.diagnostic;
+  if (!diag) return result.error ?? "";
+  const tool = displayNameForToolId(diag.tool_id || "");
+  const key = `setupWizard.errors.${diag.error_kind}`;
+  // i18next returns the key string itself if not found — guard against
+  // that so we degrade to the raw error rather than rendering a key.
+  const localized = t(key, { tool });
+  if (localized === key) return result.error ?? "";
+  return localized;
+}
+
+// === wave 11.1 ===
+/** Show me what's wrong" expander. Collapsed by default; one click
+ *  toggles the panel of channel/tool/raw-error/extra metadata. */
+function DiagnosticExpander({
+  diagnostic,
+}: {
+  diagnostic: SetupWizardDiagnostic;
+}) {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="mt-3" data-testid="setup-wizard-diagnostic">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        data-testid="setup-wizard-diagnostic-toggle"
+        className="font-mono text-[11px] text-rose-700 underline-offset-2 hover:underline dark:text-rose-300"
+      >
+        {open
+          ? t("setupWizard.diagnosticHide")
+          : t("setupWizard.diagnosticShow")}
+      </button>
+      {open && (
+        <div
+          data-testid="setup-wizard-diagnostic-panel"
+          className="mt-2 rounded-md border border-rose-200 bg-white p-2 font-mono text-[10px] leading-relaxed text-stone-700 dark:border-rose-700/50 dark:bg-stone-900 dark:text-stone-300"
+        >
+          <div>
+            <span className="text-stone-500">channel: </span>
+            <span>{diagnostic.channel_attempted}</span>
+            {diagnostic.tool_id ? <span> / {diagnostic.tool_id}</span> : null}
+          </div>
+          {diagnostic.channel_attempted === "mcp_sampling" && (
+            <div>
+              <span className="text-stone-500">sampler_registered: </span>
+              <span>{diagnostic.sampler_registered ? "true" : "false"}</span>
+            </div>
+          )}
+          <div>
+            <span className="text-stone-500">elapsed_ms: </span>
+            <span>{diagnostic.elapsed_ms}</span>
+          </div>
+          <div>
+            <span className="text-stone-500">error_kind: </span>
+            <span>{diagnostic.error_kind}</span>
+          </div>
+          {diagnostic.raw_error && (
+            <div className="mt-1">
+              <span className="text-stone-500">raw: </span>
+              <span className="break-words">{diagnostic.raw_error}</span>
+            </div>
+          )}
+          {diagnostic.extra && Object.keys(diagnostic.extra).length > 0 && (
+            <div className="mt-1">
+              {Object.entries(diagnostic.extra).map(([k, v]) => (
+                <div key={k}>
+                  <span className="text-stone-500">{k}: </span>
+                  <span>{String(v)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 /** The canonical Tangerine MCP server snippet — kept in sync with the

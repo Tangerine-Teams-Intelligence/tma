@@ -80,15 +80,71 @@ pub struct LlmResponse {
 
 /// All ways `dispatch()` can fail. Serializable so the Tauri layer can
 /// propagate the variant + payload to the React side without flattening.
+///
+/// === wave 11.1 ===
+/// We extended `PrimaryUnreachable` with a structured `cause` so the wizard
+/// can map the Rust failure mode to a human-readable error without parsing
+/// the free-form `reason`. Existing callers still see `reason` populated;
+/// only the new test-channel command inspects `cause`.
 #[derive(Debug, thiserror::Error, Clone, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum BorrowError {
     #[error("primary tool {tool_id} unreachable: {reason}")]
-    PrimaryUnreachable { tool_id: String, reason: String },
+    PrimaryUnreachable {
+        tool_id: String,
+        reason: String,
+        // === wave 11.1 ===
+        #[serde(default)]
+        cause: PrimaryUnreachableCause,
+    },
     #[error("all channels exhausted")]
     AllExhausted,
     #[error("not implemented: {0}")]
     NotImplemented(String),
+}
+
+/// === wave 11.1 ===
+/// Structured reason for a `PrimaryUnreachable`. Populated alongside the
+/// free-form `reason` so the wizard can render channel-specific copy
+/// (e.g. "did you restart your editor?" vs "Ollama is not running").
+#[derive(Debug, Clone, Serialize, Default)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum PrimaryUnreachableCause {
+    #[default]
+    Unknown,
+    /// MCP sampler hasn't connected — user likely hasn't restarted their editor.
+    McpSamplerNotRegistered,
+    /// MCP sampler connected but didn't respond in the timeout window.
+    McpSamplerTimeout {
+        timeout_ms: u64,
+    },
+    /// MCP sampler dropped the socket mid-request.
+    McpSamplerDisconnected,
+    /// MCP host (the editor) rejected the sampling request.
+    McpHostRejected {
+        detail: String,
+    },
+    /// Internal bridge error (serialization, channel issue, etc.).
+    McpBridgeInternal {
+        detail: String,
+    },
+    /// Couldn't initialize the HTTP client.
+    OllamaClientInit {
+        detail: String,
+    },
+    /// Ollama TCP connect failed (not running on 127.0.0.1:11434).
+    OllamaConnectionRefused {
+        detail: String,
+    },
+    /// Ollama returned a non-2xx response — usually 404 model-not-pulled.
+    OllamaHttpStatus {
+        status: u16,
+        detail: String,
+    },
+    /// Ollama returned 2xx but body parse failed.
+    OllamaParseError {
+        detail: String,
+    },
 }
 
 /// Channel identifier for a tool id. Drives the dispatch fan-out below.
@@ -173,6 +229,75 @@ pub async fn dispatch_with_base_url(
     Err(last_err.unwrap_or(BorrowError::AllExhausted))
 }
 
+// === wave 11.1 ===
+/// Logical channel id used by `dispatch_specific_channel`. Exposed so the
+/// setup wizard can ask the dispatcher to try EXACTLY ONE channel and fail
+/// cleanly when it can't satisfy — rather than silently falling through
+/// the priority list.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SpecificChannel {
+    McpSampling,
+    BrowserExt,
+    Ollama,
+}
+
+// === wave 11.1 ===
+/// Send `request` through ONLY the named channel. Never falls through to
+/// other channels. Used by `setup_wizard_test_channel` so the user gets a
+/// truthful error about the channel they actually picked, not whatever the
+/// last-tried channel happened to return.
+///
+/// For `McpSampling`, `tool_id` must be set to the editor key
+/// (cursor / claude-code / codex / windsurf). For Ollama / BrowserExt
+/// `tool_id` is ignored.
+pub async fn dispatch_specific_channel(
+    request: LlmRequest,
+    channel: SpecificChannel,
+    tool_id: Option<String>,
+) -> Result<LlmResponse, BorrowError> {
+    dispatch_specific_channel_with_base_url(request, channel, tool_id, OLLAMA_BASE_URL).await
+}
+
+// === wave 11.1 ===
+/// Test-injection variant — same contract as `dispatch_specific_channel`
+/// but the Ollama base URL can be overridden so unit tests can target a
+/// mock HTTP server.
+pub async fn dispatch_specific_channel_with_base_url(
+    request: LlmRequest,
+    channel: SpecificChannel,
+    tool_id: Option<String>,
+    ollama_base_url: &str,
+) -> Result<LlmResponse, BorrowError> {
+    match channel {
+        SpecificChannel::McpSampling => {
+            let tid = match tool_id.as_deref() {
+                Some(t) if channel_for(t) == Some(Channel::McpSampling) => t,
+                Some(t) => {
+                    return Err(BorrowError::PrimaryUnreachable {
+                        tool_id: t.to_string(),
+                        reason: format!("tool_id {t} is not an MCP-sampling tool"),
+                        cause: PrimaryUnreachableCause::McpSamplerNotRegistered,
+                    });
+                }
+                None => {
+                    return Err(BorrowError::PrimaryUnreachable {
+                        tool_id: "(none)".to_string(),
+                        reason: "MCP sampling channel requires a tool_id".to_string(),
+                        cause: PrimaryUnreachableCause::McpSamplerNotRegistered,
+                    });
+                }
+            };
+            dispatch_mcp_sampling(tid, &request).await
+        }
+        SpecificChannel::BrowserExt => {
+            // Direct call — never falls through.
+            let id = tool_id.as_deref().unwrap_or("browser_ext");
+            dispatch_browser_ext_stub(id, &request).await
+        }
+        SpecificChannel::Ollama => dispatch_ollama(&request, ollama_base_url).await,
+    }
+}
+
 // ---------------------------------------------------------------------------
 // MCP sampling channel — REAL via sampling_bridge registry.
 // ---------------------------------------------------------------------------
@@ -229,26 +354,34 @@ async fn dispatch_mcp_sampling(
             tool_id: tool_id.to_string(),
             latency_ms: start.elapsed().as_millis() as u64,
         }),
+        // === wave 11.1 ===
         Err(SampleError::NotRegistered(_)) => Err(BorrowError::PrimaryUnreachable {
             tool_id: tool_id.to_string(),
             reason: "MCP sampler not registered (start your editor with Tangerine MCP enabled)"
                 .to_string(),
+            cause: PrimaryUnreachableCause::McpSamplerNotRegistered,
         }),
         Err(SampleError::Timeout(d)) => Err(BorrowError::PrimaryUnreachable {
             tool_id: tool_id.to_string(),
             reason: format!("MCP sampling timed out after {d:?}"),
+            cause: PrimaryUnreachableCause::McpSamplerTimeout {
+                timeout_ms: d.as_millis() as u64,
+            },
         }),
         Err(SampleError::Disconnected) => Err(BorrowError::PrimaryUnreachable {
             tool_id: tool_id.to_string(),
             reason: "MCP sampler disconnected mid-request".to_string(),
+            cause: PrimaryUnreachableCause::McpSamplerDisconnected,
         }),
         Err(SampleError::SamplerFailed(msg)) => Err(BorrowError::PrimaryUnreachable {
             tool_id: tool_id.to_string(),
             reason: format!("MCP host rejected sampling: {msg}"),
+            cause: PrimaryUnreachableCause::McpHostRejected { detail: msg },
         }),
         Err(SampleError::Internal(msg)) => Err(BorrowError::PrimaryUnreachable {
             tool_id: tool_id.to_string(),
             reason: format!("MCP bridge internal: {msg}"),
+            cause: PrimaryUnreachableCause::McpBridgeInternal { detail: msg },
         }),
     }
 }
@@ -304,6 +437,7 @@ async fn dispatch_ollama(
     // Connect timeout 5s, total request timeout 60s — long enough for an
     // 8B model to reply on a laptop, short enough that an unreachable
     // localhost:11434 fails fast.
+    // === wave 11.1 ===
     let client = reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(5))
         .timeout(Duration::from_secs(60))
@@ -311,6 +445,7 @@ async fn dispatch_ollama(
         .map_err(|e| BorrowError::PrimaryUnreachable {
             tool_id: "ollama".to_string(),
             reason: format!("http client init: {e}"),
+            cause: PrimaryUnreachableCause::OllamaClientInit { detail: e.to_string() },
         })?;
 
     let prompt = format!(
@@ -336,12 +471,21 @@ async fn dispatch_ollama(
         .map_err(|e| BorrowError::PrimaryUnreachable {
             tool_id: "ollama".to_string(),
             reason: format!("connect: {e}"),
+            cause: PrimaryUnreachableCause::OllamaConnectionRefused { detail: e.to_string() },
         })?;
 
     if !resp.status().is_success() {
+        let status = resp.status();
         return Err(BorrowError::PrimaryUnreachable {
             tool_id: "ollama".to_string(),
-            reason: format!("http {}", resp.status()),
+            reason: format!("http {}", status),
+            cause: PrimaryUnreachableCause::OllamaHttpStatus {
+                status: status.as_u16(),
+                detail: status
+                    .canonical_reason()
+                    .unwrap_or("")
+                    .to_string(),
+            },
         });
     }
 
@@ -349,6 +493,7 @@ async fn dispatch_ollama(
         resp.json().await.map_err(|e| BorrowError::PrimaryUnreachable {
             tool_id: "ollama".to_string(),
             reason: format!("parse: {e}"),
+            cause: PrimaryUnreachableCause::OllamaParseError { detail: e.to_string() },
         })?;
 
     Ok(LlmResponse {
@@ -603,12 +748,18 @@ mod tests {
         registry.deregister("cursor");
         let res = dispatch_mcp_sampling("cursor", &sample_req()).await;
         match res {
-            Err(BorrowError::PrimaryUnreachable { tool_id, reason }) => {
+            Err(BorrowError::PrimaryUnreachable { tool_id, reason, cause }) => {
                 assert_eq!(tool_id, "cursor");
                 assert!(
                     reason.to_lowercase().contains("not registered")
                         || reason.to_lowercase().contains("not_registered"),
                     "expected 'not registered' in reason; got: {reason}"
+                );
+                // === wave 11.1 ===
+                assert!(
+                    matches!(cause, PrimaryUnreachableCause::McpSamplerNotRegistered),
+                    "expected McpSamplerNotRegistered, got {:?}",
+                    cause
                 );
             }
             other => panic!("expected PrimaryUnreachable, got {:?}", other),

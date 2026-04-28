@@ -24,7 +24,10 @@ use crate::agi::session_borrower::{dispatch, BorrowError, LlmRequest, LlmRespons
 impl From<BorrowError> for AppError {
     fn from(e: BorrowError) -> Self {
         match e {
-            BorrowError::PrimaryUnreachable { tool_id, reason } => AppError::external(
+            // === wave 11.1 === ignore the new structured `cause` here — the
+            // existing co-thinker dispatcher just wants the human reason for
+            // its log line. The wizard surface uses `cause` directly.
+            BorrowError::PrimaryUnreachable { tool_id, reason, .. } => AppError::external(
                 "primary_unreachable",
                 format!("{tool_id}: {reason}"),
             ),
