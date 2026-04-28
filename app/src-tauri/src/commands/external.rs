@@ -9,12 +9,19 @@ use std::process::Command as StdCommand;
 use serde::{Deserialize, Serialize};
 // === v1.13.3 round-3 ===
 // Drop unused `Manager` import — `cargo check` flagged it. AppHandle here
-// is only ever used for `app.shell()` (via ShellExt) and `app.state()`
-// is plumbed through the State<…> extractor, so the Manager trait isn't
-// actually needed in this module.
+// is only ever used for `app.opener()` (via OpenerExt; was `app.shell()`
+// until v1.14.3 round-4) and `app.state()` is plumbed through the
+// State<…> extractor, so the Manager trait isn't actually needed.
 use tauri::{AppHandle, Runtime, State};
 // === end v1.13.3 round-3 ===
-use tauri_plugin_shell::ShellExt;
+// === v1.14.3 round-4 ===
+// Migrated from `tauri_plugin_shell::ShellExt::open` (deprecated in 2.x) to
+// the new dedicated `tauri-plugin-opener` crate. The opener plugin is
+// registered in `main.rs` next to the shell plugin; the URL-open call site
+// is below in `open_external`. Clears the lone deprecation warning that
+// has been in `cargo check` output for ≥3 versions.
+use tauri_plugin_opener::OpenerExt;
+// === end v1.14.3 round-4 ===
 
 use super::runner::run_oneshot;
 use super::{AppError, AppState};
@@ -48,18 +55,25 @@ pub struct OpenExternalArgs {
 // CEO dogfood (2026-04-27): the previous `cmd /c start "" url` invocation
 // with CREATE_NO_WINDOW silent-failed on Windows — the start verb appeared
 // to inherit the suppressed-window state and never actually spawned the
-// browser. Switch to the official tauri-plugin-shell ShellExt::open API,
-// which is also already permitted via `shell:allow-open` in capabilities.
-// Cross-platform, no manual cmd wrapper needed.
+// browser. Switch to the official tauri plugin (cross-platform, no manual
+// cmd wrapper needed).
+// === v1.14.3 round-4 ===
+// Migrated from `app.shell().open(url, None)` to
+// `app.opener().open_url(url, None::<&str>)`. The shell variant was
+// deprecated upstream in plugin-shell 2.x. Behavior is identical (delegates
+// to the OS default URL handler). The capability still lives under
+// `shell:allow-open` in `capabilities/default.json`; we add the equivalent
+// opener permission there so production builds pass the ACL check.
 #[tauri::command]
 pub async fn open_external<R: Runtime>(
     app: AppHandle<R>,
     args: OpenExternalArgs,
 ) -> Result<(), AppError> {
-    app.shell()
-        .open(&args.url, None)
-        .map_err(|e| AppError::external("shell_open", e.to_string()))
+    app.opener()
+        .open_url(&args.url, None::<&str>)
+        .map_err(|e| AppError::external("opener_open_url", e.to_string()))
 }
+// === end v1.14.3 round-4 ===
 // === end wave 6.5 ===
 
 #[derive(Debug, Deserialize)]

@@ -58,6 +58,14 @@ fn main() {
         }))
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_shell::init())
+        // === v1.14.3 round-4 ===
+        // `tauri-plugin-shell::open` is deprecated upstream; opener is its
+        // drop-in successor. Registered alongside shell so the migrated
+        // `open_external` command in `commands::external` can call
+        // `app.opener().open_url(...)` without losing parity. Shell stays
+        // registered for any future spawn-only use.
+        .plugin(tauri_plugin_opener::init())
+        // === end v1.14.3 round-4 ===
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         // === wave 25 === Auto-updater plugin. Reads `plugins.updater.endpoints`

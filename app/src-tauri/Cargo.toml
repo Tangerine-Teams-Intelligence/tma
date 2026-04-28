@@ -30,6 +30,16 @@ tauri-build = { version = "2", features = [] }
 # `~/.tangerine-memory/agi/proposals/` every 60s.
 tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-shell = "2"
+# === v1.14.3 round-4 ===
+# `tauri-plugin-shell::open` was deprecated in plugin-shell 2.x in favor of
+# the standalone `tauri-plugin-opener` crate. The single callsite in
+# `commands::external::open_external` now uses `app.opener().open_url(...)`,
+# clearing the long-standing deprecation warning surfaced by `cargo check`
+# every build. `tauri-plugin-shell` itself stays in the tree because the
+# plugin is still registered in `main.rs` for future shell-spawn use; we
+# keep it pinned to avoid an unrelated dep churn.
+tauri-plugin-opener = "2"
+# === end v1.14.3 round-4 ===
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
 tauri-plugin-process = "2"
