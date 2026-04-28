@@ -38,7 +38,33 @@ interface LocalExecutionAudit {
   tangerine_call_count: number;
 }
 
-async function invokeOrMock<T>(
+// === v1.13.6 round-6 ===
+// Round 6 audit: this used to be the same silent-fallback shape that hid
+// Round 5's apply_review_decisions bug for 5 versions. The Privacy panel's
+// "Local-first" claim is load-bearing — if the Rust call errors and we
+// quietly render mock data, the user sees fake "no sources configured"
+// receipts and trusts a false claim. Now: outside Tauri (vitest / vite dev)
+// we still mock so the UI renders for development. Inside Tauri, errors
+// PROPAGATE so the caller can surface a real error UI; the React side now
+// stores `lastError` and renders an explicit "couldn't load receipts" card
+// rather than fake green checkmarks.
+//
+// `invokeOrMockErrors` is the strict variant; `invokeOrMockSilent` keeps
+// the old shape for the telemetry opt-out toggle path where a swallow is
+// genuinely fine (the local state already updated optimistically).
+async function invokeOrMockErrors<T>(
+  cmd: string,
+  args: Record<string, unknown> | undefined,
+  mock: () => T,
+): Promise<T> {
+  if (!inTauri()) return mock();
+  // No try/catch — let the real bridge error reach the caller so the
+  // Privacy panel can render an honest "couldn't load receipts" state.
+  const { invoke } = await import("@tauri-apps/api/core");
+  return await invoke<T>(cmd, args);
+}
+
+async function invokeOrMockSilent<T>(
   cmd: string,
   args: Record<string, unknown> | undefined,
   mock: () => T,
@@ -53,6 +79,7 @@ async function invokeOrMock<T>(
     return mock();
   }
 }
+// === end v1.13.6 round-6 ===
 
 const MOCK_OVERVIEW: PrivacyOverview = {
   sources: [
@@ -101,18 +128,33 @@ export function PrivacySettings() {
   const [audit, setAudit] = useState<LocalExecutionAudit | null>(null);
   const [loading, setLoading] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
+  // === v1.13.6 round-6 === — surface a real error state instead of
+  // silently rendering mock receipts when the Rust call fails inside Tauri.
+  const [loadError, setLoadError] = useState<string | null>(null);
+  // === end v1.13.6 round-6 ===
 
   useEffect(() => {
-    void invokeOrMock<PrivacyOverview>(
+    // === v1.13.6 round-6 === — strict variant for the load-bearing read.
+    invokeOrMockErrors<PrivacyOverview>(
       "privacy_get_overview",
       undefined,
       () => MOCK_OVERVIEW,
-    ).then(setOverview);
+    )
+      .then((o) => {
+        setOverview(o);
+        setLoadError(null);
+      })
+      .catch((e) => {
+        // eslint-disable-next-line no-console
+        console.error("[privacy] privacy_get_overview failed:", e);
+        setLoadError(String(e));
+      });
+    // === end v1.13.6 round-6 ===
   }, []);
 
   const flipTelemetry = async (next: boolean) => {
     setSavedAt(null);
-    await invokeOrMock<void>(
+    await invokeOrMockSilent<void>(
       "privacy_set_telemetry_opt_out",
       { args: { opt_out: next } },
       () => undefined,
@@ -126,7 +168,10 @@ export function PrivacySettings() {
   const runAudit = async () => {
     setLoading(true);
     try {
-      const r = await invokeOrMock<LocalExecutionAudit>(
+      // === v1.13.6 round-6 === — silent variant: audit is best-effort
+      // (stub today, real per-call hook lands in v1.14). A failure here
+      // genuinely should not stop the user clicking the button again.
+      const r = await invokeOrMockSilent<LocalExecutionAudit>(
         "privacy_verify_local_execution",
         undefined,
         () => ({
@@ -143,6 +188,32 @@ export function PrivacySettings() {
       setLoading(false);
     }
   };
+
+  // === v1.13.6 round-6 === — honest error state. Don't render fake mock
+  // receipts when the real load failed in production.
+  if (loadError) {
+    return (
+      <div
+        className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-900 dark:border-red-700 dark:bg-red-950 dark:text-red-200"
+        data-testid="st-privacy-error"
+      >
+        <div className="font-medium">
+          {t(
+            "privacy.errorTitle",
+            "Couldn't load privacy receipts",
+          )}
+        </div>
+        <div className="mt-1 font-mono text-xs opacity-80">{loadError}</div>
+        <div className="mt-2 text-xs opacity-80">
+          {t(
+            "privacy.errorHint",
+            "Restart the app or open the developer console for details. We refuse to render fake 'all-local' receipts when we can't verify them.",
+          )}
+        </div>
+      </div>
+    );
+  }
+  // === end v1.13.6 round-6 ===
 
   if (!overview) {
     return (

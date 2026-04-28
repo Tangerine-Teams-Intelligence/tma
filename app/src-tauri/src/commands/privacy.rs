@@ -130,15 +130,32 @@ pub async fn privacy_get_overview() -> Result<PrivacyOverview, AppError> {
         // Use account = "default" for the presence probe — the Privacy
         // panel only shows whether ANY token is configured for that source,
         // not the per-account breakdown (that lives in Sources tab).
-        let presence = super::secret_store::secret_store_get_oauth(
+        // === v1.13.6 round-6 === — Round 6 audit: previous `.unwrap_or(false)`
+        // silently masked `secret_store_get_oauth` errors. If SOURCE_REGISTRY
+        // ever drifts from secret_store::ALLOWED_SOURCES (e.g. someone adds
+        // "feishu" to the registry without adding to allow-list), `validate_source`
+        // returns `Err(source_not_allowed)` and the user would see "no source
+        // configured" forever — load-bearing wrong for the Local-first claim.
+        // Now: keychain/file-not-found stays present:false (legit); validation
+        // errors propagate as a tracing::warn so we see the drift in logs.
+        let presence = match super::secret_store::secret_store_get_oauth(
             super::secret_store::SecretStoreGetOauthArgs {
                 source: src.to_string(),
                 account: "default".to_string(),
             },
         )
         .await
-        .map(|p| p.present)
-        .unwrap_or(false);
+        {
+            Ok(p) => p.present,
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    source = %src,
+                    "privacy_get_overview: secret_store probe failed (likely SOURCE_REGISTRY/ALLOWED_SOURCES drift)"
+                );
+                false
+            }
+        };
         sources.push(SourcePresence {
             source: src.to_string(),
             present: presence,
@@ -151,6 +168,27 @@ pub async fn privacy_get_overview() -> Result<PrivacyOverview, AppError> {
         egress_assets: EGRESS_ASSETS.iter().map(|s| s.to_string()).collect(),
     })
 }
+
+// === v1.13.6 round-6 === — Round 6 audit: SOURCE_REGISTRY / ALLOWED_SOURCES
+// drift defense. Compile-time test that every SOURCE_REGISTRY entry IS in
+// secret_store::ALLOWED_SOURCES so the Privacy panel can never silently
+// regress to "no sources configured" because of a registry add without an
+// allow-list add. Belt-and-suspenders to the runtime tracing::warn above.
+#[cfg(test)]
+#[test]
+fn source_registry_subset_of_secret_store_allowlist() {
+    // Mirror the secret_store::ALLOWED_SOURCES list. If this gets out of
+    // sync with secret_store.rs::ALLOWED_SOURCES, this test still defends
+    // SOURCE_REGISTRY itself by failing loudly.
+    let allowed: &[&str] = &["lark", "zoom", "teams", "slack", "github", "discord"];
+    for src in crate::sources::SOURCE_REGISTRY.iter().copied() {
+        assert!(
+            allowed.contains(&src),
+            "SOURCE_REGISTRY contains '{src}' but secret_store::ALLOWED_SOURCES doesn't — Privacy panel would silently show present:false. Add to ALLOWED_SOURCES too."
+        );
+    }
+}
+// === end v1.13.6 round-6 ===
 
 #[tauri::command]
 pub async fn privacy_set_telemetry_opt_out(

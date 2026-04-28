@@ -121,11 +121,34 @@ pub(crate) fn read_all_events(memory_dir: &Path) -> Vec<InboxEvent> {
     let path = inbox_path(memory_dir);
     let bytes = match std::fs::read(&path) {
         Ok(b) => b,
-        Err(_) => return Vec::new(),
+        // === v1.13.6 round-6 === — fresh install (file genuinely missing)
+        // is the common case; a real I/O error (permission denied, disk
+        // full, I/O hardware) silently returning Vec::new() would show the
+        // user an empty inbox forever with no signal in logs. Distinguish.
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Vec::new(),
+        Err(e) => {
+            tracing::warn!(
+                error=?e,
+                path=%path.display(),
+                "wave 1.13-A inbox_store read failed (non-NotFound) — UI will show empty inbox; investigate"
+            );
+            return Vec::new();
+        }
+        // === end v1.13.6 round-6 ===
     };
     let text = match std::str::from_utf8(&bytes) {
         Ok(s) => s.to_string(),
-        Err(_) => return Vec::new(),
+        Err(e) => {
+            // === v1.13.6 round-6 === — corrupted UTF-8 in the inbox jsonl
+            // is a real bug (we always write valid utf-8). Log it visibly.
+            tracing::warn!(
+                error=?e,
+                path=%path.display(),
+                "wave 1.13-A inbox_store utf8 decode failed — file is corrupted"
+            );
+            return Vec::new();
+            // === end v1.13.6 round-6 ===
+        }
     };
     let mut out: Vec<InboxEvent> = Vec::new();
     for line in text.lines() {
@@ -253,6 +276,17 @@ pub async fn inbox_mark_read(args: InboxFlagArgs) -> Result<(), AppError> {
     }
     if found {
         write_all_events(&memory_dir, &events)?;
+    } else {
+        // === v1.13.6 round-6 === — Round 6 audit: silently returning Ok(())
+        // when event_id is missing meant the React-side optimistic update
+        // would diverge from disk (user clicks Mark Read, file unchanged,
+        // next refresh re-reads as unread, user clicks again, loop). Log
+        // visibly so we catch frontend/backend ID drift in production.
+        tracing::warn!(
+            event_id = %args.event_id,
+            "inbox_mark_read: event_id not found — UI may diverge from disk"
+        );
+        // === end v1.13.6 round-6 ===
     }
     Ok(())
 }
@@ -271,6 +305,13 @@ pub async fn inbox_archive(args: InboxFlagArgs) -> Result<(), AppError> {
     }
     if found {
         write_all_events(&memory_dir, &events)?;
+    } else {
+        // === v1.13.6 round-6 === — same defensive log as inbox_mark_read.
+        tracing::warn!(
+            event_id = %args.event_id,
+            "inbox_archive: event_id not found — UI may diverge from disk"
+        );
+        // === end v1.13.6 round-6 ===
     }
     Ok(())
 }
