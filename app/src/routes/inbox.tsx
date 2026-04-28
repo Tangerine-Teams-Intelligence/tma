@@ -49,8 +49,25 @@ import {
 } from "@/lib/identity";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { EmptyState } from "@/components/EmptyState";
+// === v1.13.2 round-2 ===
+// Wire the Wave 1.13-C AIExtractedMentionCard into the inbox renderer so
+// `kind === "ai_extracted_mention"` events get the distinct 🍊 badge +
+// snippet quote treatment instead of falling through invisibly. Round 1
+// shipped the card component but never mounted it anywhere.
+import {
+  AIExtractedMentionCard,
+  type AIExtractedMentionEvent,
+} from "@/components/inbox/AIExtractedMentionCard";
+// === end v1.13.2 round-2 ===
 
+// === v1.13.2 round-2 ===
+// Mentions tab now also receives `ai_extracted_mention` events — they
+// share the "someone tagged you" semantic with explicit @mentions, just
+// from an AI tool rather than a teammate. Bucketing them anywhere else
+// (e.g. their own tab) buries the surface; co-locating in Mentions keeps
+// the rail count honest.
 type Tab = "mention" | "review_request" | "comment_reply";
+// === end v1.13.2 round-2 ===
 
 const TABS: { id: Tab; iconKey: "at" | "pr" | "msg"; key: string }[] = [
   { id: "mention", iconKey: "at", key: "tabMentions" },
@@ -105,6 +122,14 @@ export default function InboxRoute() {
       comment_reply: [],
     };
     for (const e of inbox.events) {
+      // === v1.13.2 round-2 === — `ai_extracted_mention` is grouped with
+      // explicit @mentions in the Mentions tab. Without this they fell
+      // through silently (no kind matched the 3 buckets).
+      if (e.kind === "ai_extracted_mention") {
+        buckets.mention.push(e);
+        continue;
+      }
+      // === end v1.13.2 round-2 ===
       if (e.kind in buckets) {
         buckets[e.kind as Tab].push(e);
       }
@@ -120,7 +145,14 @@ export default function InboxRoute() {
       comment_reply: 0,
     };
     for (const e of inbox.events) {
-      if (!e.read && !e.archived && e.kind in out) {
+      if (e.read || e.archived) continue;
+      // === v1.13.2 round-2 === — same routing as `eventsByKind`.
+      if (e.kind === "ai_extracted_mention") {
+        out.mention += 1;
+        continue;
+      }
+      // === end v1.13.2 round-2 ===
+      if (e.kind in out) {
         out[e.kind as Tab] += 1;
       }
     }
@@ -268,6 +300,11 @@ export default function InboxRoute() {
               ))}
             </div>
           ) : visible.length === 0 ? (
+            // === v1.13.2 round-2 === — Round 1 dimension #6 ("Keep coming
+            // back"): empty state was just title+body. Added a primary
+            // "Open Brain" CTA so a user with zero mentions has somewhere
+            // to go (Brain is the highest-utility surface for solo work).
+            // Tab-aware so each tab nudges toward the relevant next step.
             <EmptyState
               icon={
                 <CheckCircle2
@@ -287,27 +324,72 @@ export default function InboxRoute() {
                 defaultValue:
                   "When a teammate @mentions you, asks for a review, or replies to a thread you're in, it shows up here.",
               })}
+              primaryAction={{
+                label: t("inbox.emptyCta", {
+                  defaultValue:
+                    tab === "review_request"
+                      ? "Browse memory"
+                      : "Open Brain",
+                }),
+                onClick: () => {
+                  navigate(tab === "review_request" ? "/memory" : "/brain");
+                },
+              }}
+              secondaryAction={{
+                label: t("inbox.emptyCtaSecondary", {
+                  defaultValue: "Back to Today",
+                }),
+                onClick: () => navigate("/today"),
+              }}
               testId="inbox-empty"
             />
+            // === end v1.13.2 round-2 ===
           ) : (
-            visible.map((event) => (
-              <EventCard
-                key={event.id}
-                event={event}
-                t={t}
-                onMarkRead={() => void inbox.markRead(event.id)}
-                onArchive={() => void inbox.archive(event.id)}
-                onOpen={() => {
-                  // Mark read implicitly when opening, then route to memory
-                  // viewer. The /memory route accepts a relative path so a
-                  // direct file deep-link works.
-                  void inbox.markRead(event.id);
-                  if (event.sourceAtom) {
-                    navigate(`/memory/${event.sourceAtom}`);
-                  }
-                }}
-              />
-            ))
+            visible.map((event) => {
+              // === v1.13.2 round-2 === — dispatch by kind so AI-extracted
+              // mentions get the visually distinct 🍊 card. Falls back to
+              // the generic EventCard for everything else.
+              if (event.kind === "ai_extracted_mention") {
+                return (
+                  <AIExtractedMentionCard
+                    key={event.id}
+                    event={event as unknown as AIExtractedMentionEvent}
+                    onOpenAtom={(atom) => {
+                      void inbox.markRead(event.id);
+                      navigate(`/memory/${atom}`);
+                    }}
+                    onReplyInChat={() => {
+                      void inbox.markRead(event.id);
+                      // Reply-in-chat → land on /brain with the source atom
+                      // available as context. Future polish can pre-fill the
+                      // chat input; for now we just navigate the user there.
+                      if (event.sourceAtom) {
+                        navigate(`/memory/${event.sourceAtom}`);
+                      }
+                    }}
+                  />
+                );
+              }
+              // === end v1.13.2 round-2 ===
+              return (
+                <EventCard
+                  key={event.id}
+                  event={event}
+                  t={t}
+                  onMarkRead={() => void inbox.markRead(event.id)}
+                  onArchive={() => void inbox.archive(event.id)}
+                  onOpen={() => {
+                    // Mark read implicitly when opening, then route to memory
+                    // viewer. The /memory route accepts a relative path so a
+                    // direct file deep-link works.
+                    void inbox.markRead(event.id);
+                    if (event.sourceAtom) {
+                      navigate(`/memory/${event.sourceAtom}`);
+                    }
+                  }}
+                />
+              );
+            })
           )}
         </section>
       </div>

@@ -28,12 +28,49 @@ use crate::commands::AppError;
 // ---------------------------------------------------------------------------
 // Types
 
+// === v1.13.2 round-2 ===
+// Anchor stability upgrade: optional `fingerprint` = first ~30 chars of the
+// anchored paragraph (whitespace-collapsed). When the index drifts (large
+// edits insert/remove paragraphs above), the sidebar can match by
+// fingerprint instead of falling into the orphan bucket. Field is
+// `#[serde(default)]` so legacy log entries without fingerprint
+// deserialise as `None` and behave exactly as before (index-only).
+// === end v1.13.2 round-2 ===
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ParagraphAnchor {
     pub paragraph_index: u32,
     pub char_offset_start: u32,
     pub char_offset_end: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fingerprint: Option<String>,
 }
+
+// === v1.13.2 round-2 ===
+/// Compute a paragraph fingerprint identical to the TS `paragraphFingerprint`:
+///   - NFC-normalize (Rust strings are UTF-8 already; we use unicode-normalization
+///     conceptually but here we just rely on the input being already-normalized
+///     since both sides start from the same on-disk markdown bytes)
+///   - collapse all whitespace runs into a single ASCII space
+///   - trim
+///   - take first 30 chars (NOT bytes — Unicode chars)
+///
+/// Returns `None` when the paragraph is empty so existing index-only logs
+/// keep their semantics.
+pub fn compute_paragraph_fingerprint(paragraph: &str) -> Option<String> {
+    if paragraph.is_empty() {
+        return None;
+    }
+    let collapsed: String = paragraph
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    let trimmed = collapsed.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    Some(trimmed.chars().take(30).collect())
+}
+// === end v1.13.2 round-2 ===
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Comment {
@@ -449,6 +486,10 @@ mod tests {
             paragraph_index: p,
             char_offset_start: 0,
             char_offset_end: 10,
+            // === v1.13.2 round-2 === — new optional field; legacy tests
+            // pass None to verify the index-only path still works.
+            fingerprint: None,
+            // === end v1.13.2 round-2 ===
         }
     }
 
@@ -515,6 +556,62 @@ mod tests {
         assert!(format!("{err:?}").contains("empty_body"));
         let _ = std::fs::remove_dir_all(&root);
     }
+
+    // === v1.13.2 round-2 ===
+    #[test]
+    fn fingerprint_collapses_whitespace_and_truncates() {
+        let p = "  This is\nthe   first paragraph with   extra whitespace and more text beyond thirty characters.";
+        let fp = compute_paragraph_fingerprint(p).unwrap();
+        // Whitespace collapsed; first 30 chars only.
+        assert_eq!(fp.chars().count(), 30);
+        assert!(fp.starts_with("This is the first paragraph"));
+        assert!(!fp.contains("\n"));
+        assert!(!fp.contains("  "));
+    }
+
+    #[test]
+    fn fingerprint_returns_none_for_empty_or_whitespace() {
+        assert_eq!(compute_paragraph_fingerprint(""), None);
+        assert_eq!(compute_paragraph_fingerprint("   \n\t  "), None);
+    }
+
+    #[test]
+    fn anchor_serializes_without_fingerprint_field_when_none() {
+        let a = ParagraphAnchor {
+            paragraph_index: 3,
+            char_offset_start: 0,
+            char_offset_end: 5,
+            fingerprint: None,
+        };
+        let json = serde_json::to_string(&a).unwrap();
+        // skip_serializing_if = "Option::is_none" → field absent in legacy
+        // log entries → no schema bump for unwritten anchors.
+        assert!(!json.contains("fingerprint"));
+    }
+
+    #[test]
+    fn anchor_round_trips_with_fingerprint() {
+        let a = ParagraphAnchor {
+            paragraph_index: 1,
+            char_offset_start: 0,
+            char_offset_end: 0,
+            fingerprint: Some("hello world".to_string()),
+        };
+        let json = serde_json::to_string(&a).unwrap();
+        let back: ParagraphAnchor = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.fingerprint.as_deref(), Some("hello world"));
+    }
+
+    #[test]
+    fn legacy_anchor_json_deserializes_with_none_fingerprint() {
+        // Critical backwards-compat: existing comments on disk have no
+        // `fingerprint` field. They must keep loading.
+        let legacy = r#"{"paragraph_index":2,"char_offset_start":0,"char_offset_end":10}"#;
+        let parsed: ParagraphAnchor = serde_json::from_str(legacy).unwrap();
+        assert_eq!(parsed.paragraph_index, 2);
+        assert!(parsed.fingerprint.is_none());
+    }
+    // === end v1.13.2 round-2 ===
 
     #[test]
     fn extract_mentions_basic() {

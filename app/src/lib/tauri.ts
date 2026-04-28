@@ -2567,7 +2567,35 @@ export interface ParagraphAnchor {
   paragraph_index: number;
   char_offset_start: number;
   char_offset_end: number;
+  // === v1.13.2 round-2 ===
+  // Optional fingerprint = first 30 chars of the anchored paragraph (NFC,
+  // whitespace-collapsed). Used as a fuzzy fallback when the paragraph
+  // index has drifted (large edits inserted / removed paragraphs above).
+  // Backwards-compatible: legacy comments without fingerprint still work
+  // (Rust falls through to index-only matching).
+  // === end v1.13.2 round-2 ===
+  fingerprint?: string | null;
 }
+
+// === v1.13.2 round-2 ===
+/**
+ * Build a paragraph fingerprint client-side. Stable across whitespace
+ * differences so trivial reformat doesn't drop the anchor.
+ *
+ *   - normalize NFC
+ *   - collapse all whitespace to single space
+ *   - trim
+ *   - take first 30 chars
+ *
+ * Returns null when the paragraph is empty (legacy index-only behaviour).
+ */
+export function paragraphFingerprint(text: string): string | null {
+  if (!text) return null;
+  const normalized = text.normalize("NFC").replace(/\s+/g, " ").trim();
+  if (normalized.length === 0) return null;
+  return normalized.slice(0, 30);
+}
+// === end v1.13.2 round-2 ===
 
 export interface CommentRecord {
   id: string;

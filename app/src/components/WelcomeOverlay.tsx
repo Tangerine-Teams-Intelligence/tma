@@ -226,11 +226,17 @@ export function WelcomeOverlay() {
             cards have room to breathe.
             === wave 1.13-A === — grid still uses 2 columns on >= sm; the
             5th card naturally lands as a wide tile in the third row. */}
+        {/* === v1.13.2 round-2 === — Layout fix for the 5-card grid.
+            Original 2-col layout left card 5 as a lonely half-width tile
+            with empty white space to its right (visually broken). The fix:
+            cards 1-4 stay in the 2x2 grid; card 5 (Privacy moat) gets its
+            own full-width row below. This actually upgrades the visual
+            weight of the privacy story rather than burying it. */}
         <div
           className="grid grid-cols-1 gap-6 sm:grid-cols-2"
           data-testid="welcome-cards"
         >
-          {VALUE_CARDS.map((card, idx) => (
+          {VALUE_CARDS.slice(0, 4).map((card, idx) => (
             <ValueCardView
               key={idx}
               card={card}
@@ -241,14 +247,30 @@ export function WelcomeOverlay() {
                   route,
                 });
                 navigate(route);
-                // Treat it as "started" — close the overlay so the user
-                // lands on the destination route.
                 setWelcomed(true);
                 setLastWelcomedVersion(__APP_VERSION__);
               }}
             />
           ))}
         </div>
+        {VALUE_CARDS.length > 4 && (
+          <div className="mt-6" data-testid="welcome-cards-row-2">
+            <ValueCardView
+              card={VALUE_CARDS[4]}
+              index={4}
+              onCtaClick={(route) => {
+                void logEvent("welcome_card_cta", {
+                  card: VALUE_CARDS[4].key,
+                  route,
+                });
+                navigate(route);
+                setWelcomed(true);
+                setLastWelcomedVersion(__APP_VERSION__);
+              }}
+            />
+          </div>
+        )}
+        {/* === end v1.13.2 round-2 === */}
 
         <div className="mt-8 flex flex-wrap items-center gap-4">
           {/* === wave 8 === — primary CTA gains an arrow icon and stays

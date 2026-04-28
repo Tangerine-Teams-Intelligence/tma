@@ -255,7 +255,7 @@
     "ratifiedToast": "决策已批准。",
     "rejectedToast": "决策已驳回。",
     "votesSoFar": "投票 ({{cast}} / {{required}})",
-    "commentPlaceholder": "可选: 投票理由",
+    "commentPlaceholder": "为什么? (可选 — 所有审核人可见)",
     "youAre": "你的身份: @{{user}}"
   },
   "comments": {

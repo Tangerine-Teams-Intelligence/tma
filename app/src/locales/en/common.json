@@ -255,7 +255,7 @@
     "ratifiedToast": "Decision ratified.",
     "rejectedToast": "Decision rejected.",
     "votesSoFar": "Votes ({{cast}} of {{required}})",
-    "commentPlaceholder": "Optional comment with your vote",
+    "commentPlaceholder": "Why? (optional — visible to all reviewers)",
     "youAre": "Voting as @{{user}}"
   },
   "comments": {

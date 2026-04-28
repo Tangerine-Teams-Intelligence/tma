@@ -323,6 +323,13 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
               position: "absolute",
               top: drop.top,
               left: drop.left,
+              // === v1.13.2 round-2 === — z-index audit. Highest stacking
+              // surfaces in the app: SetupWizard z-[110], WelcomeOverlay
+              // z-[100], suggestions/Modal z-100, CommandPalette z-[60],
+              // shortcuts overlay z-[55], toast layer z-50. 9999 clears
+              // all of them with deliberate headroom — confirmed safe.
+              // Do not lower without re-auditing modals.
+              // === end v1.13.2 round-2 ===
               zIndex: 9999,
               minWidth: 200,
               maxWidth: 320,

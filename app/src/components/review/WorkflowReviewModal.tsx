@@ -65,6 +65,21 @@ export function WorkflowReviewModal({
     };
   }, [memoryRoot, summary.atom_path]);
 
+  // === v1.13.2 round-2 === — Escape closes the modal. Round 1 only had
+  // backdrop click + the X button; Esc is the universal modal-close
+  // contract (matches WelcomeOverlay, KeyboardShortcutsOverlay, others).
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  // === end v1.13.2 round-2 ===
+
   const myVote = useMemo(
     () => state?.votes.find((v) => v.user === currentUser),
     [state, currentUser],

@@ -23,9 +23,12 @@ import {
   commentsList,
   commentsResolve,
   commentsUnresolve,
+  paragraphFingerprint,
   type CommentThread,
   type ParagraphAnchor,
 } from "@/lib/tauri";
+import { useStore } from "@/lib/store";
+import { readMemoryFile, stripFrontmatter } from "@/lib/memory";
 import { cn } from "@/lib/utils";
 
 export interface CommentSidebarProps {
@@ -54,6 +57,42 @@ export function CommentSidebar({
   const [loading, setLoading] = useState(true);
   const [showResolved, setShowResolved] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
+  // === v1.13.2 round-2 ===
+  // Cache of paragraph fingerprints for the current atom body. Computed
+  // once per `atomPath` so creating a thread can attach the fingerprint
+  // without re-reading the file each time. Empty {} on initial mount; the
+  // effect below populates it best-effort.
+  const memoryRoot = useStore((s) => s.ui.memoryRoot);
+  const fingerprintsRef = useRef<Record<number, string>>({});
+  useEffect(() => {
+    if (!open) return;
+    let cancel = false;
+    void (async () => {
+      try {
+        const raw = await readMemoryFile(memoryRoot, atomPath);
+        if (cancel) return;
+        const body = stripFrontmatter(raw ?? "");
+        // Paragraph split mirrors the typical markdown contract: blank
+        // lines separate paragraphs. Best-effort — if the renderer disagrees,
+        // the fingerprint just won't match and we fall back to index-only.
+        const paragraphs = body.split(/\n\s*\n/);
+        const next: Record<number, string> = {};
+        paragraphs.forEach((p, i) => {
+          const fp = paragraphFingerprint(p);
+          if (fp) next[i] = fp;
+        });
+        fingerprintsRef.current = next;
+      } catch {
+        // Defensive — never let a fingerprint compute failure break the
+        // sidebar. Comments still work index-only.
+        fingerprintsRef.current = {};
+      }
+    })();
+    return () => {
+      cancel = true;
+    };
+  }, [memoryRoot, atomPath, open]);
+  // === end v1.13.2 round-2 ===
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -87,10 +126,15 @@ export function CommentSidebar({
   );
 
   async function newThread(body: string) {
+    const idx = activeParagraph ?? 0;
     const anchor: ParagraphAnchor = {
-      paragraph_index: activeParagraph ?? 0,
+      paragraph_index: idx,
       char_offset_start: 0,
       char_offset_end: 0,
+      // === v1.13.2 round-2 === — attach fingerprint when we have one for
+      // this paragraph index so future drift can fall back to fuzzy match.
+      fingerprint: fingerprintsRef.current[idx] ?? null,
+      // === end v1.13.2 round-2 ===
     };
     await commentsCreate(atomPath, anchor, body, currentUser);
     await refresh();

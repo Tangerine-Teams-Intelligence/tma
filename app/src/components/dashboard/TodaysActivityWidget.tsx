@@ -80,6 +80,20 @@ export function TodaysActivityWidget() {
     };
   }, []);
 
+  // === v1.13.2 round-2 ===
+  // Round 2 hypothesis #9: should this widget also surface presence pings
+  // ("Hongyu just opened /memory")? Decision: NOT in this round. Reasons:
+  //   1. Presence and atom events live in different streams (presence:update
+  //      vs activity:atom_written). Interleaving by timestamp needs a unified
+  //      event model + kind-aware row renderer that doesn't exist yet.
+  //   2. Presence is high-frequency (10s heartbeats) — without dedup +
+  //      coalescing the widget would thrash the activity ring buffer view.
+  //   3. PresenceProvider already drives SidebarPresenceDots inline with
+  //      each route in the rail — that surfaces "who's where" at a glance
+  //      without competing with atom captures here.
+  // Defer to v1.13.3+: introduce an ActivityEvent union type with kind=
+  // "atom_write" | "presence_change" and route through a single feed.
+  // === end v1.13.2 round-2 ===
   return (
     <DashboardWidget
       testId="dashboard-todays-activity"
