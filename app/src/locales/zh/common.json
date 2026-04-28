@@ -116,7 +116,22 @@
     "noSourceCta": "同屏率:0% — 接入一个 Source,团队和 AI 才能开始对齐。",
     "withSourceCta": "你的 AI 看到 {{meetings}} 个会议 · {{decisions}} 项决策 · {{people}} 位成员 · Slack / Linear / Notion 覆盖率 0%(v1.6+ 上线)。",
     "emptyTitle": "记忆树为空。",
-    "emptyBody": "接入一个 Source,Tangerine 就会开始把会议、决策、话题记录写到这里。在那之前,这里有意保持安静。"
+    "emptyBody": "接入一个 Source,Tangerine 就会开始把会议、决策、话题记录写到这里。在那之前,这里有意保持安静。",
+    "graph": {
+      "toggleTree": "树形",
+      "toggleGraph": "图谱",
+      "toggleList": "列表",
+      "searchPlaceholder": "搜索节点…",
+      "clusterBy": "聚类方式",
+      "clusterVendor": "按 AI 工具",
+      "clusterAuthor": "按作者",
+      "clusterProject": "按项目",
+      "clusterKind": "按类型",
+      "showAll": "显示全部",
+      "showRecent": "仅显示最近",
+      "emptyTitle": "暂无记忆原子。",
+      "emptyBody": "新增一条笔记,图谱即可显现。"
+    }
   },
   "coThinker": {
     "title": "团队记忆 (Team brain)",
@@ -852,5 +867,112 @@
       "untitled": "未命名",
       "openHint": "打开"
     }
+  },
+  "coachmark": {
+    "next": "下一步",
+    "back": "上一步",
+    "skip": "跳过导览",
+    "done": "知道了",
+    "stepLabel": "{{current}} / {{total}}",
+    "tour": {
+      "stat": {
+        "title": "今日概览",
+        "body": "今日记录数、被关注的成员数、活跃 AI 工具数。一眼看清团队状态。"
+      },
+      "hero": {
+        "title": "问任何关于团队的事",
+        "body": "搜索团队记忆,或直接问大脑。试试下面的示例查询。"
+      },
+      "decisions": {
+        "title": "最近决策",
+        "body": "团队已确认的决策。点击查看完整原子。"
+      },
+      "activity": {
+        "title": "实时动态",
+        "body": "AI 工具写入团队记忆的实时流。"
+      },
+      "memory": {
+        "title": "记忆树",
+        "body": "Obsidian 风格的文件树浏览所有原子。可按厂商、日期、关键词过滤。"
+      },
+      "brain": {
+        "title": "团队大脑",
+        "body": "AGI 总结的团队大脑文档。可编辑的 markdown,可 git 跟踪,完全是你的。"
+      },
+      "completeTitle": "配置完成。",
+      "completeBody": "团队使用 AI 工具时,真实数据会自动出现。任何时候按 ? 查看快捷键。"
+    },
+    "samples": {
+      "label": "试试看:",
+      "decided": "我们团队最近做了什么决定?",
+      "personRecent": "看看 Sam 最近的工作",
+      "lastWeek": "总结一下上周"
+    },
+    "tryThis": {
+      "ariaLabel": "试试看 — 快速提示",
+      "title": "你知道吗?",
+      "next": "换一个",
+      "dismiss": "关闭",
+      "cmdK": "任何页面按 {{kbd}} 打开搜索面板 — 它索引每一个记忆原子。",
+      "brainEdit": "直接编辑大脑文档 ~/.tangerine-memory/team/co-thinker.md,下一次同步会按你的修改方向调整。",
+      "starTool": "在设置 → AI 工具里给主用工具加星,大脑就知道该跟哪个会话对话。",
+      "memoryGit": "记忆目录就是一个 git 仓库 — 在 ~/.tangerine-memory 里用 `git log` 看每一次变化。",
+      "tourReplay": "设置 → 常规里有「重新显示欢迎导览」入口,可随时重看介绍。",
+      "shortcuts": "按 ? 打开全局快捷键速查表。"
+    },
+    "loading": {
+      "today": "正在准备你的面板…",
+      "memory": "正在读取 {{count}} 个原子,共 {{threads}} 个话题…",
+      "brain": "正在读取团队大脑文档…"
+    },
+    "empty": {
+      "today": {
+        "title": "还没有任何记录",
+        "body": "你团队的 AI 工具还没写入任何内容。接入一个来源,或运行欢迎导览看看它怎么工作。",
+        "cta": "接入来源"
+      },
+      "memory": {
+        "title": "记忆是空的",
+        "body": "接入 Slack、GitHub、Linear 等来源,你 AI 工具的历史就会在这里出现。",
+        "cta": "接入来源"
+      },
+      "brain": {
+        "title": "团队大脑还没开始思考",
+        "body": "点击「初始化」开启第一次同步,让大脑读取团队记忆。",
+        "cta": "初始化团队大脑"
+      },
+      "canvas": {
+        "title": "贴上你的第一张便笺",
+        "body": "选一个项目打开它的画布 — 一旦开始,Tangerine 就会作为同伴加入。",
+        "cta": "浏览项目"
+      },
+      "reviews": {
+        "title": "暂无待审决策",
+        "body": "团队大脑会在每次同步时提出决策。三分之二的队友通过后自动生效。",
+        "cta": "打开团队大脑"
+      }
+    }
+  },
+  "daily": {
+    "heading": "每日笔记",
+    "today": "今天",
+    "yesterday": "昨天",
+    "prev": "前一天",
+    "next": "后一天",
+    "datePicker": "选择日期",
+    "save": "保存",
+    "loading": "加载中…",
+    "editorAria": "每日笔记编辑器",
+    "heatmapHeading": "最近 30 天",
+    "recentHeading": "最近",
+    "recentEmpty": "暂无笔记。",
+    "savedToast": "每日笔记已保存。",
+    "saveFailedToast": "保存失败:{{msg}}"
+  },
+  "templates": {
+    "applyButton": "套用模板",
+    "empty": "暂无模板。",
+    "appliedToast": "已套用模板:{{label}}",
+    "applyFailedToast": "套用模板失败:{{msg}}"
   }
 }

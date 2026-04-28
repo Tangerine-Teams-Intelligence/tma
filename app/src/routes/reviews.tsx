@@ -14,8 +14,13 @@
 
 // === wave 4-D i18n ===
 // === wave 5-α ===
+// === wave 22 === — empty-state audit: add a CTA on the open + all filter
+// emptys so the user has a one-click path to the team brain (where new
+// proposals come from). The "mine" filter keeps its no-CTA happy-path
+// look — "all caught up" doesn't need a button.
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useNavigate } from "react-router-dom";
 import { GitPullRequest, RefreshCw, CheckCircle2, ListChecks } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -206,6 +211,7 @@ function FilterChip({
 
 function ReviewsEmpty({ filter }: { filter: Filter }) {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const title =
     filter === "mine"
       ? t("reviews.emptyTitleMine")
@@ -224,11 +230,23 @@ function ReviewsEmpty({ filter }: { filter: Filter }) {
     ) : (
       <ListChecks size={32} />
     );
+  // === wave 22 === — open + all filters get a path to the brain so
+  // the user knows where new proposals come from. "mine" is the
+  // success state (you've voted on everything assigned to you), so
+  // we keep that one CTA-less.
+  const primaryAction =
+    filter === "mine"
+      ? undefined
+      : {
+          label: t("coachmark.empty.reviews.cta"),
+          onClick: () => navigate("/brain"),
+        };
   return (
     <EmptyState
       icon={icon}
       title={title}
       description={description}
+      primaryAction={primaryAction}
       testId="reviews-empty"
     />
   );

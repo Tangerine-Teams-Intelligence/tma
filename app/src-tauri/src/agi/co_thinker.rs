@@ -507,6 +507,22 @@ impl CoThinkerEngine {
             let template_matches_emitted =
                 self.evaluate_templates(started).await as u32;
             // === end v1.9 P2 ===
+
+            // === wave 24 ===
+            // Skip-path still ensures today's daily note exists so the user
+            // gets the empty template ready to type into when they open the
+            // app on a fresh day. We do NOT touch the auto-fill sections on
+            // this path — there are no new atoms, so any previous fill is
+            // still accurate.
+            let date_local = chrono::Local::now()
+                .format("%Y-%m-%d")
+                .to_string();
+            let _ = crate::commands::daily_notes::ensure_today_path_for(
+                &self.memory_root,
+                &date_local,
+                "co-thinker",
+            );
+            // === end wave 24 ===
             observations::append_observation(
                 &self.memory_root,
                 started,
@@ -616,6 +632,40 @@ impl CoThinkerEngine {
         let template_matches_emitted =
             self.evaluate_templates(started).await as u32;
         // === end v1.9 P2 ===
+
+        // === wave 24 ===
+        // Daily-note auto-fill. Idempotent ensure of today's daily note,
+        // then refresh the two AGI-owned sections from the last-24h atom
+        // window + the brain's first reasoning line. The two user-owned
+        // sections ("What I worked on" / "Decisions to make tomorrow") are
+        // never touched here — `replace_section` only mutates the section
+        // whose H2 heading exactly matches.
+        //
+        // Defensive: every step swallows its own error. If the daily-note
+        // dir is read-only or the heartbeat raced an open file editor,
+        // the heartbeat itself still completes successfully.
+        let date_local = chrono::Local::now()
+            .format("%Y-%m-%d")
+            .to_string();
+        let last_24h_cutoff = started - chrono::Duration::hours(24);
+        let last_24h = scan_atoms_since(&self.memory_root, last_24h_cutoff);
+        let decisions_body = build_daily_decisions_body(&last_24h);
+        let insights_body = build_daily_insights_body(&validated, &last_24h);
+        let _ = crate::commands::daily_notes::update_auto_section(
+            &self.memory_root,
+            &date_local,
+            "co-thinker",
+            "What the team decided today",
+            &decisions_body,
+        );
+        let _ = crate::commands::daily_notes::update_auto_section(
+            &self.memory_root,
+            &date_local,
+            "co-thinker",
+            "Insights from AI tools today",
+            &insights_body,
+        );
+        // === end wave 24 ===
 
         // 8. Append observation log entry.
         let brief = first_reasoning_line(&validated)
@@ -816,6 +866,15 @@ fn walk_dir(
             if path == root.join("team").join("co-thinker.md") {
                 continue;
             }
+            // === wave 24 === — Daily notes are app-managed scaffolding
+            // (created on first launch + auto-filled by the heartbeat).
+            // They live under `team/daily/` and are NOT user-captured
+            // atoms, so excluding them keeps the heartbeat from feeding
+            // its own previous output back as "new atoms" on tick #2.
+            if path.parent() == Some(root.join("team").join("daily").as_path()) {
+                continue;
+            }
+            // === end wave 24 ===
             let mtime = match entry.metadata().and_then(|m| m.modified()) {
                 Ok(m) => m,
                 Err(_) => continue,
@@ -1125,6 +1184,66 @@ fn first_reasoning_line(brain: &str) -> Option<String> {
     }
     None
 }
+
+// === wave 24 ===
+// Render the body of the daily-note "What the team decided today" section
+// from the last-24h atom window. We pick atoms under `team/decisions/` first
+// (those are the literal team decisions), fall back to a generic "no
+// decisions captured" line. Citations are bare `path` references so the
+// /memory route can resolve them.
+pub(crate) fn build_daily_decisions_body(last_24h: &[AtomSummary]) -> String {
+    let mut decisions: Vec<&AtomSummary> = last_24h
+        .iter()
+        .filter(|a| a.rel_path.contains("decisions/"))
+        .collect();
+    decisions.truncate(8);
+    if decisions.is_empty() {
+        return "_No team decisions captured in the last 24h._".to_string();
+    }
+    let mut s = String::new();
+    for a in decisions {
+        let blurb = a.blurb.trim();
+        if blurb.is_empty() {
+            s.push_str(&format!("- `{}`\n", a.rel_path));
+        } else {
+            s.push_str(&format!("- `{}` — {}\n", a.rel_path, blurb));
+        }
+    }
+    s.trim_end().to_string()
+}
+
+// Render the body of the daily-note "Insights from AI tools today" section
+// from the brain's first reasoning line + the last-24h atom counts. The
+// brain doc is already grounded (every claim has a citation), so we emit
+// it verbatim as the lead bullet then list a few of the most-recent
+// non-decision atoms so the user can audit the source.
+pub(crate) fn build_daily_insights_body(
+    brain: &str,
+    last_24h: &[AtomSummary],
+) -> String {
+    let mut s = String::new();
+    if let Some(brief) = first_reasoning_line(brain) {
+        s.push_str(&format!("- {}\n", brief));
+    }
+    let mut others: Vec<&AtomSummary> = last_24h
+        .iter()
+        .filter(|a| !a.rel_path.contains("decisions/"))
+        .collect();
+    others.truncate(5);
+    for a in others {
+        let blurb = a.blurb.trim();
+        if blurb.is_empty() {
+            s.push_str(&format!("- `{}`\n", a.rel_path));
+        } else {
+            s.push_str(&format!("- `{}` — {}\n", a.rel_path, blurb));
+        }
+    }
+    if s.is_empty() {
+        return "_No new insights captured in the last 24h._".to_string();
+    }
+    s.trim_end().to_string()
+}
+// === end wave 24 ===
 
 // ---------------------------------------------------------------------------
 // Proposal detection

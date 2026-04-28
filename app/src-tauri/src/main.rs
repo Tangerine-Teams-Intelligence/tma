@@ -60,6 +60,16 @@ fn main() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        // === wave 25 === Auto-updater plugin. Reads `plugins.updater.endpoints`
+        // + `plugins.updater.pubkey` from tauri.conf.json. If the pubkey is the
+        // placeholder string, signature verify fails on download → React's
+        // UpdaterCheck swallows the error + logs (no UI). Once CEO generates
+        // a real keypair (`npx tauri signer generate -w ~/.tauri/myapp.key`)
+        // and sets the matching TAURI_SIGNING_PRIVATE_KEY secret in CI, the
+        // signed `latest.json` artifacts publish OK and the in-app banner
+        // surfaces real updates.
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        // === end wave 25 ===
         .setup(|app| {
             // Wave 3 — cold-start perf probe (OBSERVABILITY_SPEC §5 budget < 2s)
             let cold_start_probe = Probe::start(Budget::COLD_START);

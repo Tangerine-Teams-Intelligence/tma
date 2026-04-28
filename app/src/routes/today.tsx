@@ -157,8 +157,12 @@ export default function TodayRoute() {
   }, [inSetupMode]);
 
   // === wave 14 === — submit the chat hero prompt.
-  const submitPrompt = async () => {
-    const text = prompt.trim();
+  // === wave 22 === — accept an optional `override` string so the sample
+  // query chips can submit a fresh value without waiting for React state
+  // to flush. Falls back to the live `prompt` state for the textarea
+  // path so existing keyboard / Send-button behavior is untouched.
+  const submitPrompt = async (override?: string) => {
+    const text = (override ?? prompt).trim();
     if (!text || dispatchState === "loading") return;
     setDispatchState("loading");
     setDispatchError(null);
@@ -348,6 +352,45 @@ export default function TodayRoute() {
               )}
             </button>
           </div>
+
+          {/* === wave 22 === — sample query chips. Render only when the
+              user hasn't typed anything yet AND there's no response on
+              screen — once they engage the chips would feel patronising.
+              Click fills the textarea + auto-submits so the round-trip
+              feels instant; this is the "first 60 sec wow" hook. */}
+          {prompt.trim().length === 0 && !response && dispatchState !== "loading" && (
+            <div
+              data-testid="today-sample-queries"
+              className="mt-2 flex flex-wrap items-center gap-2"
+            >
+              <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--ti-ink-500)]">
+                {t("coachmark.samples.label")}
+              </span>
+              {[
+                { id: "decided", labelKey: "coachmark.samples.decided" as const },
+                { id: "personRecent", labelKey: "coachmark.samples.personRecent" as const },
+                { id: "lastWeek", labelKey: "coachmark.samples.lastWeek" as const },
+              ].map((q) => (
+                <button
+                  key={q.id}
+                  type="button"
+                  data-testid={`today-sample-query-${q.id}`}
+                  onClick={() => {
+                    const text = t(q.labelKey);
+                    setPrompt(text);
+                    // Pass the text directly so we don't race React's
+                    // pending setPrompt — submitPrompt's `override`
+                    // parameter wins over the stale `prompt` state.
+                    void submitPrompt(text);
+                  }}
+                  className="inline-flex items-center rounded-full border border-[var(--ti-orange-300)] bg-[var(--ti-orange-50)] px-2.5 py-1 text-[11px] text-[var(--ti-orange-700)] hover:bg-[var(--ti-orange-100)] dark:border-stone-600 dark:bg-stone-800 dark:text-[var(--ti-orange-500)] dark:hover:bg-stone-700"
+                >
+                  {t(q.labelKey)}
+                </button>
+              ))}
+            </div>
+          )}
+          {/* === end wave 22 === */}
 
           {response && dispatchState !== "loading" && (
             <div

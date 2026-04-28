@@ -3,10 +3,15 @@
 // file tree of `~/.tangerine-memory/`; right pane shows the selected
 // atom's preview with frontmatter chips, body, and backlinks. Replaces
 // the v1.6-era 3-pane shape (sidebar + center coverage + rail).
+// === wave 23 === — Add a Tree | Graph | List toolbar at the top. Tree
+// keeps the Wave 21 file-tree + preview shape; Graph swaps the right
+// pane for the visual atom graph (MemoryGraphView); List swaps it for a
+// flat sortable list (MemoryListView). The view-mode pick is persisted
+// in `ui.memoryViewMode` (default "tree").
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useParams, useNavigate } from "react-router-dom";
-import { Plus } from "lucide-react";
+import { Plus, FolderTree, Network, List as ListIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { useStore } from "@/lib/store";
@@ -17,22 +22,26 @@ import {
   MemoryFilterPills,
   type DateRange,
 } from "@/components/memory/MemoryFilterPills";
+// === wave 23 ===
+import { MemoryGraphView } from "@/components/memory/MemoryGraphView";
+import { MemoryListView } from "@/components/memory/MemoryListView";
+// === end wave 23 ===
 import type { VendorId } from "@/lib/vendor-colors";
 import { MEMORY_REFRESHED_EVENT } from "@/components/layout/AppShell";
 import { logEvent } from "@/lib/telemetry";
+import { cn } from "@/lib/utils";
 
 /**
- * Wave 21 layout:
+ * Wave 21 layout (extended by Wave 23 view toggle):
  *
- *   ┌───────────────────────────────────────────────────┐
- *   │ Memory · 87 atoms across 12 threads        [+]   │
- *   ├──────────────┬────────────────────────────────────┤
- *   │ Tree         │  Preview                            │
- *   │ ▼ team       │  (frontmatter chips + body +        │
- *   │   ▼ decisions│   backlinks)                        │
- *   │ ▼ personal   │                                     │
- *   │ Filter pills │                                     │
- *   └──────────────┴────────────────────────────────────┘
+ *   ┌────────────────────────────────────────────────────────┐
+ *   │ Memory · 87 atoms across 12 threads   [Tree|Graph|List]│
+ *   ├──────────────┬─────────────────────────────────────────┤
+ *   │ Tree         │  Preview / Graph / List                  │
+ *   │ (left rail   │                                          │
+ *   │  remains)    │                                          │
+ *   │ Filter pills │                                          │
+ *   └──────────────┴─────────────────────────────────────────┘
  *
  * The route handles both /memory and /memory/<*> via a single component
  * (path comes from useParams("*")).
@@ -45,6 +54,10 @@ export default function MemoryRoute() {
   const memoryConfigMode = useStore((s) => s.ui.memoryConfig.mode);
   const samplesSeeded = useStore((s) => s.ui.samplesSeeded);
   const memoryRoot = useStore((s) => s.ui.memoryRoot);
+  // === wave 23 ===
+  const memoryViewMode = useStore((s) => s.ui.memoryViewMode);
+  const setMemoryViewMode = useStore((s) => s.ui.setMemoryViewMode);
+  // === end wave 23 ===
 
   const [treeResult, setTreeResult] = useState<MemoryTreeResult | null>(null);
   const [search, setSearch] = useState("");
@@ -112,6 +125,15 @@ export default function MemoryRoute() {
     [treeResult],
   );
 
+  // === wave 23 ===
+  // Pick the first active vendor (only one supported on the Rust filter
+  // side for now) so graph + list views can subset the result.
+  const activeVendor = useMemo(() => {
+    const enabled = Object.entries(vendorFilter).filter(([, on]) => on);
+    return enabled.length > 0 ? (enabled[0][0] as VendorId) : null;
+  }, [vendorFilter]);
+  // === end wave 23 ===
+
   return (
     <div className="flex h-full flex-col bg-stone-50 dark:bg-stone-950">
       <header
@@ -127,16 +149,48 @@ export default function MemoryRoute() {
             {treeResult?.truncated ? " · truncated" : ""}
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={onNewDecision}
-          data-testid="memory-new-decision"
-          aria-label={t("memory.newDecision", { defaultValue: "New decision" })}
-        >
-          <Plus size={12} />
-          New decision
-        </Button>
+        <div className="flex items-center gap-2">
+          {/* === wave 23 === */}
+          <div
+            data-testid="memory-view-toggle"
+            role="tablist"
+            aria-label="Memory view mode"
+            className="flex items-center rounded-md border border-stone-200 bg-white p-0.5 dark:border-stone-700 dark:bg-stone-900"
+          >
+            <ToggleTab
+              active={memoryViewMode === "tree"}
+              onClick={() => setMemoryViewMode("tree")}
+              label={t("memory.graph.toggleTree", { defaultValue: "Tree" })}
+              icon={<FolderTree size={11} />}
+              testId="memory-view-toggle-tree"
+            />
+            <ToggleTab
+              active={memoryViewMode === "graph"}
+              onClick={() => setMemoryViewMode("graph")}
+              label={t("memory.graph.toggleGraph", { defaultValue: "Graph" })}
+              icon={<Network size={11} />}
+              testId="memory-view-toggle-graph"
+            />
+            <ToggleTab
+              active={memoryViewMode === "list"}
+              onClick={() => setMemoryViewMode("list")}
+              label={t("memory.graph.toggleList", { defaultValue: "List" })}
+              icon={<ListIcon size={11} />}
+              testId="memory-view-toggle-list"
+            />
+          </div>
+          {/* === end wave 23 === */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onNewDecision}
+            data-testid="memory-new-decision"
+            aria-label={t("memory.newDecision", { defaultValue: "New decision" })}
+          >
+            <Plus size={12} />
+            New decision
+          </Button>
+        </div>
       </header>
 
       <div className="flex flex-1 overflow-hidden">
@@ -171,7 +225,27 @@ export default function MemoryRoute() {
           className="flex-1 overflow-auto bg-stone-50 dark:bg-stone-950"
           tabIndex={-1}
         >
-          <MemoryPreview relPath={relPath || null} />
+          {/* === wave 23 === */}
+          {memoryViewMode === "tree" && (
+            <MemoryPreview relPath={relPath || null} />
+          )}
+          {memoryViewMode === "graph" && (
+            <MemoryGraphView
+              selectedPath={relPath || null}
+              onSelect={onSelect}
+              vendorFilter={activeVendor}
+              kindFilter={null}
+            />
+          )}
+          {memoryViewMode === "list" && (
+            <MemoryListView
+              selectedPath={relPath || null}
+              onSelect={onSelect}
+              vendorFilter={activeVendor}
+              kindFilter={null}
+            />
+          )}
+          {/* === end wave 23 === */}
         </section>
       </div>
     </div>
@@ -205,3 +279,38 @@ function deriveCounts(nodes: MemoryTreeNode[]): {
   walk(nodes, "");
   return { atomCount, threadCount: threads.size };
 }
+
+// === wave 23 ===
+function ToggleTab({
+  active,
+  onClick,
+  label,
+  icon,
+  testId,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+  icon: React.ReactNode;
+  testId: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      data-testid={testId}
+      aria-selected={active}
+      onClick={onClick}
+      className={cn(
+        "inline-flex items-center gap-1 rounded px-2 py-0.5 font-mono text-[10px] transition-colors duration-fast",
+        active
+          ? "bg-[var(--ti-orange-50)] text-[var(--ti-orange-700)] dark:bg-stone-800 dark:text-[var(--ti-orange-500)]"
+          : "text-stone-500 hover:bg-stone-100 dark:text-stone-400 dark:hover:bg-stone-800",
+      )}
+    >
+      {icon}
+      {label}
+    </button>
+  );
+}
+// === end wave 23 ===

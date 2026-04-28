@@ -35,6 +35,17 @@ tauri-plugin-fs = "2"
 tauri-plugin-process = "2"
 tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
 tauri-plugin-deep-link = "2"
+# === wave 25 === Tauri auto-updater plugin. Pulls a `latest.json` manifest
+# from GitHub Releases (see release.yml `Generate latest.json` step), checks
+# the running build's version against it, and offers to download + restart.
+# The signature pubkey lives in tauri.conf.json under `plugins.updater.pubkey`
+# — currently a placeholder so unsigned builds still pass `cargo check`.
+# CEO must run `npx tauri signer generate -w ~/.tauri/myapp.key` before
+# enabling the matching `TAURI_SIGNING_PRIVATE_KEY` secret in CI for signed
+# release artifacts; the placeholder pubkey causes the plugin to refuse
+# install (graceful degrade — see `UpdaterCheck.tsx` swallow).
+tauri-plugin-updater = "2"
+# === end wave 25 ===
 
 # v1.6.0 team memory sync.
 # `keyring` stores GitHub OAuth tokens on the OS keychain (Windows Credential

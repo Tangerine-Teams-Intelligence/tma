@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Tangerine AI Teams",
-  "version": "1.11.0",
+  "version": "1.12.0",
   "identifier": "ai.tangerineintelligence.meeting",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -30,6 +30,15 @@
     "deep-link": {
       "desktop": {
         "schemes": ["tangerine"]
+      }
+    },
+    "updater": {
+      "endpoints": [
+        "https://github.com/Tangerine-Teams-Intelligence/tangerine-teams-app/releases/latest/download/latest.json"
+      ],
+      "pubkey": "PLACEHOLDER_PUBKEY_REPLACE_BEFORE_SHIPPING_SIGNED_BUILDS",
+      "windows": {
+        "installMode": "passive"
       }
     }
   },

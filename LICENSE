@@ -30,6 +30,28 @@ See PRIOR-LICENSE-APACHE-2.0.txt for the historical license.
 
 ================================================================================
 
+WAVE 25 — AUTO-UPDATER SIGNATURE FLOW NOTICE
+
+Beginning with v1.12.0, the desktop app ships an in-app auto-updater
+(tauri-plugin-updater). Update artifacts are published to GitHub Releases
+along with a "latest.json" manifest. Each manifest is signed with an
+Ed25519 keypair owned by Tangerine Intelligence Inc.; the matching public
+key is pinned in the application binary at build time.
+
+By installing the application you consent to the update mechanism reaching
+out to https://github.com/Tangerine-Teams-Intelligence/tangerine-teams-app/
+on app launch to check for new versions. No update is installed without an
+explicit user click ("Install now" banner). Unsigned or tampered manifests
+are rejected by the client (signature verification failure → silent no-op).
+
+If you fork this codebase and redistribute it, you SHOULD generate your
+own signing keypair and update tauri.conf.json::plugins.updater accordingly,
+otherwise your downstream users will receive YOUR upstream's updates and
+not yours. AGPL v3 §13 still applies — your fork must offer source to its
+network users.
+
+================================================================================
+
                     GNU AFFERO GENERAL PUBLIC LICENSE
                        Version 3, 19 November 2007
 

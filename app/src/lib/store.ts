@@ -168,6 +168,14 @@ interface UiSlice {
    *  `activity_recent` hydration. */
   activityFeedFilter: "all" | "me" | "team";
   // === end wave 16 ===
+  // === wave 23 ===
+  /** Wave 23 — `/memory` route view mode toggle. Tree (default) renders the
+   *  Wave 21 file tree + preview; Graph renders the new visual atom graph;
+   *  List renders a flat sortable list of all atoms. Persisted so the
+   *  user's pick survives cold launches. */
+  memoryViewMode: "tree" | "graph" | "list";
+  setMemoryViewMode: (m: "tree" | "graph" | "list") => void;
+  // === end wave 23 ===
   /** Atom ids snoozed locally; cleared after 24h via setInterval. */
   snoozedAtoms: Record<string, number>;
   /** Whats-new banner state. dismissed=true hides the banner until next
@@ -338,6 +346,26 @@ interface UiSlice {
   setOnboardingMode: (v: "chat" | "wizard") => void;
   setOnboardingChatStarted: (v: boolean) => void;
   // === end wave 18 ===
+  // === wave 22 ===
+  /** Wave 22 — first-run guided coachmark tour completion latch.
+   *  Flips `true` once the user finishes or skips the 6-step tour.
+   *  Persisted so the tour never re-shows on subsequent cold launches.
+   *  The FirstRunTour mount in AppShell gates on
+   *  `firstRunTourCompleted === false && demoMode === true`. */
+  firstRunTourCompleted: boolean;
+  /** Wave 22 — per-coachmark dismiss memory. A future tour or ad-hoc
+   *  coachmark can be skipped individually without affecting the global
+   *  tour completion latch. Set is normalized to an array on persist. */
+  coachmarksDismissed: string[];
+  /** Wave 22 — TryThisFAB per-card dismiss memory. Once a "Did you know?"
+   *  card has been read, it never re-shows. Persisted so the rotation
+   *  steers toward unread cards across cold launches. */
+  tryThisDismissed: string[];
+  setFirstRunTourCompleted: (v: boolean) => void;
+  dismissCoachmark: (stepId: string) => void;
+  resetCoachmarks: () => void;
+  dismissTryThisCard: (cardId: string) => void;
+  // === end wave 22 ===
   setAgiParticipation: (v: boolean) => void;
   setAgiVolume: (v: AgiVolume) => void;
   toggleAgiChannelMute: (channel: string) => void;
@@ -779,6 +807,11 @@ export const useStore = create<Store>()(
         // Default = "all" so first-launch users see every captured atom.
         activityFeedFilter: "all",
         // === end wave 16 ===
+        // === wave 23 ===
+        // Default = "tree" so first-launch matches the Wave 21 layout users
+        // already know. Toggling to "graph" / "list" persists.
+        memoryViewMode: "tree",
+        // === end wave 23 ===
         snoozedAtoms: {},
         whatsNewDismissed: false,
         primaryAITool: null,
@@ -834,6 +867,17 @@ export const useStore = create<Store>()(
         onboardingMode: "chat",
         onboardingChatStarted: false,
         // === end wave 18 ===
+        // === wave 22 ===
+        // Wave 22 — first-run guided tour + TryThisFAB dismiss memory.
+        // All three default to "fresh install" values. The FirstRunTour
+        // self-mounts only when `firstRunTourCompleted === false` AND
+        // `demoMode === true` (sample data present), so users with real
+        // memory dirs never see the tour, and the AppShell never bothers
+        // to render the wrapper for returning users.
+        firstRunTourCompleted: false,
+        coachmarksDismissed: [],
+        tryThisDismissed: [],
+        // === end wave 22 ===
         // v3.0 §1 + §5 — personal-agent capture flags. ALL FALSE by default
         // — opt-in per source. Hydrated from `personal_agents_get_settings`
         // on Settings page mount; the flag map mirrors the Rust persisted
@@ -933,6 +977,39 @@ export const useStore = create<Store>()(
         setOnboardingChatStarted: (v) =>
           set((s) => ({ ui: { ...s.ui, onboardingChatStarted: v } })),
         // === end wave 18 ===
+        // === wave 22 ===
+        // Wave 22 — coachmark + tour + try-this reducers. Each one is a
+        // pure idempotent set so re-firing the same dismiss is a no-op
+        // (telemetry can spam the call without churning the state).
+        setFirstRunTourCompleted: (v) =>
+          set((s) => ({ ui: { ...s.ui, firstRunTourCompleted: v } })),
+        dismissCoachmark: (stepId) =>
+          set((s) => ({
+            ui: {
+              ...s.ui,
+              coachmarksDismissed: s.ui.coachmarksDismissed.includes(stepId)
+                ? s.ui.coachmarksDismissed
+                : [...s.ui.coachmarksDismissed, stepId],
+            },
+          })),
+        resetCoachmarks: () =>
+          set((s) => ({
+            ui: {
+              ...s.ui,
+              coachmarksDismissed: [],
+              firstRunTourCompleted: false,
+            },
+          })),
+        dismissTryThisCard: (cardId) =>
+          set((s) => ({
+            ui: {
+              ...s.ui,
+              tryThisDismissed: s.ui.tryThisDismissed.includes(cardId)
+                ? s.ui.tryThisDismissed
+                : [...s.ui.tryThisDismissed, cardId],
+            },
+          })),
+        // === end wave 22 ===
         toggleSidebar: () =>
           set((s) => ({ ui: { ...s.ui, sidebarCollapsed: !s.ui.sidebarCollapsed } })),
         setPalette: (open) =>
@@ -975,6 +1052,10 @@ export const useStore = create<Store>()(
         setActivityFeedFilter: (f) =>
           set((s) => ({ ui: { ...s.ui, activityFeedFilter: f } })),
         // === end wave 16 ===
+        // === wave 23 ===
+        setMemoryViewMode: (m) =>
+          set((s) => ({ ui: { ...s.ui, memoryViewMode: m } })),
+        // === end wave 23 ===
         snoozeAtom: (atomId, untilMs) =>
           set((s) => ({
             ui: {
@@ -1421,6 +1502,16 @@ export const useStore = create<Store>()(
             // === wave 16 === — right-rail ACTIVITY filter pick.
             activityFeedFilter: s.ui.activityFeedFilter,
             // === end wave 16 ===
+            // === wave 23 === — /memory route view mode pick (tree/graph/list).
+            memoryViewMode: s.ui.memoryViewMode,
+            // === end wave 23 ===
+            // === wave 22 ===
+            // Persist tour + coachmark + try-this dismiss memory so a
+            // returning user who finished the tour never sees it again.
+            firstRunTourCompleted: s.ui.firstRunTourCompleted,
+            coachmarksDismissed: s.ui.coachmarksDismissed,
+            tryThisDismissed: s.ui.tryThisDismissed,
+            // === end wave 22 ===
           },
           skills: { meetingConfig: s.skills.meetingConfig },
         }) as unknown as Store,
@@ -1474,6 +1565,9 @@ export const useStore = create<Store>()(
                   | "canceled"
                   | "none";
                 trialExpiry?: number;
+                // === wave 23 ===
+                memoryViewMode?: "tree" | "graph" | "list";
+                // === end wave 23 ===
               };
               skills?: { meetingConfig?: MeetingConfig };
             }
@@ -1659,6 +1753,27 @@ export const useStore = create<Store>()(
               return current.ui.activityFeedFilter;
             })(),
             // === end wave 16 ===
+            // === wave 23 === — /memory route view mode pick (tree/graph/list).
+            memoryViewMode: ((): "tree" | "graph" | "list" => {
+              const v = p?.ui?.memoryViewMode;
+              if (v === "tree" || v === "graph" || v === "list") return v;
+              return current.ui.memoryViewMode;
+            })(),
+            // === end wave 23 ===
+            // === wave 22 ===
+            // Wave 22 — coachmark / tour / try-this dismiss memory.
+            // Bare casts so a v1.10-and-earlier persisted state (which
+            // pre-dates these keys) upgrades cleanly to the defaults.
+            firstRunTourCompleted:
+              (p?.ui as { firstRunTourCompleted?: boolean } | undefined)
+                ?.firstRunTourCompleted ?? current.ui.firstRunTourCompleted,
+            coachmarksDismissed:
+              (p?.ui as { coachmarksDismissed?: string[] } | undefined)
+                ?.coachmarksDismissed ?? current.ui.coachmarksDismissed,
+            tryThisDismissed:
+              (p?.ui as { tryThisDismissed?: string[] } | undefined)
+                ?.tryThisDismissed ?? current.ui.tryThisDismissed,
+            // === end wave 22 ===
           },
           skills: {
             ...current.skills,

@@ -3741,6 +3741,77 @@ export async function gitLogForFile(args: {
 }
 // === end wave 21 ===
 
+// === wave 23 ===
+// Wave 23 — visual atom-graph data for the /memory graph view.
+//
+// Returns one node per atom + edges for cites / same_author / same_vendor /
+// same_project relationships. The React side feeds this into reactflow with
+// a force-directed layout.
+//
+// Soft-fail: outside Tauri (vitest, vite dev) returns an empty graph so the
+// graph view renders its empty-state branch rather than crashing.
+
+export interface AtomGraphNode {
+  /** Atom path (rel to memory root, forward slashes). Used as node id. */
+  id: string;
+  /** Atom title — frontmatter title or basename minus .md. */
+  label: string;
+  /** Vendor id (cursor / claude-code / chatgpt / ...). Null when unknown. */
+  vendor: string | null;
+  /** Author alias from frontmatter. Null when unknown. */
+  author: string | null;
+  /** Atom kind (decisions / threads / observations / projects / ...). */
+  kind: string;
+  /** Project slug from frontmatter or path. Null when unknown. */
+  project: string | null;
+  /** ISO-ish date from frontmatter (`date:` or `created:`). Null when unknown. */
+  timestamp: string | null;
+}
+
+export type AtomGraphEdgeKind =
+  | "cites"
+  | "same_author"
+  | "same_vendor"
+  | "same_project";
+
+export interface AtomGraphEdge {
+  source: string;
+  target: string;
+  kind: AtomGraphEdgeKind;
+  weight: number;
+}
+
+export interface AtomGraphData {
+  nodes: AtomGraphNode[];
+  edges: AtomGraphEdge[];
+  truncated: boolean;
+}
+
+/**
+ * Walk the memory dir and return a flat node + edge graph for the /memory
+ * graph view. Optional vendor / kind / search filters subset the result.
+ */
+export async function memoryGraphData(args?: {
+  vendor?: string;
+  kind?: string;
+  search?: string;
+}): Promise<AtomGraphData> {
+  return safeInvoke<AtomGraphData>(
+    "memory_graph_data",
+    {
+      vendor: args?.vendor ?? null,
+      kind: args?.kind ?? null,
+      search: args?.search ?? null,
+    },
+    () => ({
+      nodes: [],
+      edges: [],
+      truncated: false,
+    }),
+  );
+}
+// === end wave 23 ===
+
 // === wave 16 ===
 // Wave 16 — activity event bus. The right-rail ACTIVITY panel uses these
 // two helpers:
@@ -3888,3 +3959,148 @@ export async function onboardingChatTurn(
   );
 }
 // === end wave 18 ===
+
+// === wave 24 ===
+// Wave 24 — daily notes + template library bridge.
+//
+//   1. `dailyNotesEnsureToday`  — idempotent create today's
+//      `team/daily/{YYYY-MM-DD}.md` from the template. Pass the
+//      browser's local YYYY-MM-DD so the file matches the user's
+//      wall-clock day even when the OS clock is in another tz.
+//   2. `dailyNotesList`         — last N daily-note summaries, newest
+//      first. Used by /daily's calendar widget.
+//   3. `templatesList`          — all bundled templates.
+//   4. `templatesApply`         — copy a template into a new atom
+//      (the React side then navigates to /memory/<rel_path>).
+//
+// All four soft-fail outside Tauri so vitest + vite-dev render the
+// fallback empty-state branches rather than crashing.
+
+export interface DailyNoteEnsureResult {
+  path: string;
+  created: boolean;
+  date: string;
+}
+
+export interface DailyNoteSummary {
+  date: string;
+  path: string;
+  rel_path: string;
+  bytes: number;
+}
+
+export interface TemplateSummary {
+  id: string;
+  label: string;
+  kind: string | null;
+  vertical: string | null;
+  bytes: number;
+}
+
+export interface TemplateApplyResult {
+  path: string;
+  rel_path: string;
+  copied: boolean;
+}
+
+/** Compute the browser's local YYYY-MM-DD. Used by the route + heartbeat
+ *  so the daily-note filename always matches the user's wall-clock day. */
+export function localTodayIso(now: Date = new Date()): string {
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+export async function dailyNotesEnsureToday(args?: {
+  date?: string;
+  author?: string;
+}): Promise<DailyNoteEnsureResult> {
+  const date = args?.date ?? localTodayIso();
+  return safeInvoke<DailyNoteEnsureResult>(
+    "daily_notes_ensure_today",
+    {
+      args: {
+        date,
+        author: args?.author ?? null,
+      },
+    },
+    () => ({
+      path: `~/.tangerine-memory/team/daily/${date}.md`,
+      created: false,
+      date,
+    }),
+  );
+}
+
+export async function dailyNotesList(args?: {
+  limit?: number;
+}): Promise<DailyNoteSummary[]> {
+  return safeInvoke<DailyNoteSummary[]>(
+    "daily_notes_list",
+    {
+      args: {
+        limit: args?.limit ?? 30,
+      },
+    },
+    () => [],
+  );
+}
+
+/** Read the raw markdown of a daily note for a given date. Empty string
+ *  when the file doesn't exist (matches the brain doc convention). */
+export async function dailyNotesRead(date: string): Promise<string> {
+  return safeInvoke<string>(
+    "daily_notes_read",
+    { args: { date } },
+    () => "",
+  );
+}
+
+/** Persist a manual edit of a daily note. Mock returns a fake created=false
+ *  result so vitest can render the toast branch without a real backend. */
+export async function dailyNotesSave(
+  date: string,
+  content: string,
+): Promise<DailyNoteEnsureResult> {
+  return safeInvoke<DailyNoteEnsureResult>(
+    "daily_notes_save",
+    { args: { date, content } },
+    () => ({
+      path: `~/.tangerine-memory/team/daily/${date}.md`,
+      created: false,
+      date,
+    }),
+  );
+}
+
+export async function templatesList(): Promise<TemplateSummary[]> {
+  return safeInvoke<TemplateSummary[]>(
+    "templates_list",
+    undefined,
+    () => [],
+  );
+}
+
+export async function templatesApply(args: {
+  templateId: string;
+  targetPath?: string;
+  date?: string;
+}): Promise<TemplateApplyResult> {
+  return safeInvoke<TemplateApplyResult>(
+    "templates_apply",
+    {
+      args: {
+        template_id: args.templateId,
+        target_path: args.targetPath ?? null,
+        date: args.date ?? null,
+      },
+    },
+    () => ({
+      path: `~/.tangerine-memory/(mock)/${args.templateId}.md`,
+      rel_path: `team/decisions/${args.templateId}.md`,
+      copied: false,
+    }),
+  );
+}
+// === end wave 24 ===

@@ -347,3 +347,87 @@ jobs:
           gh release edit ${{ github.ref_name }} \
             --repo ${{ github.repository }} \
             --latest || echo "release edit failed (likely already latest); not fatal"
+
+  # === wave 25 ===
+  # Generate `latest.json` manifest for the in-app auto-updater
+  # (`tauri-plugin-updater`). The plugin polls the URL configured in
+  # `tauri.conf.json::plugins.updater.endpoints` and parses this manifest
+  # to decide whether the running build is older than the released tag.
+  #
+  # Manifest schema (Tauri 2 spec):
+  #   {
+  #     "version": "1.12.0",
+  #     "notes": "...",
+  #     "pub_date": "ISO8601",
+  #     "platforms": {
+  #       "windows-x86_64": { "signature": "...", "url": "..." },
+  #       "darwin-aarch64": { ... },
+  #       "darwin-x86_64": { ... },
+  #       "linux-x86_64": { ... }
+  #     }
+  #   }
+  #
+  # `signature` is filled with a placeholder string until CEO generates the
+  # signing keypair (`npx tauri signer generate -w ~/.tauri/myapp.key`) and
+  # adds the matching `TAURI_SIGNING_PRIVATE_KEY` + `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
+  # repo secrets. Until then, the in-app updater will refuse the install
+  # (signature mismatch) and silently no-op — see UpdaterCheck.tsx swallow
+  # path. This is the intended graceful-degrade for unsigned builds.
+  generate_latest_json:
+    name: Generate latest.json for auto-updater
+    needs: [build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    if: ${{ !contains(github.ref_name, 'beta') && !contains(github.ref_name, 'alpha') && !contains(github.ref_name, 'rc') }}
+    steps:
+      - name: Compose latest.json
+        run: |
+          TAG="${{ github.ref_name }}"
+          # Strip leading "v" from the tag for the version field — Tauri's
+          # version compare expects semver, not the tag literal.
+          VERSION="${TAG#v}"
+          REPO="${{ github.repository }}"
+          BASE_URL="https://github.com/${REPO}/releases/download/${TAG}"
+          PUB_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          # Notes pulled from the auto-generated release notes if present;
+          # otherwise a minimal placeholder. We avoid `${{ github.event.release.body }}`
+          # because this workflow runs on tag push, not release event, so
+          # the body isn't always populated yet.
+          NOTES="See https://github.com/${REPO}/releases/tag/${TAG} for full notes."
+          cat > latest.json <<EOF
+          {
+            "version": "${VERSION}",
+            "notes": "${NOTES}",
+            "pub_date": "${PUB_DATE}",
+            "platforms": {
+              "windows-x86_64": {
+                "signature": "PLACEHOLDER_SIGNATURE_REPLACE_WITH_TAURI_SIGNER",
+                "url": "${BASE_URL}/Tangerine.AI.Teams_${VERSION}_x64-setup.exe"
+              },
+              "darwin-aarch64": {
+                "signature": "PLACEHOLDER_SIGNATURE_REPLACE_WITH_TAURI_SIGNER",
+                "url": "${BASE_URL}/Tangerine.AI.Teams_${VERSION}_aarch64.dmg"
+              },
+              "darwin-x86_64": {
+                "signature": "PLACEHOLDER_SIGNATURE_REPLACE_WITH_TAURI_SIGNER",
+                "url": "${BASE_URL}/Tangerine.AI.Teams_${VERSION}_x64.dmg"
+              },
+              "linux-x86_64": {
+                "signature": "PLACEHOLDER_SIGNATURE_REPLACE_WITH_TAURI_SIGNER",
+                "url": "${BASE_URL}/Tangerine.AI.Teams_${VERSION}_amd64.AppImage"
+              }
+            }
+          }
+          EOF
+          cat latest.json
+
+      - name: Attach latest.json to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: latest.json
+          fail_on_unmatched_files: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  # === end wave 25 ===

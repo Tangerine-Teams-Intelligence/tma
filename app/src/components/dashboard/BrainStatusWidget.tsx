@@ -14,6 +14,7 @@
  */
 
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   coThinkerReadBrain,
   coThinkerStatus,
@@ -96,6 +97,18 @@ export function BrainStatusWidget() {
           up.
         </p>
       )}
+      {/* === wave 24 === — quick link to today's daily note. Lives in the
+          BrainStatusWidget rather than as a 6th sidebar item (Wave 19
+          locked the sidebar at 5). The /daily route is also reachable via
+          the memory tree (team/daily/) and Cmd+K. */}
+      <Link
+        to="/daily"
+        data-testid="dashboard-brain-status-daily-link"
+        className="mt-3 inline-block font-mono text-[10px] uppercase tracking-wider text-[var(--ti-orange-500)] hover:underline"
+      >
+        Today's daily note →
+      </Link>
+      {/* === end wave 24 === */}
     </DashboardWidget>
   );
 }

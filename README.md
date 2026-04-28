@@ -1,6 +1,6 @@
 # Tangerine Teams App
 
-> **Align every AI tool on your team with your team's actual workflow.**
+> **AI-native team's Obsidian, more visual + easier onboarding.**
 >
 > Your team's shared AI memory. Across Cursor, Claude, ChatGPT, and the rest.
 >
@@ -10,7 +10,16 @@
 [![License: Apache-2.0 (current)](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](PRIOR-LICENSE-APACHE-2.0.txt)
 [![License: AGPL v3 + Commercial (transition)](https://img.shields.io/badge/license-AGPL_v3_+_Commercial-orange.svg)](LICENSE)
 
-**Status**: v1.9.1 internal · v1.8.1 last public release · 4 design moats truly delivered
+**Status**: v1.12.0 — Linear + Obsidian style — auto-updater shipped
+
+<!-- === wave 25 === Hero screenshots — placeholders point to dogfood-prep/video/screenshots/ -->
+<!-- Replace with absolute GitHub raw URLs once images are committed to the repo. -->
+
+| ![/today dashboard](dogfood-prep/video/screenshots/v112-01-today-dashboard.png) | ![/memory tree](dogfood-prep/video/screenshots/v112-02-memory-tree-preview.png) | ![/memory graph](dogfood-prep/video/screenshots/v112-03-memory-graph.png) |
+|---|---|---|
+| Dashboard with shared memory | Memory tree + atom preview | Memory graph view |
+
+<!-- === end wave 25 === -->
 
 ---
 
@@ -76,6 +85,39 @@ Cursor / Claude Code / Codex / Windsurf / ChatGPT / Devin / Replit / Apple Intel
 
 ---
 
+<!-- === wave 25 === Why Tangerine vs Obsidian comparison -->
+
+## Why Tangerine vs Obsidian
+
+Obsidian is the gold standard for personal markdown knowledge management. Tangerine
+is "Obsidian for teams + AI tools." We borrow the best of Obsidian (markdown
+files you own, graph view, plugin ecosystem) and add the team + AI surface
+Obsidian deliberately doesn't ship.
+
+| Capability | Obsidian | Tangerine |
+|---|---|---|
+| Markdown files you own | Yes | Yes (`~/.tangerine-memory/`) |
+| Graph view of notes | Yes | Yes (`/memory` graph toggle) |
+| Daily notes | Plugin (Calendar) | Built-in (`/today`) |
+| Per-user vs shared scope | Single vault | `team/` + `personal/<user>/` split |
+| AI tool sidebar | None | 10 tools, MCP auto-config |
+| Cross-vendor AI memory | None | 8 parsers (Cursor / Claude Code / Codex / Windsurf / Devin / Replit / Apple Intelligence / MS Copilot) |
+| AGI co-thinker brain | None | `team/co-thinker.md` heartbeat-driven |
+| MCP sampling protocol | None | Reverse-call your editor's LLM |
+| Team sync | Plugin (git, paid Sync) | Built-in (git mirror, Cloud) |
+| Auto-updater (in-app) | Yes (manual download) | Yes (one-click install) |
+| Open source | Closed core, open plugins | AGPL v3 + Commercial dual |
+| Pricing for teams | $5/user/month (Sync) | $80/team flat (no per-seat) |
+| Linear / Obsidian style | Obsidian-first | "Linear UX, Obsidian data" |
+
+If your team already lives in Obsidian, you keep your Obsidian setup —
+Tangerine reads any markdown vault you point it at. We're additive, not
+replacement.
+
+<!-- === end wave 25 === -->
+
+---
+
 ## Quick start (30 seconds from install)
 
 1. Download installer for your OS from the [latest release](https://github.com/Tangerine-Teams-Intelligence/tangerine-teams-app/releases/latest):
@@ -110,7 +152,9 @@ If you want zero-config + managed everything, four tiers:
 | Tier | Price | What you get |
 |---|---|---|
 | **Self-host** | **$0 forever** | Full app, every feature. Bring your own DeepSeek API key (~$0.27/M tokens at cost) — or borrow your editor's LLM via MCP sampling. Your existing Cursor Pro / Claude Pro / Codex subscription becomes Tangerine's inference engine. |
+| **Tangerine Founder** | **$50 one-time** | Lifetime access to the Tangerine Cloud feature set for the founding team. One purchase covers the team forever. Doors close once we hit 200 founder seats. |
 | **Tangerine Cloud** | **$80 / team / month flat**<br>+ overage credits | Shared DeepSeek API key managed by us. ~100M tokens included monthly (very heavy team usage). Above that, top up with credits at $5 / 10M tokens. **Not per-seat**: invite 5 people or 50, the base price stays $80. |
+| **Commercial Honor Tier** | **$25 / user / year** | For commercial users who want to support the project but stay self-hosted. Honor system — we don't gate features. Funds go to OSS development; you get a public thank-you on the supporters page. |
 | **Marketplace** | 82% to sellers / 18% to us | Buy & sell community templates, sources, agents. Sellers set prices; we handle distribution + auth + billing. |
 | **Enterprise** | **$50–200k / year** | SOC 2 Type II, SSO, on-prem deployment, white-label, 24h SLA, dedicated account manager. **Required if you redistribute Tangerine inside your products** — AGPL forces it; buy a commercial license to keep your modifications private. |
 
@@ -183,18 +227,24 @@ The license flip will be announced when ratification completes. Until then, the 
 
 ---
 
-## Status (v1.9.1)
+## Status (v1.12.0)
 
 | What | State |
 |---|---|
-| Tests | 546 Rust + 407 frontend + 8 Playwright + 92 MCP vitest = 1053+ tests pass |
+| Tests | 548+ Rust + 410+ frontend + 8 Playwright + 92 MCP vitest = 1058+ tests pass |
 | MCP sampling protocol | Real, end-to-end |
 | Welcome tour | 4-card 30-sec onboarding |
-| 中文 i18n | 287 strings × 2 locales (en/zh 1:1) |
+| Setup wizard | Chat-driven (Wave 18) — type your stack in one line |
+| Auto-updater | In-app banner + one-click install (Wave 25) |
+| Memory views | File tree + graph + brain split editor (Waves 21-23) |
+| Daily dashboard | `/today` with seeded sample atoms (Wave 13 + 20) |
+| 中文 i18n | 287+ strings × 2 locales (en/zh 1:1) |
 | Cross-vendor parsers | 1/8 real-files-validated (Claude Code), 7/8 wired-and-tested |
-| Public release | v1.8.1 (v1.9.1 in flight) |
+| Cross-platform builds | 5 installers per release (Windows / macOS aarch64 + x64 / Linux .deb + .AppImage) |
+| Public release | v1.12.0 |
 
-See [V1_9_ACCEPTANCE.md](./V1_9_ACCEPTANCE.md) for per-phase quality gates.
+See [V1_9_ACCEPTANCE.md](./V1_9_ACCEPTANCE.md) for the v1.9 quality gates that
+this release inherits + extends.
 
 ---
 

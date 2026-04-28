@@ -116,7 +116,22 @@
     "noSourceCta": "Same-screen rate: 0% — connect a Source so your team and their AI start aligning.",
     "withSourceCta": "Your AI sees {{meetings}} meetings · {{decisions}} decisions · {{people}} people · 0% of Slack / Linear / Notion (Sources land v1.6+).",
     "emptyTitle": "Memory tree is empty.",
-    "emptyBody": "Connect a source and Tangerine will start writing meeting / decision / thread notes here. Until then this view is intentionally quiet."
+    "emptyBody": "Connect a source and Tangerine will start writing meeting / decision / thread notes here. Until then this view is intentionally quiet.",
+    "graph": {
+      "toggleTree": "Tree",
+      "toggleGraph": "Graph",
+      "toggleList": "List",
+      "searchPlaceholder": "Search nodes…",
+      "clusterBy": "Cluster by",
+      "clusterVendor": "Vendor",
+      "clusterAuthor": "Author",
+      "clusterProject": "Project",
+      "clusterKind": "Kind",
+      "showAll": "Show all",
+      "showRecent": "Show recent",
+      "emptyTitle": "No atoms yet.",
+      "emptyBody": "Add a note to see the graph."
+    }
   },
   "coThinker": {
     "title": "Team brain",
@@ -852,5 +867,112 @@
       "untitled": "Untitled",
       "openHint": "open atom"
     }
+  },
+  "coachmark": {
+    "next": "Next",
+    "back": "Back",
+    "skip": "Skip tour",
+    "done": "Got it",
+    "stepLabel": "{{current}} of {{total}}",
+    "tour": {
+      "stat": {
+        "title": "Daily snapshot",
+        "body": "Atoms captured, teammates watched, AI tools active. The shape of your team's day at a glance."
+      },
+      "hero": {
+        "title": "Ask anything about your team",
+        "body": "Search team memory or ask the brain a question. Try one of the sample queries below the box."
+      },
+      "decisions": {
+        "title": "Recent decisions",
+        "body": "Decisions your team has ratified. Click any to open the full atom."
+      },
+      "activity": {
+        "title": "Live activity",
+        "body": "Real-time stream of what your AI tools are writing into team memory."
+      },
+      "memory": {
+        "title": "Memory tree",
+        "body": "Browse every atom in an Obsidian-style file tree. Filter by vendor, date, or search."
+      },
+      "brain": {
+        "title": "Team brain",
+        "body": "Your team's AGI-summarized brain doc. Editable markdown — git-trackable, fully yours."
+      },
+      "completeTitle": "You're set up.",
+      "completeBody": "Your real data lands as your team uses AI tools. Press ? any time for shortcuts."
+    },
+    "samples": {
+      "label": "Try one:",
+      "decided": "What did our team decide?",
+      "personRecent": "Show me Sam's recent work",
+      "lastWeek": "Summarize last week"
+    },
+    "tryThis": {
+      "ariaLabel": "Try this — quick tip",
+      "title": "Did you know?",
+      "next": "Show another",
+      "dismiss": "Dismiss",
+      "cmdK": "Press {{kbd}} to open the search palette from any route — it indexes every memory atom.",
+      "brainEdit": "Edit the brain doc directly at ~/.tangerine-memory/team/co-thinker.md — your edits steer the next sync.",
+      "starTool": "Star your primary AI tool in Settings → AI tools so the brain knows which session to talk to.",
+      "memoryGit": "Your memory dir is a git repo — diff every change with `git log` inside ~/.tangerine-memory.",
+      "tourReplay": "Settings → General has a 'Show welcome tour again' link if you want to replay the intro.",
+      "shortcuts": "Press ? to open the global keyboard shortcuts cheatsheet."
+    },
+    "loading": {
+      "today": "Setting up your dashboard…",
+      "memory": "Reading {{count}} atoms across {{threads}} threads…",
+      "brain": "Reading the team brain doc…"
+    },
+    "empty": {
+      "today": {
+        "title": "Nothing captured yet",
+        "body": "Your team's AI tools haven't written anything yet. Connect a source or run the welcome tour to see how it works.",
+        "cta": "Connect a source"
+      },
+      "memory": {
+        "title": "Memory is empty",
+        "body": "Connect a source — Slack, GitHub, Linear — or your AI tools' history will populate here.",
+        "cta": "Connect a source"
+      },
+      "brain": {
+        "title": "Team brain hasn't started thinking yet",
+        "body": "Click Initialize to fire the first sync and let the brain read your team memory.",
+        "cta": "Initialize team brain"
+      },
+      "canvas": {
+        "title": "Drop your first sticky note",
+        "body": "Pick a project and open its canvas — Tangerine joins as a peer once you start.",
+        "cta": "Browse projects"
+      },
+      "reviews": {
+        "title": "No decisions to review yet",
+        "body": "The team brain proposes decisions on each sync. Once two-thirds of teammates approve, they auto-promote.",
+        "cta": "Open team brain"
+      }
+    }
+  },
+  "daily": {
+    "heading": "Daily notes",
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "prev": "Previous day",
+    "next": "Next day",
+    "datePicker": "Pick a date",
+    "save": "Save",
+    "loading": "Loading…",
+    "editorAria": "Daily note editor",
+    "heatmapHeading": "Last 30 days",
+    "recentHeading": "Recent",
+    "recentEmpty": "No notes yet.",
+    "savedToast": "Daily note saved.",
+    "saveFailedToast": "Save failed: {{msg}}"
+  },
+  "templates": {
+    "applyButton": "Apply template",
+    "empty": "No templates installed.",
+    "appliedToast": "Applied template: {{label}}",
+    "applyFailedToast": "Template apply failed: {{msg}}"
   }
 }

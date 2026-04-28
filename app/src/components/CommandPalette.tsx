@@ -63,6 +63,17 @@ import { searchAtoms, type AtomSearchResult } from "@/lib/tauri";
 import { vendorColor } from "@/lib/vendor-colors";
 // === end wave 15 ===
 
+// === wave 24 ===
+// Daily notes + template library — palette glue. The "Open today's daily
+// note" action navigates to /daily; the "Apply template" action opens
+// /daily and pops the template menu via a window event.
+import {
+  dailyNotesEnsureToday,
+  localTodayIso,
+  templatesList,
+} from "@/lib/tauri";
+// === end wave 24 ===
+
 interface Props {
   open: boolean;
   onClose: () => void;
@@ -128,8 +139,14 @@ interface RouteEntry {
 //     /sinks /ai-tools /graphs) MUST stay in this catalog so Cmd+K is the
 //     fallback navigation surface.
 const ROUTE_CATALOG: RouteEntry[] = [
-  { path: "/today", label: "Today", aliases: ["daily", "home", "brief", "dashboard"] },
+  { path: "/today", label: "Today", aliases: ["home", "brief", "dashboard"] },
   { path: "/memory", label: "Memory", aliases: ["files", "tree", "markdown", "vault"] },
+  // === wave 24 ===
+  // Daily notes route — primary palette entry to "open today's daily note".
+  // Aliases include "journal" / "log" so users coming from Obsidian /
+  // Logseq find it on first try.
+  { path: "/daily", label: "Daily notes", aliases: ["daily", "journal", "log", "diary", "today's note"] },
+  // === end wave 24 ===
   { path: "/brain", label: "Brain", aliases: ["agi", "co-thinker", "thinker", "team brain"] },
   { path: "/co-thinker", label: "Co-thinker (legacy)", aliases: ["agi", "brain", "thinker"] },
   { path: "/canvas", label: "Canvas", aliases: ["board", "stickies"] },
@@ -208,6 +225,15 @@ export const CO_THINKER_INIT_EVENT = "tangerine:co-thinker-init";
  * trigger.
  */
 export const WELCOME_REPLAY_EVENT = "tangerine:welcome-replay";
+
+// === wave 24 ===
+/**
+ * Custom DOM event the /daily route listens for to pop its template menu.
+ * Dispatched from the "Apply template…" palette action so the user can
+ * pick a template without two clicks.
+ */
+export const DAILY_TEMPLATE_MENU_OPEN_EVENT = "tangerine:daily-template-menu";
+// === end wave 24 ===
 
 /** Score a candidate against the query. Higher = better. 0 = no match. */
 function score(haystack: string, q: string): number {
@@ -378,6 +404,57 @@ export function CommandPalette({ open, onClose }: Props) {
         },
       },
       // === end wave 11 ===
+      // === wave 24 ===
+      // Daily notes — primary entry point for "open today's daily note".
+      // Idempotent ensure-on-click so the file always exists by the time
+      // the route loads. Apply-template just routes to /daily and
+      // dispatches a window event the route listens for to pop the menu.
+      {
+        id: "action:open-today-daily",
+        kind: "action",
+        label: "Open today's daily note",
+        search: "open today daily note journal log diary",
+        hint: "/daily",
+        icon: PlayCircle,
+        onSelect: async () => {
+          close();
+          try {
+            await dailyNotesEnsureToday({ date: localTodayIso() });
+          } catch {
+            /* navigate anyway */
+          }
+          navigate("/daily");
+        },
+      },
+      {
+        id: "action:apply-template",
+        kind: "action",
+        label: "Apply template…",
+        search: "apply template decision meeting kickoff weekly review pcb gtm",
+        hint: "open templates menu",
+        icon: FileText,
+        onSelect: async () => {
+          close();
+          // Best-effort: surface a toast if the bundled templates dir is
+          // empty so the user knows why the menu is silent.
+          try {
+            const tpls = await templatesList();
+            if (tpls.length === 0) {
+              pushToast(
+                "info",
+                "No templates installed — falling back to /daily.",
+              );
+            }
+          } catch {
+            /* navigate anyway */
+          }
+          navigate("/daily");
+          window.setTimeout(() => {
+            window.dispatchEvent(new Event(DAILY_TEMPLATE_MENU_OPEN_EVENT));
+          }, 50);
+        },
+      },
+      // === end wave 24 ===
       {
         id: "action:open-memory-dir",
         kind: "action",

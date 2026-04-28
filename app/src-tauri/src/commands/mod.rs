@@ -286,6 +286,17 @@ pub mod activity;
 pub mod onboarding_chat;
 // === end wave 18 ===
 
+// === wave 24 ===
+// v1.11 — Daily notes infrastructure + template library. Idempotent
+// "today's daily note" creation under `team/daily/{YYYY-MM-DD}.md` plus a
+// bundled template library (`app/resources/sample-memory/templates/`)
+// the user can apply to any new atom. The co-thinker heartbeat calls
+// `daily_notes::ensure_today_path_for` + `update_auto_section` to fill
+// the auto sections with the last-24h atom summary. See `daily_notes.rs`
+// for the full module doc.
+pub mod daily_notes;
+// === end wave 24 ===
+
 mod error;
 mod paths;
 mod runner;
@@ -414,6 +425,9 @@ macro_rules! tmi_invoke_handler {
             $crate::commands::memory::memory_tree,
             $crate::commands::memory::compute_backlinks,
             // === end wave 21 ===
+            // === wave 23 === — visual atom graph data for /memory graph view
+            $crate::commands::memory::memory_graph_data,
+            // === end wave 23 ===
             // v1.6.0 — git ops
             $crate::commands::git::git_check,
             $crate::commands::git::git_clone,
@@ -677,6 +691,20 @@ macro_rules! tmi_invoke_handler {
             // existing setup wizard / git_sync / whisper_model surfaces.
             $crate::commands::onboarding_chat::onboarding_chat_turn,
             // === end wave 18 ===
+            // === wave 24 ===
+            // Daily notes + templates. ensure_today is idempotent (safe to
+            // call from /today's mount + the co-thinker heartbeat); list
+            // returns reverse-chronological summaries for the calendar
+            // widget; templates_list/templates_apply walk the bundled
+            // resources/sample-memory/templates/ dir and copy into the
+            // user's memory root respectively.
+            $crate::commands::daily_notes::daily_notes_ensure_today,
+            $crate::commands::daily_notes::daily_notes_list,
+            $crate::commands::daily_notes::daily_notes_read,
+            $crate::commands::daily_notes::daily_notes_save,
+            $crate::commands::daily_notes::templates_list,
+            $crate::commands::daily_notes::templates_apply,
+            // === end wave 24 ===
         ]
     };
 }

@@ -281,6 +281,17 @@ export function SetupWizard({ open, onClose }: SetupWizardProps) {
           : "browser_ext";
     setSetupWizardChannelReady(true);
     setSetupWizardPrimaryChannel(channelLabel);
+    // === wave 24 === — first-run setup: auto-create today's daily note.
+    // Best-effort; failure here doesn't block the wizard's done state.
+    try {
+      const { dailyNotesEnsureToday, localTodayIso } = await import(
+        "@/lib/tauri"
+      );
+      await dailyNotesEnsureToday({ date: localTodayIso() });
+    } catch {
+      /* defensive */
+    }
+    // === end wave 24 ===
     // Set the user's primary AI tool so subsequent heartbeats route
     // straight to the channel they just verified.
     if (selected.kind === "mcp_sampling") {

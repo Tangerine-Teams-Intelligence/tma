@@ -24,6 +24,22 @@ import { LicenseTransitionBanner } from "@/components/LicenseTransitionBanner";
 import { HelpButton } from "@/components/HelpButton";
 import { KeyboardShortcutsOverlay } from "@/components/KeyboardShortcutsOverlay";
 // === end wave 5-β ===
+// === wave 22 ===
+// Wave 22 — coachmark / first-run guided tour / "try this" floating
+// button. Mounted at AppShell so they wrap every route. The provider is
+// the topmost wrapper so any route component can consume `useCoachmark`
+// for ad-hoc tooltips. The FirstRunTour + TryThisFAB self-mount inside
+// the provider; both are no-ops when their persisted gate flags say so.
+import { CoachmarkProvider } from "@/components/coachmark/CoachmarkProvider";
+import { FirstRunTour } from "@/components/coachmark/FirstRunTour";
+import { TryThisFAB } from "@/components/coachmark/TryThisFAB";
+// === end wave 22 ===
+// === wave 25 === — auto-update banner. Sits in top-right notification slot,
+// fires once on mount after WelcomeOverlay closes. Self-suppresses if the
+// updater bridge isn't available (browser dev / vitest), if the running
+// build is already latest, or if the user dismissed.
+import { UpdaterCheck } from "@/components/UpdaterCheck";
+// === end wave 25 ===
 // Wave 4-C — first-run welcome tour. Mounted inside AppShell so it
 // covers every route the user might land on (default is /today). The
 // overlay self-hides once `ui.welcomed` flips, so re-renders after the
@@ -664,6 +680,12 @@ export function AppShell() {
     // single delegated input listener sees every textarea / contenteditable
     // / palette input in the app. There is intentionally no chatbot tab;
     // every input is an AGI entry point.
+    // === wave 22 === — CoachmarkProvider sits ABOVE the AmbientInputObserver
+    // so any route component (or floating UI like the FAB / tour) can pull
+    // `useCoachmark` regardless of which subtree it lives in. The provider
+    // tracks one active step at a time and is a no-op until something calls
+    // `showStep`.
+    <CoachmarkProvider>
     <AmbientInputObserver>
       <div className="flex h-full w-full bg-stone-50 text-stone-900 dark:bg-stone-950 dark:text-stone-100">
         <Sidebar />
@@ -867,7 +889,31 @@ export function AppShell() {
           onClose={() => setShortcutsOpen(false)}
         />
         {/* === end wave 5-β === */}
+
+        {/* === wave 25 === — auto-update banner. Wrapped in ErrorBoundary
+            (Wave 10.1 lesson) so a thrown render in the updater plugin
+            never blanks the shell. Mounted at the top z-stack alongside
+            the help button so a "v1.12.1 available" hint is visible
+            from every route. */}
+        <ErrorBoundary label="UpdaterCheck">
+          <UpdaterCheck />
+        </ErrorBoundary>
+        {/* === end wave 25 === */}
+
+        {/* === wave 22 === — first-run guided tour + "try this" FAB.
+            Both are mounted unconditionally; each gates itself internally
+            so a returning user (firstRunTourCompleted=true / no demoMode)
+            sees nothing. Wrapped in ErrorBoundary so a thrown render in
+            the tour cannot blank the shell (Wave 10.1 lesson). */}
+        <ErrorBoundary label="FirstRunTour">
+          <FirstRunTour />
+        </ErrorBoundary>
+        <ErrorBoundary label="TryThisFAB">
+          <TryThisFAB />
+        </ErrorBoundary>
+        {/* === end wave 22 === */}
       </div>
     </AmbientInputObserver>
+    </CoachmarkProvider>
   );
 }

@@ -197,6 +197,16 @@ export function OnboardingChat({ onSetupComplete }: OnboardingChatProps) {
         void logEvent("onboarding_chat_completed", {
           session_id: sessionId,
         });
+        // === wave 24 === — first-run via chat: auto-create today's daily note.
+        try {
+          const { dailyNotesEnsureToday, localTodayIso } = await import(
+            "@/lib/tauri"
+          );
+          await dailyNotesEnsureToday({ date: localTodayIso() });
+        } catch {
+          /* defensive — never block setup completion */
+        }
+        // === end wave 24 ===
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);

@@ -26,6 +26,9 @@ import SettingsPage from "@/pages/settings";
 // Stage 1 Wave 3 — Chief of Staff views.
 import TodayRoute from "@/routes/today";
 import ThisWeekRoute from "@/routes/this-week";
+// === wave 24 ===
+import DailyRoute from "@/routes/daily";
+// === end wave 24 ===
 import PeopleListRoute from "@/routes/people";
 import PersonDetailRoute from "@/routes/people/detail";
 import ProjectsListRoute from "@/routes/projects";
@@ -186,6 +189,9 @@ export default function App() {
         {/* Stage 1 Wave 3 — Chief of Staff views (default landing). */}
         <Route path="today" element={<TodayRoute />} />
         <Route path="this-week" element={<ThisWeekRoute />} />
+        {/* === wave 24 === — Daily notes route, default lands on today. */}
+        <Route path="daily" element={<DailyRoute />} />
+        {/* === end wave 24 === */}
         <Route path="people" element={<PeopleListRoute />} />
         {/* === v2.0-beta.1 graphs ===
             Static graph routes MUST sit above the param routes; otherwise

@@ -169,8 +169,23 @@ export type TelemetryEventName =
   //   - onboarding_chat_completed       : { session_id: string }
   | "onboarding_chat_message"
   | "onboarding_chat_action_executed"
-  | "onboarding_chat_completed";
+  | "onboarding_chat_completed"
   // === end wave 18 ===
+  // === wave 22 ===
+  // Wave 22 — coachmark / first-run tour / try-this telemetry. Lets the
+  // suggestion engine see how often the tour is completed vs skipped at
+  // each step, and which TryThisFAB cards get accepted vs dismissed.
+  // Payload shapes (also documented at each call site):
+  //   - coachmark_step_shown : { step_id: string, tour?: string }
+  //   - coachmark_dismissed  : { step_id: string,
+  //                              reason: "skip" | "complete" | "esc" | "outside" }
+  //   - try_this_clicked     : { card_id: string }
+  //   - tour_completed       : { tour: string }
+  | "coachmark_step_shown"
+  | "coachmark_dismissed"
+  | "try_this_clicked"
+  | "tour_completed";
+  // === end wave 22 ===
 // === end wave 5-β discoverability ===
 
 /** One telemetry record. Mirrors `app/src-tauri/src/agi/telemetry.rs::TelemetryEvent`. */

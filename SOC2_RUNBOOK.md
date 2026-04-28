@@ -102,6 +102,38 @@ Per `OBSERVABILITY_SPEC.md` §9 + `V2_5_SPEC.md`:
 - External report → `security@tangerineintelligence.ai` → CTO triages
   within 24h business.
 
+## Auto-updater (wave 25)
+
+The in-app updater (`tauri-plugin-updater`) ships in v1.12.0. SOC 2
+implications:
+
+- **Signature verification.** Every `latest.json` published by
+  `.github/workflows/release.yml::generate_latest_json` should embed an
+  Ed25519 signature generated from the production signing key
+  (`TAURI_SIGNING_PRIVATE_KEY` repo secret). The matching pubkey is
+  pinned in `tauri.conf.json::plugins.updater.pubkey` so a tampered
+  manifest is rejected by the client. Until CEO generates the keypair
+  the manifest carries `PLACEHOLDER_SIGNATURE` and clients refuse to
+  install — graceful degrade, no silent acceptance of unsigned updates.
+- **Endpoint integrity.** The endpoint is HTTPS to `github.com`, which
+  carries a TLS cert signed by a public CA + has its own integrity
+  checks. We rely on TLS + the embedded signature (defense in depth).
+- **User consent.** The `UpdaterCheck.tsx` component never auto-installs.
+  The user must click "Install now" on a banner. SOC 2 CC8.1 (change
+  management): users always know when their software changes.
+- **Rollback.** If a v1.X.Y release ships a regression, the GitHub
+  Release page exposes prior installers. Updater clients keep their
+  current version until the next manual check + accept; we do not push.
+- **Audit trail.** Every successful update install logs to
+  `~/.tangerine-memory/.tangerine/audit/{date}.jsonl` (per `audit_log.rs`)
+  with the from/to versions + a hash of the downloaded artifact.
+- **Key rotation.** If `TAURI_SIGNING_PRIVATE_KEY` is compromised, rotate
+  by generating a new keypair, updating `tauri.conf.json::plugins.updater.pubkey`,
+  cutting a new release tag, and notifying all users to manually
+  re-download from the GitHub Releases page (the auto-update path will
+  refuse the new signature against the old pubkey — that's the intended
+  behaviour, not a regression).
+
 ## Review cadence
 
 This runbook is reviewed:
