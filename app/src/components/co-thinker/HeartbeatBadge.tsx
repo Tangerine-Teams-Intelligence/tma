@@ -19,16 +19,34 @@ interface Props {
  *
  * `null` status renders the "never fired" form so the empty-state path
  * doesn't have to special-case the absence of this badge.
+ *
+ * === wave 8 === — when the last heartbeat was within 10 min, swap the
+ * three-dot orange pulse for a single green alive-dot with halo. The
+ * green codes as "agent online" — different semantic from the orange
+ * "Tangerine brand" pulse used everywhere else. The orange three-dot
+ * stays as the fallback for the "never" / stale state so the historical
+ * cadence is still visible.
  */
 export function HeartbeatBadge({ status, cadence = "5 min foreground" }: Props) {
   const last = status?.last_heartbeat_at ?? null;
   const next = status?.next_heartbeat_at ?? null;
+  // === wave 8 === — alive when the last heartbeat fired within 10 min.
+  const isAlive =
+    last !== null && Date.now() - new Date(last).getTime() < 10 * 60 * 1000;
   return (
     <div
       data-testid="heartbeat-badge"
       className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[11px] text-stone-500 dark:text-stone-400"
     >
-      <Pulse />
+      {isAlive ? (
+        <span
+          aria-hidden
+          className="ti-alive-dot"
+          data-testid="heartbeat-pulse"
+        />
+      ) : (
+        <Pulse />
+      )}
       <span>
         Last heartbeat:{" "}
         <span className="text-stone-700 dark:text-stone-200">
@@ -50,6 +68,10 @@ export function HeartbeatBadge({ status, cadence = "5 min foreground" }: Props) 
  * Three-dot CSS pulse. Pure CSS — no extra deps. Animates via the keyframe
  * defined inline (Tailwind doesn't ship a stagger-able pulse out of the box
  * and this is a 6-line component so we keep it local).
+ *
+ * === wave 8 === — kept for the "stale" / "never fired" fallback path so
+ * the historical orange-brand-anchor pulse is still available when the
+ * brain hasn't ticked in over 10 min.
  */
 function Pulse() {
   return (

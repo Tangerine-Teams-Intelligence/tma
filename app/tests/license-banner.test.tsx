@@ -27,7 +27,13 @@ describe("LicenseTransitionBanner", () => {
   it("renders by default when localStorage flag is unset", () => {
     render(<LicenseTransitionBanner />);
     expect(screen.getByTestId("license-transition-banner")).toBeInTheDocument();
-    expect(screen.getByText(/License transition/i)).toBeInTheDocument();
+    // === wave 8 === — copy was tightened from "License transition" to
+    // just "License" so the strip reads informational rather than
+    // alarming. The AGPL link target is unchanged. Use the testid +
+    // textContent path (rather than getByText) since /License/i would
+    // match both the "License" header span and the "LICENSE" link.
+    const banner = screen.getByTestId("license-transition-banner");
+    expect(banner.textContent).toMatch(/License/);
     expect(screen.getByText(/AGPL v3/)).toBeInTheDocument();
   });
 

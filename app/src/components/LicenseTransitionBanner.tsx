@@ -64,21 +64,21 @@ export function LicenseTransitionBanner() {
   }
 
   return (
+    // === wave 8 === — banner tone dropped from yellow/amber (alarming)
+    // to paper-200 (subtle warm grey). "License transition" → "License"
+    // so the strip reads as informational, not breaking. AGPL link
+    // preserved per spec.
     <div
       data-testid="license-transition-banner"
-      // ~28-32px tall (py-1 = 8px top+bottom + 11px line height ≈ 27-28px,
-      // up from the prior ~50px two-line body). The full prose moved into
-      // the LICENSE link target — power users who want detail click; the
-      // banner itself just announces the transition.
-      className="flex h-7 items-center gap-2 border-b border-amber-300 bg-amber-100 px-3 text-[11px] text-amber-900 dark:bg-amber-900/30 dark:text-amber-100"
+      className="flex h-7 items-center gap-2 border-b border-[var(--ti-border-faint)] bg-[var(--ti-paper-200)] px-3 text-[11px] text-[var(--ti-ink-600)] dark:border-stone-800 dark:text-[var(--ti-ink-500)]"
     >
       <span className="truncate">
-        <span className="font-semibold">License transition</span>: AGPL v3 draft —{" "}
+        <span className="font-semibold text-[var(--ti-ink-700)] dark:text-[var(--ti-ink-700)]">License</span>: AGPL v3 draft —{" "}
         <a
           href="https://github.com/Tangerine-Intelligence/tangerine-meeting-live/blob/main/LICENSE"
           target="_blank"
           rel="noreferrer noopener"
-          className="underline hover:no-underline"
+          className="text-[var(--ti-orange-700)] underline-offset-2 hover:underline dark:text-[var(--ti-orange-500)]"
         >
           LICENSE
         </a>{" "}
@@ -89,7 +89,7 @@ export function LicenseTransitionBanner() {
         aria-label="Dismiss license transition banner"
         data-testid="license-transition-banner-dismiss"
         onClick={handleDismiss}
-        className="ml-auto flex-shrink-0 rounded px-1 leading-none text-amber-900/70 hover:bg-amber-200/60 hover:text-amber-900 dark:text-amber-100/70 dark:hover:bg-amber-800/40 dark:hover:text-amber-100"
+        className="ml-auto flex-shrink-0 rounded px-1 leading-none text-[var(--ti-ink-500)] hover:bg-[var(--ti-paper-100)] hover:text-[var(--ti-ink-900)] dark:hover:bg-stone-800"
       >
         ×
       </button>

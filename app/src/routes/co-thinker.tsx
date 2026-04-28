@@ -1,9 +1,10 @@
 // === wave 4-D i18n ===
 // === wave 5-α ===
+// === wave 9 === — split-view markdown source layout (positioning).
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation } from "react-router-dom";
-import { Brain, RotateCw, Pencil, Save, X } from "lucide-react";
+import { Brain, RotateCw, Pencil, Save, X, Eye, Columns2, FileCode } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 
 import { Button } from "@/components/ui/button";
@@ -31,6 +32,16 @@ import { getAIToolConfig } from "@/lib/ai-tools-config";
 // drifting" or "user manually triggered 5 heartbeats today → cadence
 // feels too slow" patterns.
 import { logEvent } from "@/lib/telemetry";
+// === wave 9 === — vendor color for the heartbeat ribbon + grounding
+// AtomCards.
+import { vendorColor } from "@/lib/vendor-colors";
+import { AtomCard } from "@/components/AtomCard";
+
+// === wave 9 === — view modes for the split layout. "split" is the
+// default to telegraph design moat #2 (markdown brain transparency):
+// the user always sees the raw markdown next to the rendered prose so
+// they know "this is the file you can git-diff".
+type BrainViewMode = "preview" | "split" | "source";
 
 /**
  * /co-thinker — Phase 3-C real renderer.
@@ -65,6 +76,12 @@ export default function CoThinkerRoute() {
   const [saving, setSaving] = useState(false);
   const [triggerLoading, setTriggerLoading] = useState(false);
   const brainContainerRef = useRef<HTMLDivElement | null>(null);
+  // === wave 9 === — view mode for split-source / preview / source-only.
+  // Defaults to "split" so design moat #2 (markdown transparency) is
+  // visible from the first paint without a click. Persists for the
+  // session via plain useState (not URL — we don't want share-links to
+  // rewrite a teammate's preference).
+  const [viewMode, setViewMode] = useState<BrainViewMode>("split");
 
   // v1.8 Phase 4-C — when arriving via `/co-thinker#sticky-{id}` (the
   // "🍊 View AGI reasoning" affordance on a canvas sticky), scroll to the
@@ -256,9 +273,18 @@ export default function CoThinkerRoute() {
 
   const isEmpty = !loading && content.trim().length === 0;
 
+  // === wave 8 === — derive "alive" state for the brain hero pulse.
+  const lastBeat = status?.last_heartbeat_at ?? null;
+  const isBrainAlive =
+    lastBeat !== null &&
+    Date.now() - new Date(lastBeat).getTime() < 10 * 60 * 1000;
+
   return (
-    <div className="bg-stone-50 dark:bg-stone-950">
-      <header className="ti-no-select flex h-9 items-center gap-2 border-b border-stone-200 bg-stone-50 px-6 font-mono text-[11px] text-stone-500 dark:border-stone-800 dark:bg-stone-950 dark:text-stone-400">
+    // === wave 8 === — soft gradient backdrop so the brain page reads as
+    // "AI thinking" rather than "wiki page". Same hero gradient as
+    // /today; consistent visual language across the two AI-forward routes.
+    <div className="ti-hero-bg">
+      <header className="ti-no-select flex h-9 items-center gap-2 border-b border-stone-200 bg-stone-50/60 px-6 font-mono text-[11px] text-stone-500 backdrop-blur-sm dark:border-stone-800 dark:bg-stone-950/60 dark:text-stone-400">
         <span>~ /co-thinker</span>
         <span className="ml-auto">
           {status?.observations_today != null && (
@@ -268,22 +294,47 @@ export default function CoThinkerRoute() {
       </header>
 
       <div className="mx-auto max-w-3xl px-8 py-8">
-        <header className="mb-4 flex items-start gap-3">
-          <Brain size={20} className="mt-1 text-stone-500" />
+        <header className="mb-6 flex items-start gap-3 animate-ti-rise">
+          {/* === wave 8 === — brain mark gets a soft circular bg + the
+              alive dot when a heartbeat fired in the last 10 min. The
+              orange dot keeps the brand anchor; the halo around it
+              communicates "agent is thinking". */}
+          <div className="relative mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--ti-orange-50)] dark:bg-[var(--ti-paper-200)]">
+            <Brain size={20} className="text-[var(--ti-orange-700)] dark:text-[var(--ti-orange-500)]" />
+            {isBrainAlive && (
+              <span
+                aria-hidden
+                data-testid="co-thinker-alive-dot"
+                className="ti-alive-dot absolute -right-0.5 -top-0.5"
+                style={{ width: "10px", height: "10px" }}
+              />
+            )}
+          </div>
           <div className="flex-1">
             <p className="ti-section-label">{t("coThinker.title")}</p>
-            <h1 className="font-display text-3xl tracking-tight text-stone-900 dark:text-stone-100">
+            <h1 className="mt-1 text-display-md text-[var(--ti-ink-900)] dark:text-[var(--ti-ink-900)]">
               {t("coThinker.title")}
             </h1>
-            <p className="mt-2 max-w-prose text-[12px] leading-relaxed text-stone-500 dark:text-stone-400">
+            <p className="mt-2 max-w-prose text-[13px] leading-relaxed text-[var(--ti-ink-600)] dark:text-[var(--ti-ink-500)]">
               {t("coThinker.subtitle")}
             </p>
           </div>
         </header>
 
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3 border-y border-stone-200 py-3 dark:border-stone-800">
-          <HeartbeatBadge status={status} />
+          {/* === wave 9 === — vendor color for the heartbeat ribbon dot.
+              When the user has a primary AI tool set, the ribbon picks
+              up that vendor's color so the page telegraphs "this brain
+              was last fed via Cursor" / "via Ollama" without making the
+              user click. */}
+          <div className="flex flex-wrap items-center gap-3">
+            <HeartbeatRibbonDot primaryAITool={primaryAITool} status={status} />
+            <HeartbeatBadge status={status} />
+          </div>
           <div className="flex items-center gap-2">
+            {!editing && !isEmpty && (
+              <ViewModeToggle viewMode={viewMode} onChange={setViewMode} />
+            )}
             {!editing && !isEmpty && (
               <Button
                 variant="outline"
@@ -309,8 +360,11 @@ export default function CoThinkerRoute() {
         </div>
 
         {loading ? (
+          // === wave 8 === — thinking-wave skeleton. The first heading
+          // bar runs the green-tinted wave so the "loading" state codes
+          // as "agent is thinking" rather than the generic stone bars.
           <div data-testid="co-thinker-loading" aria-busy="true" className="space-y-4">
-            <Skeleton className="h-5 w-1/3" />
+            <div className="ti-thinking-wave h-5 w-1/3 rounded" />
             <SkeletonText lines={4} />
             <Skeleton className="h-5 w-1/4" />
             <SkeletonText lines={3} />
@@ -339,10 +393,244 @@ export default function CoThinkerRoute() {
           />
         ) : (
           <div ref={brainContainerRef}>
-            <BrainView content={content} />
+            {/* === wave 9 === — split-view default. Renders preview-only
+                / source-only / side-by-side based on the toolbar
+                selection. Design moat #2 made literal: the user always
+                has the raw markdown one click away. */}
+            {viewMode === "preview" && <BrainView content={content} />}
+            {viewMode === "source" && (
+              <SourcePane content={content} testId="co-thinker-source-only" />
+            )}
+            {viewMode === "split" && (
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div data-testid="co-thinker-split-preview">
+                  <BrainView content={content} />
+                </div>
+                <div data-testid="co-thinker-split-source">
+                  <SourcePane content={content} />
+                </div>
+              </div>
+            )}
+            {/* === wave 9 === — Cited atoms (grounding) section.
+                Surfaces the atoms the brain doc references as
+                AtomCards so the user sees the cross-vendor context
+                explicitly, not buried inside paragraphs. */}
+            <CitedAtomsSection content={content} primaryAITool={primaryAITool} />
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   === wave 9 === Heartbeat ribbon dot (vendor color)
+   ============================================================ */
+
+function HeartbeatRibbonDot({
+  primaryAITool,
+  status,
+}: {
+  primaryAITool: string | null;
+  status: CoThinkerStatus | null;
+}) {
+  const last = status?.last_heartbeat_at ?? null;
+  const isAlive =
+    last !== null && Date.now() - new Date(last).getTime() < 10 * 60 * 1000;
+  const isInFlight = false; // future: wire to a `triggerLoading` flag from parent.
+  const vc = vendorColor(primaryAITool);
+  const dotHex = vc.hex.startsWith("linear-gradient") ? "#A855F7" : vc.hex;
+  const tooltip = primaryAITool
+    ? `Last heartbeat used: ${vc.label}`
+    : "No primary AI tool set yet";
+  return (
+    <span
+      data-testid="heartbeat-ribbon-dot"
+      data-vendor={primaryAITool ?? "default"}
+      title={tooltip}
+      className="inline-flex h-3 w-3 shrink-0 items-center justify-center"
+    >
+      <span
+        aria-hidden
+        className="h-2.5 w-2.5 rounded-full"
+        style={{
+          background: dotHex,
+          // Pulse only when alive; static when stale; future "in-flight"
+          // animation can swap to a faster cadence via data-state.
+          animation: isAlive
+            ? "ti-live-pulse 2s ease-in-out infinite"
+            : isInFlight
+              ? "ti-pulse 1.4s ease-in-out infinite"
+              : undefined,
+        }}
+      />
+    </span>
+  );
+}
+
+/* ============================================================
+   === wave 9 === View mode toggle (preview / split / source)
+   ============================================================ */
+
+function ViewModeToggle({
+  viewMode,
+  onChange,
+}: {
+  viewMode: BrainViewMode;
+  onChange: (m: BrainViewMode) => void;
+}) {
+  return (
+    <div
+      role="group"
+      aria-label="Brain view mode"
+      data-testid="co-thinker-view-toggle"
+      className="inline-flex items-center rounded-md border border-stone-200 bg-stone-50 p-0.5 dark:border-stone-800 dark:bg-stone-900"
+    >
+      <ToggleButton
+        active={viewMode === "preview"}
+        onClick={() => onChange("preview")}
+        label="Preview"
+        testId="view-mode-preview"
+      >
+        <Eye size={12} />
+      </ToggleButton>
+      <ToggleButton
+        active={viewMode === "split"}
+        onClick={() => onChange("split")}
+        label="Split"
+        testId="view-mode-split"
+      >
+        <Columns2 size={12} />
+      </ToggleButton>
+      <ToggleButton
+        active={viewMode === "source"}
+        onClick={() => onChange("source")}
+        label="Source"
+        testId="view-mode-source"
+      >
+        <FileCode size={12} />
+      </ToggleButton>
+    </div>
+  );
+}
+
+function ToggleButton({
+  active,
+  onClick,
+  label,
+  testId,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+  testId: string;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      data-testid={testId}
+      className={
+        "inline-flex items-center gap-1 rounded px-2 py-0.5 text-[11px] font-medium transition-colors duration-fast " +
+        (active
+          ? "bg-white text-[var(--ti-orange-700)] shadow-sm dark:bg-stone-800 dark:text-[var(--ti-orange-500)]"
+          : "text-stone-500 hover:bg-stone-100 dark:text-stone-400 dark:hover:bg-stone-800")
+      }
+    >
+      {children}
+      <span>{label}</span>
+    </button>
+  );
+}
+
+/* ============================================================
+   === wave 9 === Source pane — raw markdown with line numbers (iA Writer style)
+   ============================================================ */
+
+function CitedAtomsSection({
+  content,
+  primaryAITool,
+}: {
+  content: string;
+  primaryAITool: string | null;
+}) {
+  // Pull every /memory/...md reference out of the brain doc, dedupe,
+  // and render up to 6 as AtomCards. Only the primary AI tool is
+  // available as a vendor proxy here (no per-atom vendor metadata yet).
+  const citations = useMemo(() => {
+    const out: { path: string; line: number | null }[] = [];
+    const seen = new Set<string>();
+    const re = new RegExp(CITATION_REGEX.source, "g");
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(content)) !== null) {
+      const path = m[1];
+      const line = m[2] ? Number.parseInt(m[2], 10) : null;
+      const k = `${path}#${line ?? ""}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      out.push({ path, line });
+      if (out.length >= 6) break;
+    }
+    return out;
+  }, [content]);
+
+  if (citations.length === 0) return null;
+
+  return (
+    <section
+      data-testid="co-thinker-grounding"
+      className="mt-8"
+      aria-label="Cited atoms (grounding)"
+    >
+      <h2 className="ti-section-display mb-3">Cited atoms (grounding)</h2>
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        {citations.map((c, i) => {
+          // Atom basename = last path segment without `.md`.
+          const slug = c.path.split("/").pop() ?? c.path;
+          const title = slug.replace(/\.md$/, "").replace(/[-_]/g, " ");
+          return (
+            <AtomCard
+              key={`grounding-${i}-${c.path}`}
+              vendor={primaryAITool}
+              title={title}
+              sourcePath={c.path.replace(/^\/memory\//, "")}
+              linkTo={c.path}
+              testId={`grounding-atom-${i}`}
+            />
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function SourcePane({
+  content,
+  testId,
+}: {
+  content: string;
+  testId?: string;
+}) {
+  // Split into lines so the CSS counter can prefix each with a line
+  // number. Empty trailing line stays so the gutter renders the final
+  // newline gracefully.
+  const lines = content.length === 0 ? [""] : content.split("\n");
+  return (
+    <div
+      data-testid={testId ?? "co-thinker-source-pane"}
+      className="ti-md-source"
+      role="textbox"
+      aria-label="Raw markdown source"
+      aria-readonly="true"
+    >
+      {lines.map((line, i) => (
+        <span key={i} className="ti-md-line">
+          {line || "​"}
+        </span>
+      ))}
     </div>
   );
 }
@@ -547,9 +835,14 @@ function BrainView({ content }: { content: string }) {
 
 function SectionCard({ heading, body }: { heading: string; body: string }) {
   return (
-    <section className="rounded-md border border-stone-200 bg-white p-5 dark:border-stone-800 dark:bg-stone-900">
+    <section className="rounded-md border border-stone-200 bg-white/70 p-5 backdrop-blur-sm dark:border-stone-800 dark:bg-stone-900/70">
+      {/* === wave 8 === — section headers in display serif (not all-caps
+          tracked sans). Softer, more "thinking" than admin-panel. */}
       {heading && (
-        <h2 className="ti-section-label mb-3 text-stone-900 dark:text-stone-100">
+        <h2
+          data-testid="co-thinker-section-heading"
+          className="ti-section-display mb-3"
+        >
           {heading}
         </h2>
       )}

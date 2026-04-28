@@ -23,6 +23,9 @@ import {
   Network,
   Workflow,
   // === end v2.0-beta.1 graphs ===
+  // === wave 8 === — collapsible-section chevrons.
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { signOut } from "@/lib/auth";
@@ -66,6 +69,9 @@ export function Sidebar() {
   const memoryRoot = useStore((s) => s.ui.memoryRoot);
   const samplesSeeded = useStore((s) => s.ui.samplesSeeded);
   const togglePalette = useStore((s) => s.ui.togglePalette);
+  // === wave 8 === — per-section collapse state from store.
+  const sidebarSections = useStore((s) => s.ui.sidebarSections);
+  const toggleSidebarSection = useStore((s) => s.ui.toggleSidebarSection);
   const [tree, setTree] = useState<MemoryNode[]>([]);
   const [titles, setTitles] = useState<Record<string, string>>({});
 
@@ -137,15 +143,29 @@ export function Sidebar() {
 
   return (
     <aside className="ti-no-select flex h-full w-[240px] shrink-0 flex-col border-r border-stone-200 bg-stone-50 dark:border-stone-800 dark:bg-stone-950">
-      {/* Header */}
+      {/* Header — === wave 8 === bigger, more recognizable Tangerine
+          mark. The 5×5 orange square is replaced by a 22×22 rounded
+          tile with a typeset T in display serif so the brand reads at
+          a glance instead of looking like a randomly placed dot. */}
       <div className="flex items-center justify-between border-b border-stone-200 px-3 py-3 dark:border-stone-800">
         <NavLink to="/memory" className="flex items-center gap-2" aria-label="Memory">
           <div
-            className="h-5 w-5 rounded"
-            style={{ background: "var(--ti-orange-500)" }}
+            data-testid="tangerine-logo"
+            className="flex h-[22px] w-[22px] items-center justify-center rounded-md text-[14px] font-semibold text-white shadow-sm"
+            style={{
+              background:
+                "linear-gradient(135deg, var(--ti-orange-500) 0%, var(--ti-orange-700) 100%)",
+              fontFamily: "var(--ti-font-display)",
+              lineHeight: "1",
+            }}
             aria-hidden
-          />
-          <span className="text-[13px] font-medium tracking-tight text-stone-900 dark:text-stone-100">
+          >
+            T
+          </div>
+          <span
+            className="text-[14px] font-semibold tracking-tight text-[var(--ti-ink-900)] dark:text-[var(--ti-ink-900)]"
+            style={{ fontFamily: "var(--ti-font-display)" }}
+          >
             Tangerine
           </span>
         </NavLink>
@@ -163,6 +183,21 @@ export function Sidebar() {
       {/* Scrollable middle */}
       {/* === wave 4-D i18n === */}
       <div className="flex-1 overflow-y-auto">
+        {/* === wave 9 === — AI TOOLS section moves to TOP. Design moat #4
+            says AI tools are first-class; visually elevating them above
+            Sources is the literal expression of that claim. The header
+            picks up the elevated display-serif treatment via `ti-section-elevated`. */}
+        <Section
+          label={t("sidebar.aiTools")}
+          subtitle={t("sidebar.subtitleAITools")}
+          collapsible
+          expanded={sidebarSections.aiTools}
+          onToggle={() => toggleSidebarSection("aiTools")}
+          headerStyle="elevated"
+        >
+          <AIToolsSection />
+        </Section>
+
         {/* VIEWS — primary nav for the Chief of Staff surface */}
         <Section label={t("sidebar.views")} subtitle={t("sidebar.subtitleViews")}>
           <ViewLink to="/today" icon={Calendar} label={t("sidebar.today")} />
@@ -211,8 +246,15 @@ export function Sidebar() {
           </div>
         </Section>
 
-        {/* SOURCES section */}
-        <Section label={t("sidebar.sources")} subtitle={t("sidebar.subtitleSources")}>
+        {/* SOURCES section — === wave 8 === collapsible with count chip. */}
+        <Section
+          label={t("sidebar.sources")}
+          subtitle={t("sidebar.subtitleSources")}
+          collapsible
+          expanded={sidebarSections.sources}
+          onToggle={() => toggleSidebarSection("sources")}
+          count={SOURCES.length}
+        >
           <ul>
             {SOURCES.map((s) => (
               <li key={s.id}>
@@ -223,20 +265,23 @@ export function Sidebar() {
         </Section>
 
         <Section
-          label={t("sidebar.aiTools")}
-          subtitle={t("sidebar.subtitleAITools")}
-        >
-          <AIToolsSection />
-        </Section>
-
-        <Section
           label={t("sidebar.activeAgents")}
           subtitle={t("sidebar.subtitleActiveAgents")}
+          collapsible
+          expanded={sidebarSections.activeAgents}
+          onToggle={() => toggleSidebarSection("activeAgents")}
         >
           <ActiveAgentsSection />
         </Section>
 
-        <Section label={t("sidebar.advanced")} subtitle={t("sidebar.subtitleAdvanced")}>
+        <Section
+          label={t("sidebar.advanced")}
+          subtitle={t("sidebar.subtitleAdvanced")}
+          collapsible
+          expanded={sidebarSections.advanced}
+          onToggle={() => toggleSidebarSection("advanced")}
+          count={SINKS.length}
+        >
           <ul>
             {SINKS.map((s) => (
               <li key={s.id}>
@@ -247,8 +292,10 @@ export function Sidebar() {
         </Section>
       </div>
 
-      {/* Footer */}
-      <div className="border-t border-stone-200 px-2 py-2 dark:border-stone-800">
+      {/* Footer — === wave 8 === subtle warm tint zone groups the
+          system controls (sync / settings / theme / sign-out) so the
+          eye reads them as a cluster rather than four floating items. */}
+      <div className="ti-zone-quiet border-t border-stone-200 px-2 py-2 dark:border-stone-800">
         <SyncStatusIndicator />
         <NavLink
           to="/settings"
@@ -284,29 +331,102 @@ function Section({
   children,
   rightHint,
   subtitle,
+  collapsible,
+  expanded,
+  onToggle,
+  count,
+  headerStyle = "default",
 }: {
   label: string;
   children: React.ReactNode;
   rightHint?: string;
   /** Tiny gray one-liner under the section label, used to explain CoS roles. */
   subtitle?: string;
+  // === wave 8 === — collapsibility props. When collapsible=true, the
+  // header becomes a button that toggles `expanded`. The count chip
+  // shows when collapsed so the user knows how many items hide below.
+  collapsible?: boolean;
+  expanded?: boolean;
+  onToggle?: () => void;
+  count?: number;
+  // === wave 9 === — `elevated` swaps the all-caps tracked sans label
+  // for the display-serif treatment so the AI Tools section reads as
+  // first-class while every other section keeps the prior subtle style.
+  headerStyle?: "default" | "elevated";
 }) {
-  return (
-    <div className="border-b border-stone-200/60 px-2 py-3 dark:border-stone-800/60">
-      <div className="mb-1 flex items-center justify-between px-1">
-        <span className="ti-section-label">{label}</span>
-        {rightHint && (
-          <span className="font-mono text-[10px] text-stone-400 dark:text-stone-500">
-            {rightHint}
+  const isExpanded = !collapsible || expanded;
+  // === wave 8 === — bumped section header to font-bold (700) from the
+  // prior 600 in `.ti-section-label`. The class still anchors tracking
+  // and color; we override weight inline to keep the global utility
+  // unchanged for non-sidebar use.
+  // === wave 9 === — elevated label uses ti-section-elevated (display
+  // serif, ti-orange-700, no caps).
+  const isElevated = headerStyle === "elevated";
+  const headerInner = (
+    <>
+      <span className="flex items-center gap-1.5">
+        {collapsible && (
+          isExpanded ? (
+            <ChevronDown size={11} className="text-[var(--ti-ink-400)]" />
+          ) : (
+            <ChevronRight size={11} className="text-[var(--ti-ink-400)]" />
+          )
+        )}
+        {isElevated ? (
+          <span className="ti-section-elevated" data-testid="sidebar-section-elevated">
+            {label}
+          </span>
+        ) : (
+          <span
+            className="ti-section-label"
+            style={{ fontWeight: 700 }}
+          >
+            {label}
           </span>
         )}
-      </div>
-      {subtitle && (
+        {collapsible && !isExpanded && typeof count === "number" && (
+          <span className="font-mono text-[10px] text-[var(--ti-ink-400)]">
+            ({count})
+          </span>
+        )}
+      </span>
+      {rightHint && (
+        <span className="font-mono text-[10px] text-stone-400 dark:text-stone-500">
+          {rightHint}
+        </span>
+      )}
+    </>
+  );
+  // === wave 9 === — elevated section gets a soft warm wash so the AI
+  // Tools zone reads as the first-class surface in the rail. Keeps the
+  // ordinary border/padding for the default treatment so non-elevated
+  // sections look unchanged from wave 8.
+  const wrapperClass = isElevated
+    ? "ti-zone-warm border-b border-stone-200/60 px-2 py-3 dark:border-stone-800/60"
+    : "border-b border-stone-200/60 px-2 py-2.5 dark:border-stone-800/60";
+  return (
+    <div className={wrapperClass}>
+      {collapsible ? (
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={isExpanded}
+          data-testid={`sidebar-section-${label.toLowerCase().replace(/\s+/g, "-")}`}
+          className="mb-1 flex w-full items-center justify-between rounded px-1 py-0.5 text-left transition-colors duration-fast hover:bg-stone-100 dark:hover:bg-stone-900"
+        >
+          {headerInner}
+        </button>
+      ) : (
+        <div className="mb-1 flex items-center justify-between px-1">
+          {headerInner}
+        </div>
+      )}
+      {isExpanded && subtitle && (
         <p className="mb-2 px-1 text-[10px] leading-tight text-stone-400 dark:text-stone-500">
           {subtitle}
         </p>
       )}
-      {children}
+      {isExpanded && children}
     </div>
   );
 }
@@ -325,7 +445,10 @@ function ViewLink({
       to={to}
       className={({ isActive }) =>
         cn(
-          "flex items-center gap-2 rounded px-2 py-1 text-[12px]",
+          // === wave 8 === — slightly tighter vertical padding (py-0.5)
+          // to drop per-row height to ~28px so the dense lower sections
+          // don't dominate the rail.
+          "flex items-center gap-2 rounded px-2 py-0.5 text-[12px]",
           isActive
             ? "bg-[var(--ti-orange-50)] text-[var(--ti-orange-700)] dark:bg-stone-800 dark:text-[var(--ti-orange-500)]"
             : "text-stone-700 hover:bg-stone-100 dark:text-stone-300 dark:hover:bg-stone-900",
@@ -345,7 +468,10 @@ function SourceLink({ def }: { def: SourceDef }) {
       to={`/sources/${def.id}`}
       className={({ isActive }) =>
         cn(
-          "flex items-center gap-2 rounded px-2 py-1 text-[12px]",
+          // === wave 8 === — slightly tighter vertical padding (py-0.5)
+          // to drop per-row height to ~28px so the dense lower sections
+          // don't dominate the rail.
+          "flex items-center gap-2 rounded px-2 py-0.5 text-[12px]",
           isActive
             ? "bg-[var(--ti-orange-50)] text-[var(--ti-orange-700)] dark:bg-stone-800 dark:text-[var(--ti-orange-500)]"
             : "text-stone-700 hover:bg-stone-100 dark:text-stone-300 dark:hover:bg-stone-900",
@@ -366,7 +492,10 @@ function SinkLink({ def }: { def: SinkDef }) {
       to={`/sinks/${def.id}`}
       className={({ isActive }) =>
         cn(
-          "flex items-center gap-2 rounded px-2 py-1 text-[12px]",
+          // === wave 8 === — slightly tighter vertical padding (py-0.5)
+          // to drop per-row height to ~28px so the dense lower sections
+          // don't dominate the rail.
+          "flex items-center gap-2 rounded px-2 py-0.5 text-[12px]",
           isActive
             ? "bg-[var(--ti-orange-50)] text-[var(--ti-orange-700)] dark:bg-stone-800 dark:text-[var(--ti-orange-500)]"
             : "text-stone-700 hover:bg-stone-100 dark:text-stone-300 dark:hover:bg-stone-900",

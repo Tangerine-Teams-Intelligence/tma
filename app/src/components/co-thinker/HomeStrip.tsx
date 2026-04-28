@@ -31,6 +31,11 @@ import { Link } from "react-router-dom";
 import { coThinkerStatus, type CoThinkerStatus } from "@/lib/tauri";
 import { useStore } from "@/lib/store";
 import { relativeTime } from "@/lib/co-thinker";
+// === wave 9 === — vendor color for the heartbeat dot. The dot picks up
+// the color of the vendor whose channel served the most recent
+// heartbeat so the strip telegraphs "this beat went through Cursor"
+// vs "this beat went through Ollama". Cross-vendor visibility moat.
+import { vendorColor } from "@/lib/vendor-colors";
 
 /** Poll cadence for `coThinkerStatus()`. 30s keeps "5 min ago" → "6 min
  *  ago" rolling without hammering the bridge. */
@@ -42,6 +47,10 @@ const RECENT_ACTIVITY_MS = 10 * 60 * 1000;
 
 export function HomeStrip() {
   const agiParticipation = useStore((s) => s.ui.agiParticipation);
+  // === wave 9 === — the strip's heartbeat dot tints to the user's
+  // primary AI tool (which is the channel each scheduled heartbeat
+  // routes through). Telegraphs cross-vendor visibility on every page.
+  const primaryAITool = useStore((s) => s.ui.primaryAITool);
   const [status, setStatus] = useState<CoThinkerStatus | null>(null);
 
   // Poll status — read on mount, then every POLL_INTERVAL_MS. Skipped
@@ -76,12 +85,23 @@ export function HomeStrip() {
   const observations = status?.observations_today ?? 0;
   const isRecent = lastHeartbeat !== null &&
     Date.now() - new Date(lastHeartbeat).getTime() < RECENT_ACTIVITY_MS;
+  // === wave 9 === — vendor color for the heartbeat dot. When the
+  // primary AI tool is set, the dot tints to that vendor's color; we
+  // also surface the vendor name in the tooltip so the user can see
+  // which AI just answered. Apple-Intelligence falls back to a solid
+  // purple since it's a CSS gradient (can't tint a 1.5px dot with one).
+  const vc = vendorColor(primaryAITool);
+  const dotHex = vc.hex.startsWith("linear-gradient") ? "#A855F7" : vc.hex;
+  const tooltip = primaryAITool
+    ? `Last heartbeat used: ${vc.label}`
+    : "No primary AI tool set yet";
 
   return (
     <Link
       to="/co-thinker"
       data-testid="co-thinker-home-strip"
       data-recent={isRecent ? "true" : "false"}
+      data-vendor={primaryAITool ?? "default"}
       className={
         "ti-no-select flex h-7 items-center gap-2 border-b border-stone-200 " +
         "bg-stone-50 px-4 font-mono text-[11px] text-stone-600 " +
@@ -90,23 +110,35 @@ export function HomeStrip() {
         "dark:hover:bg-stone-900"
       }
       aria-label="Co-thinker status — click to open"
+      title={tooltip}
     >
+      {/* === wave 9 === — heartbeat dot picks up the primary AI tool's
+          vendor color. When recent activity → vendor-colored alive halo
+          (semantic: "this vendor is currently feeding the brain").
+          Stale → solid vendor dot. Empty (no primary tool) → orange. */}
+      {isRecent ? (
+        <span
+          aria-hidden
+          data-testid="co-thinker-home-strip-dot"
+          className="ti-alive-dot"
+          style={{ width: "8px", height: "8px", background: dotHex }}
+        />
+      ) : (
+        <span
+          aria-hidden
+          data-testid="co-thinker-home-strip-dot"
+          className="inline-block h-1.5 w-1.5 flex-shrink-0 rounded-full"
+          style={{ background: primaryAITool ? dotHex : "var(--ti-orange-500)" }}
+        />
+      )}
+      {/* === wave 8 === — Co-thinker label uses display serif at body
+          size for editorial gravitas without breaking the strip rhythm. */}
       <span
-        aria-hidden
-        data-testid="co-thinker-home-strip-dot"
-        className={
-          "inline-block h-1.5 w-1.5 flex-shrink-0 rounded-full " +
-          "bg-[var(--ti-orange-500)]"
-        }
-        style={
-          isRecent
-            ? {
-                animation: "ti-pulse 1.4s ease-in-out infinite",
-              }
-            : undefined
-        }
-      />
-      <span className="text-stone-700 dark:text-stone-200">Co-thinker</span>
+        className="text-stone-700 dark:text-stone-200"
+        style={{ fontFamily: "var(--ti-font-display)", fontSize: "12px", fontWeight: 500 }}
+      >
+        Co-thinker
+      </span>
       <span aria-hidden>·</span>
       <span data-testid="co-thinker-home-strip-heartbeat">
         last heartbeat {lastHeartbeat ? relativeTime(lastHeartbeat) : "never"}
@@ -114,12 +146,23 @@ export function HomeStrip() {
       {/* Observations counter is gated on a real heartbeat. Pre-init the
           strip would otherwise flash "0 things watching", which reads as
           a broken empty state — friendlier to point at the Initialize CTA
-          on /co-thinker until the first heartbeat actually fires. */}
+          on /co-thinker until the first heartbeat actually fires.
+          === wave 8 === — count rendered with the display serif so the
+          number gets its own visual weight on the strip. */}
       {lastHeartbeat ? (
         <>
           <span aria-hidden>·</span>
           <span data-testid="co-thinker-home-strip-observations">
-            {observations} thing{observations === 1 ? "" : "s"} watching
+            <span
+              style={{
+                fontFamily: "var(--ti-font-display)",
+                fontWeight: 600,
+                color: "var(--ti-ink-800)",
+              }}
+            >
+              {observations}
+            </span>{" "}
+            thing{observations === 1 ? "" : "s"} watching
           </span>
         </>
       ) : (

@@ -52,28 +52,33 @@ export function EmptyState({
 }: EmptyStateProps) {
   const wrapperClass =
     variant === "card"
-      ? "rounded-md border border-dashed border-stone-300 bg-stone-100/40 p-8 text-center dark:border-stone-700 dark:bg-stone-900/40"
-      : "p-6 text-center";
+      ? "rounded-lg border border-dashed border-stone-300 bg-stone-100/40 p-10 text-center dark:border-stone-700 dark:bg-stone-900/40"
+      : "p-8 text-center";
   return (
     <section
       data-testid={testId ?? "empty-state"}
       className={wrapperClass}
     >
       <div className="mx-auto flex max-w-sm flex-col items-center gap-3">
+        {/* === wave 8 === — bigger icon (16x16 box, 48px target inside)
+            wrapped in a soft circular paper-200 tint so the empty state
+            has a visual anchor instead of a flat lucide line. */}
         <div
           aria-hidden
-          className="flex h-10 w-10 items-center justify-center text-stone-400 dark:text-stone-500"
+          className="flex h-16 w-16 items-center justify-center rounded-full bg-[var(--ti-paper-200)] text-[var(--ti-ink-500)] dark:bg-[var(--ti-paper-200)] dark:text-[var(--ti-ink-500)]"
         >
           {icon}
         </div>
-        <h3 className="font-display text-base tracking-tight text-stone-900 dark:text-stone-100">
+        {/* === wave 8 === — title in display serif at slightly larger
+            size for proper hierarchy. */}
+        <h3 className="font-display text-lg tracking-tight text-[var(--ti-ink-900)] dark:text-[var(--ti-ink-900)]">
           {title}
         </h3>
-        <p className="text-[12px] leading-relaxed text-stone-600 dark:text-stone-400">
+        <p className="text-[13px] leading-relaxed text-[var(--ti-ink-600)] dark:text-[var(--ti-ink-500)]">
           {description}
         </p>
         {(primaryAction || secondaryAction) && (
-          <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
+          <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
             {primaryAction && (
               <Button size="sm" onClick={primaryAction.onClick}>
                 {primaryAction.label}
@@ -90,14 +95,19 @@ export function EmptyState({
             )}
           </div>
         )}
+        {/* === wave 8 === — help link rendered as an outline-style
+            button at the bottom rather than a tiny mono link. Keeps the
+            mono affordance for the underline reveal but gains a
+            tappable target. */}
         {helpHref && (
           <a
             href={helpHref}
             target="_blank"
             rel="noopener noreferrer"
-            className="mt-1 font-mono text-[11px] text-[var(--ti-orange-500)] underline-offset-2 hover:underline"
+            className="mt-3 inline-flex items-center gap-1.5 rounded-md border border-[var(--ti-border-faint)] px-3 py-1 font-mono text-[11px] text-[var(--ti-ink-700)] underline-offset-2 transition-colors duration-fast hover:border-[var(--ti-orange-300)] hover:bg-[var(--ti-orange-50)] hover:text-[var(--ti-orange-700)] dark:hover:bg-[var(--ti-paper-200)]"
           >
             {helpLabel ?? "Learn more"}
+            <span aria-hidden>→</span>
           </a>
         )}
       </div>

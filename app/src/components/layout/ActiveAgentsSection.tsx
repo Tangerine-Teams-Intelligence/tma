@@ -10,6 +10,10 @@ import {
 } from "lucide-react";
 import { getActiveAgents, type AgentActivity } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
+// === wave 9 === — vendor color tints the running-status dot so the
+// sidebar telegraphs which vendor is active per agent (cross-vendor
+// visibility moat).
+import { vendorColor } from "@/lib/vendor-colors";
 
 /**
  * ACTIVE AGENTS — v2.0-beta.2 sidebar section. Cross-team visibility into
@@ -161,7 +165,12 @@ function ActiveAgentRow({ agent }: { agent: AgentActivity }) {
   };
 
   const subtitle = agent.task ?? "(idle)";
-  const tooltip = `${agent.agent} · ${agent.user} · ${subtitle} · ${agent.last_active} ago`;
+  // === wave 9 === — vendor color resolves per agent so the running
+  // status dot tints to the agent's vendor brand (Cursor blue,
+  // Claude Code purple, etc.). vendorColor accepts arbitrary strings
+  // including the Rust-side "Claude Code" / "Cursor" — it normalizes.
+  const vc = vendorColor(agent.agent);
+  const tooltip = `${agent.agent} · ${agent.user} · ${subtitle} · ${agent.last_active} ago · ${vc.label}`;
 
   return (
     <button
@@ -169,6 +178,7 @@ function ActiveAgentRow({ agent }: { agent: AgentActivity }) {
       onClick={onClick}
       data-testid={`active-agent-row-${agent.user}-${agent.agent}`}
       title={tooltip}
+      data-vendor={agent.agent.toLowerCase().replace(/\s+/g, "-")}
       className={cn(
         "flex w-full items-center gap-2 rounded px-2 py-1 text-left text-[12px]",
         "text-stone-700 hover:bg-stone-100 dark:text-stone-300 dark:hover:bg-stone-900",
@@ -182,7 +192,7 @@ function ActiveAgentRow({ agent }: { agent: AgentActivity }) {
           @{agent.user}
         </span>
       </span>
-      <StatusDot status={agent.status} />
+      <StatusDot status={agent.status} vendorHex={vc.hex} />
       <span className="shrink-0 font-mono text-[10px] text-stone-400 dark:text-stone-500">
         {agent.last_active}
       </span>
@@ -224,15 +234,30 @@ function agentIcon(agent: string): LucideIcon {
 
 /**
  * Tri-state dot:
- *   running → green
+ *   running → vendor color (wave 9 — was generic green)
  *   idle    → grey
  *   error   → red
  */
-function StatusDot({ status }: { status: AgentActivity["status"] }) {
+function StatusDot({
+  status,
+  vendorHex,
+}: {
+  status: AgentActivity["status"];
+  vendorHex?: string;
+}) {
   if (status === "running") {
+    // === wave 9 === — running dot picks up the agent's vendor color
+    // via inline background. Apple-Intelligence is a gradient string;
+    // we fall back to its anchor purple in that case.
+    const color = vendorHex && !vendorHex.startsWith("linear-gradient")
+      ? vendorHex
+      : vendorHex?.startsWith("linear-gradient")
+        ? "#A855F7"
+        : undefined;
     return (
       <span
         className="ti-live-dot h-1.5 w-1.5 shrink-0"
+        style={color ? { background: color } : undefined}
         title="Running"
         aria-label="Running"
         data-testid="status-dot-running"

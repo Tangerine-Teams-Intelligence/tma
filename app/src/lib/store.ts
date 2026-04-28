@@ -112,6 +112,20 @@ interface UiSlice {
   /** Path to the user's memory dir (where source files land). */
   memoryRoot: string;
   sidebarCollapsed: boolean;
+  // === wave 8 === — per-section collapse state for the sidebar.
+  // Default: Sources collapsed (rarely accessed), AI Tools expanded
+  // (the user's primary mental model), Advanced collapsed (mechanism,
+  // not a feature). Active Agents stays expanded so cross-team
+  // visibility reads at a glance.
+  sidebarSections: {
+    sources: boolean;
+    aiTools: boolean;
+    advanced: boolean;
+    activeAgents: boolean;
+  };
+  toggleSidebarSection: (
+    key: "sources" | "aiTools" | "advanced" | "activeAgents",
+  ) => void;
   /** Cmd+K command palette visibility. */
   paletteOpen: boolean;
   /** True when user chose "Skip — local memory only" on auth. */
@@ -620,6 +634,23 @@ export const useStore = create<Store>()(
         resolvedTheme: resolveTheme("system"),
         memoryRoot: defaultMemoryRoot(),
         sidebarCollapsed: false,
+        // === wave 8 === — see slice doc above for default rationale.
+        sidebarSections: {
+          sources: false,
+          aiTools: true,
+          advanced: false,
+          activeAgents: true,
+        },
+        toggleSidebarSection: (key) =>
+          set((s) => ({
+            ui: {
+              ...s.ui,
+              sidebarSections: {
+                ...s.ui.sidebarSections,
+                [key]: !s.ui.sidebarSections[key],
+              },
+            },
+          })),
         paletteOpen: false,
         localOnly: false,
         samplesSeeded: false,
@@ -1166,6 +1197,11 @@ export const useStore = create<Store>()(
             authMode: s.ui.authMode,
             billingStatus: s.ui.billingStatus,
             trialExpiry: s.ui.trialExpiry,
+            // === wave 8 === — sidebar collapse state. Persisted so
+            // the user's section preferences carry forward across
+            // launches (a power user collapses Sources once → stays
+            // that way).
+            sidebarSections: s.ui.sidebarSections,
           },
           skills: { meetingConfig: s.skills.meetingConfig },
         }) as unknown as Store,
@@ -1321,6 +1357,27 @@ export const useStore = create<Store>()(
             authMode: p?.ui?.authMode ?? current.ui.authMode,
             billingStatus: p?.ui?.billingStatus ?? current.ui.billingStatus,
             trialExpiry: p?.ui?.trialExpiry ?? current.ui.trialExpiry,
+            // === wave 8 === — sidebar collapse state. Back-fill any
+            // missing keys with the current default so a v1.x install
+            // (no `sidebarSections` persisted) upgrades cleanly.
+            sidebarSections: {
+              sources:
+                (p?.ui as { sidebarSections?: { sources?: boolean } } | undefined)
+                  ?.sidebarSections?.sources ??
+                current.ui.sidebarSections.sources,
+              aiTools:
+                (p?.ui as { sidebarSections?: { aiTools?: boolean } } | undefined)
+                  ?.sidebarSections?.aiTools ??
+                current.ui.sidebarSections.aiTools,
+              advanced:
+                (p?.ui as { sidebarSections?: { advanced?: boolean } } | undefined)
+                  ?.sidebarSections?.advanced ??
+                current.ui.sidebarSections.advanced,
+              activeAgents:
+                (p?.ui as { sidebarSections?: { activeAgents?: boolean } } | undefined)
+                  ?.sidebarSections?.activeAgents ??
+                current.ui.sidebarSections.activeAgents,
+            },
           },
           skills: {
             ...current.skills,

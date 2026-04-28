@@ -14,17 +14,50 @@
   --ti-orange-100: #FFE4CD;
   --ti-orange-200: #FFD0A8;
   --ti-orange-300: #FFB477;
+  /* === wave 8 === — deeper emphasis end of the orange ramp. Used for
+     hero numerals + display headlines on /today so the brand mark gets a
+     real visual anchor instead of all type living in stone-900. */
+  --ti-orange-900: #6B2A00;
   --ti-navy-900: #1A1A2E;
   --ti-navy-700: #2A2A4E;
+  /* === wave 8 === — fill out the navy/blue ramp so the deep-brand
+     #1A1A2E can pair with mid + light siblings (graph nodes, "thinking"
+     accents, info-state surfaces). Aliased to --ti-blue-* under the new
+     names so tailwind utilities can opt in without rewiring legacy
+     navy call sites. */
+  --ti-blue-900: #1A1A2E;
+  --ti-blue-700: #2A2A4E;
+  --ti-blue-500: #4F4F8C;
+  --ti-blue-200: #C9C9DE;
+  /* === wave 8 === — "alive AI" green for heartbeat / online dots.
+     Picked to carry meaning at small sizes (1.5px dots) without
+     screaming, and to read as "agent online" not "success state". */
+  --ti-green-500: #10B981;
+  --ti-green-200: #A7F0D2;
   --ti-paper-50: #FFFBF5;
   --ti-paper-100: #FAF6EE;
   --ti-paper-200: #F0EAE0;
+  /* === wave 8 === — a 9-step ink ramp gives proper hierarchy. The
+     existing 300/500/700/900 anchors are the load-bearing values that
+     existing components reach for; the in-betweens (100/200/400/600/800)
+     are new and used by the polish-pass components for subtle text
+     gradations (e.g. dimmed labels vs body text vs heading). */
   --ti-ink-900: #1C1917;
+  --ti-ink-800: #292524;
   --ti-ink-700: #44403C;
+  --ti-ink-600: #57534E;
   --ti-ink-500: #78716C;
+  --ti-ink-400: #918B83;
   --ti-ink-300: #A8A29E;
+  --ti-ink-200: #D6D3D1;
+  --ti-ink-100: #E7E5E4;
   --ti-border-faint: #E7E5E4;
   --ti-border-default: #D6D3D1;
+  /* === wave 8 === — extra status palette. `--ti-warning` (amber) is
+     softer than `--ti-warn` so banners feel informational rather than
+     alarming; `--ti-info` is a blue tone suitable for tip-style strips. */
+  --ti-warning: #D97706;
+  --ti-info: #2563EB;
 
   /* Polish 1 (v1.9.0-beta.3) — `--ti-bg-elevated` is the surface tone for
      suggestion-tier components (Banner / Modal card / Toast). In light it's
@@ -43,7 +76,12 @@
 
   --ti-font-sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
   --ti-font-mono: "JetBrains Mono", Consolas, "SF Mono", monospace;
-  --ti-font-display: "EB Garamond", "Charter", Georgia, serif;
+  /* === wave 8 === — Fraunces is loaded via Google Fonts in index.html.
+     EB Garamond was the prior fallback; we keep it as a graceful
+     degradation tier so legacy systems without the network load still
+     get a serif display rather than falling all the way back to the
+     sans body face. */
+  --ti-font-display: "Fraunces", "EB Garamond", "Charter", Georgia, serif;
 
   --ti-radius: 8px;
   /* `--ti-dur-fast` predates the v2 spec; spec §3 calls for 100ms but several
@@ -77,11 +115,26 @@
   --ti-paper-100: #1A1A2E;
   --ti-paper-200: #25253A;
   --ti-ink-900: #FAF6EE;
+  --ti-ink-800: #E5DFD0;
   --ti-ink-700: #C4C0B5;
+  --ti-ink-600: #A8A4A0;
   --ti-ink-500: #8A8A95;
+  --ti-ink-400: #6E6E80;
   --ti-ink-300: #4A4A5E;
+  --ti-ink-200: #353545;
+  --ti-ink-100: #2A2A3A;
   --ti-border-faint: #2A2A3A;
   --ti-border-default: #353545;
+  /* === wave 8 === — green/blue/orange-900 stay reasonably saturated in
+     dark; orange-900 lifts so the deep emphasis doesn't disappear into
+     the dark navy background. */
+  --ti-orange-900: #B84900;
+  --ti-blue-500: #6E6EAA;
+  --ti-blue-200: #4A4A6E;
+  --ti-green-500: #34D399;
+  --ti-green-200: #134E36;
+  --ti-warning: #F59E0B;
+  --ti-info: #60A5FA;
 
   /* Polish 1 (v1.9.0-beta.3) — elevated surface in dark sits above
      --ti-paper-100 (the body bg) so suggestion strips read as "lifted". */
@@ -287,3 +340,486 @@ body {
   outline-offset: 2px;
   border-radius: 4px;
 }
+
+/* ============================================================
+   === wave 8 === Polish pass v1.9.4 — visual personality.
+   These additions give the app a brand voice without changing
+   any user-facing feature surface.
+   ============================================================ */
+
+/* Display sizes — three tiers above the existing Tailwind text-3xl ceiling
+   used by /today + /co-thinker. The numbers are the editorial gravitas
+   anchor: hero numerals on /today land in `text-display-xl`, page titles
+   in `text-display-lg`, sub-heroes in `text-display-md`. Line-heights are
+   intentionally tight (1.1) so the serif display feels typeset, not body. */
+.text-display-xl {
+  font-family: var(--ti-font-display);
+  font-size: 60px;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  font-weight: 400;
+}
+.text-display-lg {
+  font-family: var(--ti-font-display);
+  font-size: 48px;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  font-weight: 400;
+}
+.text-display-md {
+  font-family: var(--ti-font-display);
+  font-size: 36px;
+  line-height: 1.15;
+  letter-spacing: -0.015em;
+  font-weight: 400;
+}
+
+/* === wave 8 === — alive heartbeat dot. A small pulsing green dot used
+   on the home strip + co-thinker page + status indicators to communicate
+   "agent online and thinking". Pure CSS. The `transform: scale(...)` on
+   the inner pseudo-element gives a soft halo so it reads as a living
+   indicator at 8px size, not a flat dot. */
+@keyframes ti-heartbeat-halo {
+  0%, 100% { transform: scale(1); opacity: 0.4; }
+  50%      { transform: scale(2.2); opacity: 0; }
+}
+.ti-alive-dot {
+  position: relative;
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--ti-green-500);
+  flex-shrink: 0;
+}
+.ti-alive-dot::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--ti-green-500);
+  animation: ti-heartbeat-halo 2s ease-out infinite;
+  z-index: -1;
+}
+
+/* === wave 8 === — orange variant of the alive dot for surfaces that
+   already use orange branding (HomeStrip, co-thinker badge). Same halo
+   cadence; the swap only changes the color so the active state stays
+   semantically tied to "Tangerine alive". */
+.ti-alive-dot-orange {
+  position: relative;
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--ti-orange-500);
+  flex-shrink: 0;
+}
+.ti-alive-dot-orange::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--ti-orange-500);
+  animation: ti-heartbeat-halo 2s ease-out infinite;
+  z-index: -1;
+}
+
+/* === wave 8 === — hero gradient backdrop for the /today landing.
+   A soft warm wash from the orange-tinted paper into the lighter paper
+   at the bottom-right. Subtle enough that text still reads cleanly;
+   strong enough that the page no longer looks like Notion's blank canvas. */
+.ti-hero-bg {
+  background:
+    radial-gradient(
+      ellipse at top left,
+      var(--ti-orange-50) 0%,
+      transparent 60%
+    ),
+    linear-gradient(
+      135deg,
+      var(--ti-paper-50) 0%,
+      var(--ti-paper-100) 100%
+    );
+}
+[data-theme="dark"] .ti-hero-bg,
+.dark .ti-hero-bg {
+  background:
+    radial-gradient(
+      ellipse at top left,
+      rgba(204, 85, 0, 0.08) 0%,
+      transparent 60%
+    ),
+    linear-gradient(
+      135deg,
+      var(--ti-paper-50) 0%,
+      var(--ti-paper-100) 100%
+    );
+}
+
+/* === wave 8 === — "thinking" wave skeleton for the co-thinker route.
+   Plays under the brain section while a heartbeat is in-flight so the
+   user sees motion that codes as "agent is processing", not the
+   generic stone skeleton bar. */
+@keyframes ti-thinking-wave {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.ti-thinking-wave {
+  background: linear-gradient(
+    90deg,
+    var(--ti-paper-100) 0%,
+    var(--ti-green-200) 50%,
+    var(--ti-paper-100) 100%
+  );
+  background-size: 200% 100%;
+  animation: ti-thinking-wave 1.6s linear infinite;
+}
+
+/* === wave 8 === — group subtle background tint for sidebar zones +
+   card clusters. Lifts a zone half a step from the surrounding paper
+   so the eye reads "this is a different kind of thing" without a hard
+   border. */
+.ti-zone-warm {
+  background-color: var(--ti-orange-50);
+}
+.ti-zone-cool {
+  background-color: var(--ti-blue-200);
+}
+.ti-zone-quiet {
+  background-color: var(--ti-paper-200);
+}
+[data-theme="dark"] .ti-zone-warm,
+.dark .ti-zone-warm {
+  background-color: rgba(204, 85, 0, 0.1);
+}
+[data-theme="dark"] .ti-zone-cool,
+.dark .ti-zone-cool {
+  background-color: var(--ti-paper-200);
+}
+[data-theme="dark"] .ti-zone-quiet,
+.dark .ti-zone-quiet {
+  background-color: var(--ti-paper-200);
+}
+
+/* === wave 8 === — vendor color hint for atom citations. Each AI tool
+   gets a small colored dot prefix so a chip cluster is scannable in 1
+   second instead of reading every name. Colors loosely match the
+   vendors' own brand marks — not exact, just memorable. */
+.ti-vendor-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+.ti-vendor-dot[data-vendor="claude_code"]    { background: #8B5CF6; }
+.ti-vendor-dot[data-vendor="cursor"]         { background: #3B82F6; }
+.ti-vendor-dot[data-vendor="chatgpt"]        { background: #10A37F; }
+.ti-vendor-dot[data-vendor="codex"]          { background: #6366F1; }
+.ti-vendor-dot[data-vendor="windsurf"]       { background: #06B6D4; }
+.ti-vendor-dot[data-vendor="devin"]          { background: #F59E0B; }
+.ti-vendor-dot[data-vendor="replit"]         { background: #F26207; }
+.ti-vendor-dot[data-vendor="apple_intelligence"] { background: #A855F7; }
+.ti-vendor-dot[data-vendor="ms_copilot"]     { background: #0EA5E9; }
+.ti-vendor-dot[data-vendor="default"]        { background: var(--ti-ink-300); }
+
+/* === wave 8 === — display-serif section headers. Replaces the
+   uppercase tracked sans labels in the brain page so headings feel
+   editorial / "thinking" rather than admin-panel. */
+.ti-section-display {
+  font-family: var(--ti-font-display);
+  font-size: 18px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--ti-ink-900);
+  line-height: 1.3;
+}
+[data-theme="dark"] .ti-section-display,
+.dark .ti-section-display {
+  color: var(--ti-ink-900);
+}
+
+/* === wave 8 === — chip-cluster utility for atom tag clouds. Lays out
+   chips in a soft wrap with consistent spacing so the "what I'm
+   watching" zone reads as a cluster rather than a bullet list. */
+.ti-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: var(--ti-paper-200);
+  color: var(--ti-ink-700);
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 1.2;
+  border: 1px solid var(--ti-border-faint);
+  white-space: nowrap;
+}
+.ti-chip:hover {
+  background: var(--ti-orange-50);
+  border-color: var(--ti-orange-200);
+}
+
+/* === wave 8 === — card hover lift. Used by WelcomeOverlay value cards
+   so the surface feels reactive without flipping fully to a button look. */
+.ti-card-lift {
+  transition: transform 200ms var(--ti-ease-out),
+              box-shadow 200ms var(--ti-ease-out);
+}
+.ti-card-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px -8px rgba(28, 25, 23, 0.12);
+}
+[data-theme="dark"] .ti-card-lift:hover,
+.dark .ti-card-lift:hover {
+  box-shadow: 0 8px 24px -8px rgba(0, 0, 0, 0.5);
+}
+
+/* ============================================================
+   === wave 9 === Positioning-driven UI v1.9.4.
+   Visual translations for the 4 design moats:
+     1. Borrow your AI subscription   → arrows-inward visual on welcome
+     2. Markdown brain transparency   → split-view default on /co-thinker
+     3. Cross-vendor visibility       → vendor color on every cross-vendor
+                                        surface (atom cards, sidebar,
+                                        heartbeat ribbon, today particles)
+     4. AI tools as first-class       → sidebar AI Tools elevated above
+                                        Sources, larger and more saturated
+   ============================================================ */
+
+/* === wave 9 === — vendor color CSS classes. Each vendor id resolves to
+   a token-driven color via `data-vendor` attribute. We use attribute
+   selectors instead of generated classes so the React side stays simple
+   (just <div data-vendor="cursor" className="ti-vendor-bordered" />). */
+[data-vendor="cursor"]              { --ti-vendor-color: #00A8E8; --ti-vendor-tint: rgba(0,168,232,0.08); }
+[data-vendor="claude-code"]         { --ti-vendor-color: #5C2DC8; --ti-vendor-tint: rgba(92,45,200,0.08); }
+[data-vendor="claude-ai"]           { --ti-vendor-color: #5C2DC8; --ti-vendor-tint: rgba(92,45,200,0.08); }
+[data-vendor="codex"]               { --ti-vendor-color: #F59E0B; --ti-vendor-tint: rgba(245,158,11,0.08); }
+[data-vendor="windsurf"]            { --ti-vendor-color: #06B6D4; --ti-vendor-tint: rgba(6,182,212,0.08); }
+[data-vendor="chatgpt"]             { --ti-vendor-color: #10A37F; --ti-vendor-tint: rgba(16,163,127,0.08); }
+[data-vendor="gemini"]              { --ti-vendor-color: #4285F4; --ti-vendor-tint: rgba(66,133,244,0.08); }
+[data-vendor="copilot"]             { --ti-vendor-color: #6E6E6E; --ti-vendor-tint: rgba(110,110,110,0.08); }
+[data-vendor="v0"]                  { --ti-vendor-color: #000000; --ti-vendor-tint: rgba(0,0,0,0.08); }
+[data-vendor="ollama"]              { --ti-vendor-color: #000000; --ti-vendor-tint: rgba(0,0,0,0.08); }
+[data-vendor="devin"]               { --ti-vendor-color: #06B6D4; --ti-vendor-tint: rgba(6,182,212,0.08); }
+[data-vendor="replit"]              { --ti-vendor-color: #FF7E1B; --ti-vendor-tint: rgba(255,126,27,0.08); }
+[data-vendor="ms-copilot"]          { --ti-vendor-color: #0078D4; --ti-vendor-tint: rgba(0,120,212,0.08); }
+[data-vendor="apple-intelligence"]  { --ti-vendor-color: #A855F7; --ti-vendor-tint: rgba(168,85,247,0.08); }
+[data-vendor="default"]             { --ti-vendor-color: var(--ti-ink-500); --ti-vendor-tint: rgba(120,113,108,0.08); }
+
+/* === wave 9 === — utility classes that read the vendor CSS variable.
+   Used by AtomCard left border, sidebar dot per vendor, heartbeat ribbon. */
+.ti-vendor-text       { color: var(--ti-vendor-color, var(--ti-ink-500)); }
+.ti-vendor-border-l   { border-left: 4px solid var(--ti-vendor-color, var(--ti-ink-300)); }
+.ti-vendor-bg-tint    { background-color: var(--ti-vendor-tint, transparent); }
+.ti-vendor-ring       {
+  box-shadow: inset 0 0 0 2px var(--ti-vendor-color, var(--ti-ink-300));
+  border-radius: 999px;
+}
+
+/* === wave 9 === — vendor color dot. Replaces the wave 8 ti-vendor-dot
+   for surfaces that want a colored dot derived from data-vendor. The
+   wave 8 version stays for legacy call sites (citation cluster). */
+.ti-vendor-color-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  flex-shrink: 0;
+  background: var(--ti-vendor-color, var(--ti-ink-300));
+}
+
+/* === wave 9 === — Brain hero composition for /today. The brain is a
+   ~200px circle in orange with a subtle radial glow + slow heartbeat
+   pulse. When idle it pulses grey; when alive it pulses green. */
+@keyframes ti-brain-pulse-alive {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.45); }
+  50%      { transform: scale(1.02); box-shadow: 0 0 0 12px rgba(16, 185, 129, 0); }
+}
+@keyframes ti-brain-pulse-idle {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(120, 113, 108, 0.30); }
+  50%      { transform: scale(1.015); box-shadow: 0 0 0 10px rgba(120, 113, 108, 0); }
+}
+.ti-brain-orb {
+  width: 200px;
+  height: 200px;
+  border-radius: 999px;
+  background: radial-gradient(
+    circle at 35% 30%,
+    var(--ti-orange-300) 0%,
+    var(--ti-orange-500) 55%,
+    var(--ti-orange-700) 100%
+  );
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-family: var(--ti-font-display);
+  font-size: 56px;
+  font-weight: 500;
+  line-height: 1;
+  box-shadow:
+    0 8px 32px -8px rgba(204, 85, 0, 0.45),
+    inset 0 -8px 24px rgba(160, 63, 0, 0.35);
+}
+.ti-brain-orb[data-state="alive"]  { animation: ti-brain-pulse-alive 3s ease-in-out infinite; }
+.ti-brain-orb[data-state="idle"]   { animation: ti-brain-pulse-idle 3.5s ease-in-out infinite; }
+.ti-brain-orb[data-state="empty"]  {
+  background: radial-gradient(
+    circle at 35% 30%,
+    var(--ti-ink-200) 0%,
+    var(--ti-ink-300) 55%,
+    var(--ti-ink-500) 100%
+  );
+  box-shadow:
+    0 4px 16px -4px rgba(0, 0, 0, 0.15),
+    inset 0 -8px 24px rgba(0, 0, 0, 0.10);
+}
+
+/* === wave 9 === — particle ring around the brain. Each particle is a
+   vendor-colored 12px dot. When that vendor has new atoms, the dot drifts
+   inward toward the brain via ti-atom-flow keyframes. Pure CSS — no JS
+   animation loop. */
+@keyframes ti-atom-flow {
+  0%   { transform: translate(0, 0)   scale(1); opacity: 0.85; }
+  60%  { transform: translate(var(--tx, 0), var(--ty, 0)) scale(0.6); opacity: 0.55; }
+  100% { transform: translate(var(--tx, 0), var(--ty, 0)) scale(0.3); opacity: 0; }
+}
+.ti-particle-ring {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.ti-particle {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: var(--ti-vendor-color, var(--ti-ink-300));
+  box-shadow: 0 0 8px var(--ti-vendor-color, var(--ti-ink-300));
+  top: 50%;
+  left: 50%;
+  margin-top: -6px;
+  margin-left: -6px;
+}
+.ti-particle[data-active="true"] {
+  animation: ti-atom-flow 2.4s ease-in-out infinite;
+}
+
+/* === wave 9 === — AtomCard hover lift. Subtle 1px rise + soft shadow
+   so the card reads as interactive without becoming button-shaped. */
+.ti-atom-card {
+  transition: transform 150ms var(--ti-ease-out),
+              box-shadow 150ms var(--ti-ease-out),
+              background-color 150ms var(--ti-ease-out);
+}
+.ti-atom-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px -4px rgba(28, 25, 23, 0.10);
+}
+[data-theme="dark"] .ti-atom-card:hover,
+.dark .ti-atom-card:hover {
+  box-shadow: 0 4px 12px -4px rgba(0, 0, 0, 0.40);
+}
+
+/* === wave 9 === — markdown source pane (raw markdown side of the
+   /co-thinker split view). Mono, line-numbered, iA-Writer style. We use
+   a CSS counter for line numbers so the pane works for any text length. */
+.ti-md-source {
+  font-family: var(--ti-font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--ti-ink-700);
+  padding: 16px 16px 16px 56px;
+  background: var(--ti-paper-50);
+  border-radius: 6px;
+  border: 1px solid var(--ti-border-faint);
+  position: relative;
+  counter-reset: line;
+  overflow: auto;
+  max-height: 70vh;
+}
+.ti-md-source > .ti-md-line {
+  display: block;
+  counter-increment: line;
+  position: relative;
+}
+.ti-md-source > .ti-md-line::before {
+  content: counter(line);
+  position: absolute;
+  left: -44px;
+  width: 32px;
+  text-align: right;
+  color: var(--ti-ink-400);
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}
+[data-theme="dark"] .ti-md-source,
+.dark .ti-md-source {
+  background: var(--ti-paper-50);
+  color: var(--ti-ink-700);
+}
+
+/* === wave 9 === — Welcome card 1 "borrow your AI" SVG composition.
+   The SVG is inline; the hover keyframe pulses the 4 vendor arrows
+   toward the center logo so the metaphor reads in motion. */
+@keyframes ti-borrow-pulse {
+  0%, 100% { transform: translate(0, 0); opacity: 0.9; }
+  50%      { transform: translate(var(--ti-arrow-tx, 0), var(--ti-arrow-ty, 0)) scale(0.92); opacity: 1; }
+}
+.ti-borrow-arrow {
+  transition: transform 200ms var(--ti-ease-out);
+}
+.ti-borrow-svg:hover .ti-borrow-arrow {
+  animation: ti-borrow-pulse 1.4s ease-in-out infinite;
+}
+
+/* === wave 9 === — sidebar AI Tools elevated section. Larger, more
+   saturated header. The display serif on the section label gives it
+   editorial weight that distinguishes it from the all-caps tracked
+   labels of the lower-priority sections. */
+.ti-section-elevated {
+  font-family: var(--ti-font-display);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  text-transform: none;
+  color: var(--ti-orange-700);
+}
+[data-theme="dark"] .ti-section-elevated,
+.dark .ti-section-elevated {
+  color: var(--ti-orange-500);
+}
+
+/* === wave 9 === — vendor logo wakeup state. Used in cross-vendor empty
+   states: each vendor logo starts grey + 0.45 opacity. When it "wakes up"
+   (parser found atoms), CSS toggles `data-awake="true"` and the logo
+   transitions to full color over 600ms — a gentle "your tool just came
+   online" feel. */
+.ti-vendor-logo {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  filter: grayscale(1);
+  opacity: 0.45;
+  transition: filter 600ms var(--ti-ease-out), opacity 600ms var(--ti-ease-out);
+  background: var(--ti-paper-200);
+  color: var(--ti-ink-500);
+  font-family: var(--ti-font-display);
+  font-weight: 600;
+  font-size: 14px;
+}
+.ti-vendor-logo[data-awake="true"] {
+  filter: grayscale(0);
+  opacity: 1;
+  background: var(--ti-vendor-tint, var(--ti-paper-200));
+  color: var(--ti-vendor-color, var(--ti-ink-700));
+}
+/* === end wave 9 === */

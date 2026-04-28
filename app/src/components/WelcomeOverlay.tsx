@@ -28,25 +28,66 @@
 
 import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { Sparkles, FileText, Eye, ListChecks, X } from "lucide-react";
+import { Sparkles, FileText, Eye, ListChecks, X, ArrowRight } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { useStore } from "@/lib/store";
 import { logEvent } from "@/lib/telemetry";
+// === wave 9 === — borrow-AI SVG replaces the generic Sparkles icon on
+// card 1 so design moat #1 ("borrow your AI subscription") reads in one
+// glance. The other 3 cards keep their lucide icons.
+import { BorrowAIVisual } from "@/components/BorrowAIVisual";
 
 interface ValueCard {
   icon: typeof Sparkles;
   /** i18n key under `welcome.cardN`. */
   key: "card1" | "card2" | "card3" | "card4";
+  // === wave 8 === — soft tint per card so the 2x2 grid reads as four
+  // distinct value props rather than four identical rectangles.
+  // Mapped to the new design tokens; each card picks up a different
+  // background gradient + icon-bg color.
+  tint: "warm" | "cool" | "alive" | "neutral";
 }
 
 // === wave 6 === BUG #6 — strings are now i18n keys, not literals.
+// === wave 8 === — added per-card `tint` so each value prop carries its
+// own visual weight (orange = no-sub, blue = markdown, green = visibility,
+// neutral = catalog). Helps the eye chunk the cards in 2 seconds.
 const VALUE_CARDS: ValueCard[] = [
-  { icon: Sparkles, key: "card1" },
-  { icon: FileText, key: "card2" },
-  { icon: Eye, key: "card3" },
-  { icon: ListChecks, key: "card4" },
+  { icon: Sparkles, key: "card1", tint: "warm" },
+  { icon: FileText, key: "card2", tint: "cool" },
+  { icon: Eye, key: "card3", tint: "alive" },
+  { icon: ListChecks, key: "card4", tint: "neutral" },
 ];
+
+// === wave 8 === — color recipes for each tint. Inlined as objects so
+// dark-mode overrides land on the same surface without mounting a
+// stylesheet inside the component.
+const TINT_STYLES: Record<
+  ValueCard["tint"],
+  { bg: string; iconBg: string; iconColor: string }
+> = {
+  warm: {
+    bg: "bg-[var(--ti-orange-50)] dark:bg-[rgba(204,85,0,0.08)]",
+    iconBg: "bg-[var(--ti-orange-100)] dark:bg-[rgba(204,85,0,0.18)]",
+    iconColor: "text-[var(--ti-orange-700)] dark:text-[var(--ti-orange-500)]",
+  },
+  cool: {
+    bg: "bg-[var(--ti-blue-200)]/40 dark:bg-[var(--ti-paper-200)]",
+    iconBg: "bg-[var(--ti-blue-200)] dark:bg-[var(--ti-blue-700)]/40",
+    iconColor: "text-[var(--ti-blue-700)] dark:text-[var(--ti-blue-500)]",
+  },
+  alive: {
+    bg: "bg-[var(--ti-green-200)]/40 dark:bg-[rgba(16,185,129,0.08)]",
+    iconBg: "bg-[var(--ti-green-200)]/70 dark:bg-[rgba(16,185,129,0.2)]",
+    iconColor: "text-[var(--ti-green-500)]",
+  },
+  neutral: {
+    bg: "bg-[var(--ti-paper-200)] dark:bg-[var(--ti-paper-200)]",
+    iconBg: "bg-[var(--ti-paper-100)] dark:bg-[var(--ti-paper-100)]",
+    iconColor: "text-[var(--ti-ink-700)] dark:text-[var(--ti-ink-700)]",
+  },
+};
 
 export function WelcomeOverlay() {
   const { t } = useTranslation();
@@ -144,21 +185,26 @@ export function WelcomeOverlay() {
           <X size={14} />
         </button>
 
-        <header className="mb-6">
+        {/* === wave 8 === — kicker + title use display serif at hero
+            scale (text-display-md = 36px). The eye lands on the title
+            first instead of the dense card grid. */}
+        <header className="mb-7">
           <p className="ti-section-label">{t("welcome.kicker")}</p>
           <h1
             id="welcome-overlay-title"
-            className="mt-1 font-display text-3xl tracking-tight text-stone-900 dark:text-stone-100"
+            className="mt-2 text-display-md text-[var(--ti-ink-900)] dark:text-[var(--ti-ink-900)]"
           >
             {t("welcome.title")}
           </h1>
-          <p className="mt-2 max-w-prose text-[13px] leading-relaxed text-stone-600 dark:text-stone-400">
+          <p className="mt-3 max-w-prose text-[13px] leading-relaxed text-[var(--ti-ink-600)] dark:text-[var(--ti-ink-500)]">
             {t("welcome.subtitle")}
           </p>
         </header>
 
+        {/* === wave 8 === — gap bumped to gap-6 (was gap-3) so the four
+            cards have room to breathe. */}
         <div
-          className="grid grid-cols-1 gap-3 sm:grid-cols-2"
+          className="grid grid-cols-1 gap-6 sm:grid-cols-2"
           data-testid="welcome-cards"
         >
           {VALUE_CARDS.map((card, idx) => (
@@ -166,7 +212,10 @@ export function WelcomeOverlay() {
           ))}
         </div>
 
-        <div className="mt-7 flex flex-wrap items-center gap-4">
+        <div className="mt-8 flex flex-wrap items-center gap-4">
+          {/* === wave 8 === — primary CTA gains an arrow icon and stays
+              size=lg; the visual weight is now anchored by both color
+              and shape, not just text size. */}
           <Button
             ref={ctaRef}
             onClick={onStart}
@@ -174,6 +223,7 @@ export function WelcomeOverlay() {
             size="lg"
           >
             {t("welcome.cta")}
+            <ArrowRight size={16} aria-hidden />
           </Button>
           <button
             type="button"
@@ -192,23 +242,44 @@ export function WelcomeOverlay() {
 function ValueCardView({ card, index }: { card: ValueCard; index: number }) {
   const { t } = useTranslation();
   const Icon = card.icon;
+  // === wave 8 === — pick up the per-tint color recipe so each card
+  // gets its own visual identity. Lift on hover via `ti-card-lift`.
+  const styles = TINT_STYLES[card.tint];
+  // === wave 9 === — card 1 swaps the lucide Sparkles for the
+  // BorrowAIVisual SVG so the "borrow your AI" story reads in one glance.
+  // The other 3 cards keep their wave-8 icon treatment.
+  const isBorrowCard = card.key === "card1";
   return (
     <div
-      className="rounded-md border border-stone-200 bg-stone-50 p-4 dark:border-stone-800 dark:bg-stone-950"
+      className={`ti-card-lift rounded-lg border border-stone-200 p-5 dark:border-stone-800 ${styles.bg}`}
       data-testid={`welcome-card-${index}`}
     >
       <div className="flex items-start gap-3">
-        <div
-          aria-hidden="true"
-          className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--ti-orange-500)]/15 text-[var(--ti-orange-500)]"
-        >
-          <Icon size={14} />
-        </div>
+        {isBorrowCard ? (
+          // === wave 9 === — full SVG composition with vendor arrows
+          // converging on the Tangerine logo.
+          <div
+            aria-hidden="true"
+            className="mt-0.5 flex h-[72px] w-[72px] shrink-0 items-center justify-center"
+            data-testid="welcome-card-1-borrow-visual"
+          >
+            <BorrowAIVisual size={72} />
+          </div>
+        ) : (
+          <div
+            aria-hidden="true"
+            // === wave 8 === — bigger icon (32px box, 18px icon, was 28/14)
+            // wrapped in a circular tint background per card.
+            className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${styles.iconBg} ${styles.iconColor}`}
+          >
+            <Icon size={18} />
+          </div>
+        )}
         <div className="min-w-0">
-          <h3 className="text-[13px] font-semibold text-stone-900 dark:text-stone-100">
+          <h3 className="text-[14px] font-semibold text-[var(--ti-ink-900)] dark:text-[var(--ti-ink-900)]">
             {t(`welcome.${card.key}.title`)}
           </h3>
-          <p className="mt-1 text-[12px] leading-relaxed text-stone-600 dark:text-stone-400">
+          <p className="mt-1 text-[12px] leading-relaxed text-[var(--ti-ink-700)] dark:text-[var(--ti-ink-500)]">
             {t(`welcome.${card.key}.body`)}
           </p>
         </div>

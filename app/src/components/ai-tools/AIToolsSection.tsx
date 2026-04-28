@@ -9,6 +9,10 @@ import {
 } from "@/lib/ai-tools";
 import { useStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
+// === wave 9 === — vendor color treatment per row. Each tool entry shows
+// a circular vendor-color ring around its icon so the rail reads
+// cross-vendor at a glance.
+import { vendorColor } from "@/lib/vendor-colors";
 
 /**
  * AI TOOLS — first-class sidebar section (v1.8 Phase 1).
@@ -21,6 +25,11 @@ import { cn } from "@/lib/utils";
  *
  * Each row links to `/ai-tools/{id}`; the setup page is owned by
  * `components/ai-tools/AIToolSetupPage.tsx` (Agent 3).
+ *
+ * === wave 9 === — Each row picks up vendor-color treatment:
+ *   • icon wrapped in a circular vendor-color ring (`ti-vendor-ring`)
+ *   • status dot uses the vendor color when `installed`
+ *   • star indicator pinned to right edge for primary tool
  */
 export function AIToolsSection() {
   const primaryAITool = useStore((s) => s.ui.primaryAITool);
@@ -85,6 +94,11 @@ function AIToolLink({
   tool: AIToolStatus;
   isPrimary: boolean;
 }) {
+  // === wave 9 === — pull the vendor color so the icon ring + dot can
+  // render in the brand color even when the tool isn't installed yet
+  // (so the rail visually announces "we have a relationship with this
+  // vendor", not "another grey row").
+  const vc = vendorColor(tool.id);
   return (
     <NavLink
       to={`/ai-tools/${tool.id}`}
@@ -97,8 +111,27 @@ function AIToolLink({
         )
       }
       title={`${tool.name} · via ${channelLabel(tool.channel)}`}
+      data-vendor={tool.id}
+      data-testid={`ai-tool-link-${tool.id}`}
     >
-      <Sparkles size={12} className="shrink-0" />
+      {/* === wave 9 === — circular vendor color ring around the
+          icon. Replaces the wave 8 plain Sparkles. */}
+      <span
+        aria-hidden
+        className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full"
+        style={{
+          boxShadow: `inset 0 0 0 1.5px ${
+            vc.hex.startsWith("linear-gradient") ? "#A855F7" : vc.hex
+          }`,
+        }}
+      >
+        <Sparkles
+          size={11}
+          style={{
+            color: vc.hex.startsWith("linear-gradient") ? "#A855F7" : vc.hex,
+          }}
+        />
+      </span>
       <span className="min-w-0 flex-1 truncate">
         <span className="truncate">{tool.name}</span>
         <span className="ml-1 font-mono text-[10px] text-stone-400 dark:text-stone-500">
@@ -110,25 +143,37 @@ function AIToolLink({
           size={10}
           className="shrink-0 fill-[var(--ti-orange-500)] text-[var(--ti-orange-500)]"
           aria-label="Primary"
+          data-testid={`ai-tool-star-${tool.id}`}
         />
       )}
-      <StatusDot status={tool.status} />
+      <StatusDot status={tool.status} vendorHex={vc.hex} />
     </NavLink>
   );
 }
 
 /**
  * Status dot. Mirrors the four status verdicts from the Rust detector:
- *   installed             → green dot
+ *   installed             → vendor color dot (wave 9 — was generic green)
  *   needs_setup           → amber dot (installed but not wired up)
  *   browser_ext_required  → amber dot (needs our extension first)
  *   not_installed         → grey dot
  */
-function StatusDot({ status }: { status: AIToolStatus["status"] }) {
+function StatusDot({
+  status,
+  vendorHex,
+}: {
+  status: AIToolStatus["status"];
+  vendorHex: string;
+}) {
+  // === wave 9 === — installed → vendor color so the rail telegraphs
+  // which vendors are live. Keeps the live-pulse animation but tints the
+  // halo via inline style instead of the wave-8 hard-coded green.
   if (status === "installed") {
+    const color = vendorHex.startsWith("linear-gradient") ? "#A855F7" : vendorHex;
     return (
       <span
         className="ti-live-dot h-1.5 w-1.5 shrink-0"
+        style={{ background: color }}
         title="Installed"
         aria-label="Installed"
       />
