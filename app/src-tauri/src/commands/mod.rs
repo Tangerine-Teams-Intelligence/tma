@@ -43,13 +43,11 @@ pub mod update;
 pub mod whisper_model;
 pub mod ai_tools;
 
-// === Phase 3-A session borrowing (LLM dispatch) ===
-// v1.8 Phase 3: thin Tauri wrapper around `crate::agi::session_borrower`.
-// Sibling agents in Phase 3-B own the co-thinker brain + observations
-// extractor under `crate::agi::*`; Phase 3-C wires the React `/co-thinker`
-// route. This module only exposes the dispatch entry point.
-pub mod co_thinker_dispatch;
-// === end Phase 3-A session borrowing ===
+// === v1.16 — co_thinker_dispatch removed ===
+// The Tauri wrapper around `agi::session_borrower::dispatch` is gone.
+// React callers that used `co_thinker_dispatch` will hit "command not
+// found" and must be reworked by W1A3 / W2.
+// === end v1.16 ===
 
 // === Phase 2-B writeback (Slack + Calendar) ===
 // v1.8 Phase 2: writeback to Slack (pre-meeting brief + decision summary)
@@ -106,14 +104,11 @@ pub mod loom;
 pub mod zoom;
 // === end Phase 2-C real-wire ===
 
-// === Phase 3-B co-thinker engine ===
-// v1.8 Phase 3: the persistent stateful AGI brain. Tauri command surface for
-// the /co-thinker route — read/write the brain.md, manually trigger a
-// heartbeat, fetch status. The engine itself lives in `crate::agi::co_thinker`;
-// daemon-driven ticks are wired in `crate::daemon::do_heartbeat`. P3-A's
-// session-borrower dispatcher (consumed by the engine) is independent.
-pub mod co_thinker;
-// === end Phase 3-B co-thinker engine ===
+// === v1.16 — co_thinker engine removed ===
+// The /co-thinker route + brain.md surface depended on the LLM dispatcher.
+// React callers that used `co_thinker_*` commands will hit "command not
+// found" until W1A3 ships the static-display replacement.
+// === end v1.16 ===
 
 // === Phase 4-B canvas surface ===
 // v1.8 Phase 4-B: per-project ideation surface (sticky notes + threading).
@@ -125,16 +120,12 @@ pub mod co_thinker;
 pub mod canvas;
 // === end Phase 4-B canvas surface ===
 
-// === Phase 4-A ambient ===
-// v1.8 Phase 4-A: ambient input layer. The whole app is a chat surface,
-// but there is no chatbot tab — every textarea / contenteditable / palette
-// input is implicitly an AGI entry point. This module exposes the single
-// command (`agi_analyze_input`) that the React-side observer
-// (`AmbientInputObserver`) calls once per debounced edit. The actual
-// dispatch goes through `crate::agi::session_borrower::dispatch` with a
-// fixed AMBIENT system prompt (`crate::agi::ambient`).
-pub mod agi_ambient;
-// === end Phase 4-A ambient ===
+// === v1.16 — ambient input layer removed ===
+// `agi_analyze_input` was the once-per-debounced-edit hook into the
+// borrowed-LLM dispatcher. With the LLM stack gone, the React observer
+// is dead too (W1A3 prunes the listener). React calls hit "command not
+// found".
+// === end v1.16 ===
 
 // === Phase 4-C agi peer + propose lock ===
 // v1.8 Phase 4-C: AGI participates on Canvas surfaces as a peer, and the
@@ -286,18 +277,17 @@ pub mod search;
 // `activity_recent`, that reads from the in-memory ring buffer in
 // `crate::activity`. The atom-write side fires `activity:atom_written`
 // events on every successful write (see `crate::activity::record_atom_written`
-// — call sites in `agi::co_thinker`, `personal_agents::*` parsers, etc.).
+// — call sites in `personal_agents::*` parsers, daily_notes saves, etc.;
+// the v1.8 co_thinker call site was removed in v1.16 along with the engine).
 pub mod activity;
 // === end wave 16 ===
 
-// === wave 18 ===
-// v1.10.4 — conversational onboarding agent. CEO ratified replacing the
-// form-based SetupWizard with an LLM-driven chat that extracts intent
-// (configure MCP, link git remote, download whisper, etc.) and dispatches
-// to the existing setup_wizard / git_sync / whisper_model commands. The
-// SetupWizard surface stays mounted as a fallback (Cmd+K → "Use form-
-// based setup"). See `onboarding_chat.rs` for the prompt strategy + the
-// JSONL persistence shape.
+// === wave 18 — v1.16 stub ===
+// The conversational onboarding agent (LLM-driven setup intent parser)
+// was killed in v1.16. The Tauri command name stays registered but every
+// call returns `removed_in_v1_16`. React side falls back to the
+// form-based setup wizard (Cmd+K → "Use form-based setup"); W1A3 prunes
+// the chat UI separately.
 pub mod onboarding_chat;
 // === end wave 18 ===
 
@@ -566,9 +556,7 @@ macro_rules! tmi_invoke_handler {
             // v1.8 Phase 1 — AI tools detection (sidebar status panel)
             $crate::commands::ai_tools::detect_ai_tools,
             $crate::commands::ai_tools::get_ai_tool_status,
-            // === Phase 3-A session borrowing (LLM dispatch) ===
-            $crate::commands::co_thinker_dispatch::co_thinker_dispatch,
-            // === end Phase 3-A session borrowing ===
+            // === v1.16 — co_thinker_dispatch removed (LLM borrow gone) ===
             // === Phase 2-B writeback (Slack + Calendar) ===
             $crate::commands::writeback_slack_calendar::slack_writeback_brief,
             $crate::commands::writeback_slack_calendar::slack_writeback_summary,
@@ -608,25 +596,14 @@ macro_rules! tmi_invoke_handler {
             $crate::sources::voice_notes::voice_notes_record_and_transcribe,
             $crate::sources::voice_notes::voice_notes_list_recent,
             // === end Phase 2-D new sources ===
-            // === Phase 3-B co-thinker engine ===
-            $crate::commands::co_thinker::co_thinker_read_brain,
-            $crate::commands::co_thinker::co_thinker_write_brain,
-            $crate::commands::co_thinker::co_thinker_trigger_heartbeat,
-            $crate::commands::co_thinker::co_thinker_status,
-            // === wave 6 === BUG #2 — Initialize button writes the seed
-            // before triggering the heartbeat so the brain doc is on disk
-            // even when no LLM channel is reachable.
-            $crate::commands::co_thinker::co_thinker_initialize_brain,
-            // === end Phase 3-B co-thinker engine ===
+            // === v1.16 — co_thinker engine removed (no more LLM borrow) ===
             // === Phase 4-B canvas surface ===
             $crate::commands::canvas::canvas_list_projects,
             $crate::commands::canvas::canvas_list_topics,
             $crate::commands::canvas::canvas_load_topic,
             $crate::commands::canvas::canvas_save_topic,
             // === end Phase 4-B canvas surface ===
-            // === Phase 4-A ambient ===
-            $crate::commands::agi_ambient::agi_analyze_input,
-            // === end Phase 4-A ambient ===
+            // === v1.16 — ambient input layer removed (LLM borrow gone) ===
             // === Phase 4-C agi peer + propose lock ===
             $crate::commands::canvas_agi::canvas_propose_lock,
             $crate::commands::canvas_agi::agi_throw_sticky,
@@ -753,22 +730,24 @@ macro_rules! tmi_invoke_handler {
             $crate::commands::audit::audit_get_region,
             $crate::commands::audit::audit_set_region,
             // === end v3.5 audit ===
-            // === wave 11 ===
-            // v1.10.2 — first-run LLM channel setup wizard. 5 commands.
+            // === wave 11 (trimmed in v1.16) ===
+            // v1.10.2 — first-run setup wizard. v1.16 PIVOT: dropped
+            // `setup_wizard_test_channel` (Tangerine no longer borrows the
+            // host LLM via MCP sampling, so there is nothing to test). The
+            // remaining 4 commands cover detection, no-op auto-configure
+            // (kept for React call-site compatibility, capture is read-only
+            // from log files), Ollama install hint, and persisted state.
             $crate::commands::setup_wizard::setup_wizard_detect,
             $crate::commands::setup_wizard::setup_wizard_auto_configure_mcp,
-            $crate::commands::setup_wizard::setup_wizard_test_channel,
             $crate::commands::setup_wizard::setup_wizard_install_ollama_hint,
             $crate::commands::setup_wizard::setup_wizard_persist_state,
             // === end wave 11 ===
-            // === v1.15.0 wave 1.3 ===
-            // 8-tool MCP auto-configure + per-tool handshake. New surface
-            // bolted alongside the wave 11 4-tool surface above. Distinct
-            // command name (`_v15_`) avoids signature collision with the
-            // wave 11 `setup_wizard_auto_configure_mcp` (which has a richer
-            // result shape used by onboarding_chat + lib/tauri.ts). See the
-            // v1.15.0 section header in setup_wizard.rs for the full
-            // contract.
+            // === v1.15.0 wave 1.3 (no-op stubs in v1.16) ===
+            // 8-tool MCP auto-configure + handshake — NO-OP STUBS as of
+            // v1.16. The npm package `tangerine-mcp` was removed (W1A2),
+            // so writing an `npx tangerine-mcp` MCP entry would point at
+            // a non-existent binary. Capture is read-only from log files;
+            // the future capture-side handshake lands in W2.
             $crate::commands::setup_wizard::setup_wizard_v15_auto_configure_mcp,
             $crate::commands::setup_wizard::mcp_server_handshake,
             // === end v1.15.0 wave 1.3 ===

@@ -52,12 +52,9 @@ pub mod newcomer_onboarding;
 pub mod registry;
 // === end P2-C ===
 
-// === v1.9.0 P4-A LLM enrichment ===
-// v1.9.0 final — Stage 2 LLM hook. After a rule template fires, the
-// registry spawns a fire-and-forget enrichment that asks the borrowed
-// LLM to add 2-3 sentences of context-aware reasoning. The frontend
-// listener for `template_match_enriched` swaps the body in place via
-// `updateSuggestion(match_id, body)`. Silent-skip on every failure
-// mode — the rule body is the floor.
-pub mod llm_enrich;
-// === end v1.9.0 P4-A ===
+// === v1.16 — LLM enrichment removed ===
+// `llm_enrich` was the Stage-2 hook that re-emitted a rule match with
+// LLM-generated prose. Removed in v1.16 along with the rest of the
+// LLM-borrow stack. The rule fire path (this module's other templates)
+// stays — they don't depend on a model.
+// === end v1.16 ===

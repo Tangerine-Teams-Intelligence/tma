@@ -50,9 +50,9 @@ import { MEMORY_REFRESHED_EVENT } from "@/components/layout/AppShell";
 // === end v1.13.9 round-9 ===
 
 interface DemoModeBannerProps {
-  /** Optional override for "Connect" — defaults to opening the SetupWizard
-   *  via the store. Passing a custom handler lets the AppShell wire to a
-   *  different surface (e.g. GitInitBanner expand) once Wave 14 lands. */
+  /** Optional override for "Connect". v1.16 W1: default is now a no-op
+   *  (smart-layer onboarding gone) — pass a real handler from the route
+   *  if you want the banner to wire somewhere. */
   onConnect?: () => void;
   /** Optional override for "Hide" — defaults to flipping `demoMode`
    *  off and emitting a telemetry event. */
@@ -75,7 +75,6 @@ export function DemoModeBanner({
 }: DemoModeBannerProps = {}) {
   const demoMode = useStore((s) => s.ui.demoMode);
   const setDemoMode = useStore((s) => s.ui.setDemoMode);
-  const setSetupWizardOpen = useStore((s) => s.ui.setSetupWizardOpen);
   // === v1.13.9 round-9 ===
   const [clearing, setClearing] = useState(false);
   // === end v1.13.9 round-9 ===
@@ -88,9 +87,11 @@ export function DemoModeBanner({
       onConnect();
       return;
     }
-    // Default — open the SetupWizard so the user lands in the onboarding
-    // flow they already know how to navigate.
-    setSetupWizardOpen(true);
+    // === v1.16 Wave 1 === — default Connect handler used to open the
+    // SetupWizard. Smart-layer onboarding is砍 in W1; the banner now
+    // emits the telemetry event but performs no navigation unless the
+    // mounting route passes an `onConnect` handler. W2/W3 will rewire
+    // when the new onboarding entry point lands.
   };
 
   const handleHide = () => {

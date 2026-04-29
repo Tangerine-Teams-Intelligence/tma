@@ -9,9 +9,7 @@ import {
 } from "@/lib/views";
 import { TangerineNotes } from "@/components/TangerineNotes";
 import { Skeleton } from "@/components/ui/Skeleton";
-// === v1.15.0 Wave 2.2 ===
-import { EmptyStateCard } from "@/components/EmptyStateCard";
-import { useStore } from "@/lib/store";
+// === v1.16 Wave 1 === — EmptyStateCard onboarding card砍 (smart layer gone).
 
 /**
  * /threads — list of every conversational thread Tangerine has captured.
@@ -23,11 +21,7 @@ export default function ThreadsListRoute() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
-  // === v1.15.0 Wave 2.2 ===
-  const firstAtomCapturedAt = useStore(
-    (s) => (s.ui as unknown as { firstAtomCapturedAt?: string | null }).firstAtomCapturedAt ?? null,
-  );
-  const isFirstTime = firstAtomCapturedAt === null;
+  // === v1.16 Wave 1 === — `firstAtomCapturedAt` latch read砍.
 
   useEffect(() => {
     let cancel = false;
@@ -99,27 +93,15 @@ export default function ThreadsListRoute() {
               </button>
             </div>
           ) : rows.length === 0 ? (
-            // === v1.15.0 Wave 2.2 === — first-time vs returning split.
-            isFirstTime ? (
-              <EmptyStateCard
-                icon={<MessageCircle size={24} />}
-                title="Threads form when AI extracts @mentions"
-                description="Tangerine groups atoms that share an @mention or topic into threads. Capture your first conversation to see them here."
-                ctaLabel="Capture your first conversation →"
-                ctaAction="/setup/connect"
-                telemetrySurface="threads"
-              />
-            ) : (
-              <div className="px-4 py-8 text-center" data-testid="threads-empty-returning">
-                <MessageCircle size={20} className="mx-auto text-stone-400" />
-                <p className="mt-3 text-[12px] text-stone-700 dark:text-stone-300">
-                  No threads captured yet.
-                </p>
-                <p className="mt-2 text-[11px] text-stone-500 dark:text-stone-400">
-                  Threads form when atoms share a `refs.threads` value (e.g. "pr-47", "pricing").
-                </p>
-              </div>
-            )
+            <div className="px-4 py-8 text-center" data-testid="threads-empty-returning">
+              <MessageCircle size={20} className="mx-auto text-stone-400" />
+              <p className="mt-3 text-[12px] text-stone-700 dark:text-stone-300">
+                No threads captured yet.
+              </p>
+              <p className="mt-2 text-[11px] text-stone-500 dark:text-stone-400">
+                Threads form when atoms share a `refs.threads` value (e.g. "pr-47", "pricing").
+              </p>
+            </div>
           ) : (
             <ul className="divide-y divide-stone-200 dark:divide-stone-800">
               <li className="grid grid-cols-[2fr_1fr_1fr] gap-3 bg-stone-100 px-4 py-2 font-mono text-[10px] uppercase tracking-wider text-stone-500 dark:bg-stone-900 dark:text-stone-400">

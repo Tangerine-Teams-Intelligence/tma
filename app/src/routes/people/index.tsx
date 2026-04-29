@@ -9,12 +9,7 @@ import {
 } from "@/lib/views";
 import { TangerineNotes } from "@/components/TangerineNotes";
 import { Skeleton } from "@/components/ui/Skeleton";
-// === v1.15.0 Wave 2.2 === — first-time empty state CTA. Returning-user
-// empty (firstAtomCapturedAt set, list still empty) keeps the existing
-// lighter "No people captured yet." message; only first-time users see
-// the onboarding card.
-import { EmptyStateCard } from "@/components/EmptyStateCard";
-import { useStore } from "@/lib/store";
+// === v1.16 Wave 1 === — EmptyStateCard onboarding card砍 (smart layer gone).
 
 /**
  * /people — list of every alias Tangerine has captured atoms for. Auto-
@@ -30,13 +25,7 @@ export default function PeopleListRoute() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
-  // === v1.15.0 Wave 2.2 === — W1.4 will add `firstAtomCapturedAt` to
-  // the store. Read defensively so we don't crash if the field arrives
-  // later or is absent on a migrated install.
-  const firstAtomCapturedAt = useStore(
-    (s) => (s.ui as unknown as { firstAtomCapturedAt?: string | null }).firstAtomCapturedAt ?? null,
-  );
-  const isFirstTime = firstAtomCapturedAt === null;
+  // === v1.16 Wave 1 === — `firstAtomCapturedAt` latch read砍.
 
   useEffect(() => {
     let cancel = false;
@@ -109,27 +98,15 @@ export default function PeopleListRoute() {
               </button>
             </div>
           ) : rows.length === 0 ? (
-            // === v1.15.0 Wave 2.2 === — first-time vs returning split.
-            isFirstTime ? (
-              <EmptyStateCard
-                icon={<Users size={24} />}
-                title="Teammates appear here as you capture together"
-                description="Once an atom mentions @someone, they'll show up here. Start by connecting a teammate to your AI tool."
-                ctaLabel="Invite a teammate →"
-                ctaAction="/settings/team"
-                telemetrySurface="people"
-              />
-            ) : (
-              <div className="px-4 py-8 text-center" data-testid="people-empty-returning">
-                <Users size={20} className="mx-auto text-stone-400" />
-                <p className="mt-3 text-[12px] text-stone-700 dark:text-stone-300">
-                  No people captured yet.
-                </p>
-                <p className="mt-2 text-[11px] text-stone-500 dark:text-stone-400">
-                  Connect a source — once an atom mentions @someone, they'll show up here.
-                </p>
-              </div>
-            )
+            <div className="px-4 py-8 text-center" data-testid="people-empty-returning">
+              <Users size={20} className="mx-auto text-stone-400" />
+              <p className="mt-3 text-[12px] text-stone-700 dark:text-stone-300">
+                No people captured yet.
+              </p>
+              <p className="mt-2 text-[11px] text-stone-500 dark:text-stone-400">
+                Connect a source — once an atom mentions @someone, they'll show up here.
+              </p>
+            </div>
           ) : (
             <ul className="divide-y divide-stone-200 dark:divide-stone-800">
               <li className="grid grid-cols-[2fr_1fr_1fr_1fr] gap-3 bg-stone-100 px-4 py-2 font-mono text-[10px] uppercase tracking-wider text-stone-500 dark:bg-stone-900 dark:text-stone-400">

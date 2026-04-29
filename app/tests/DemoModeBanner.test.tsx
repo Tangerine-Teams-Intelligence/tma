@@ -27,7 +27,6 @@ beforeEach(() => {
       ...s.ui,
       demoMode: false,
       demoSeedAttempted: false,
-      setupWizardOpen: false,
     },
   }));
   vi.clearAllMocks();
@@ -59,15 +58,15 @@ describe("DemoModeBanner", () => {
     expect(useStore.getState().ui.demoMode).toBe(false);
   });
 
-  it("Connect button opens the SetupWizard via store", () => {
+  it("Connect button is rendered (v1.16: setup wizard removed, button is no-op for now)", () => {
+    // v1.16 Wave 1 — setupWizardOpen store key was removed alongside the
+    // SetupWizard component. The banner CTA still renders but the wizard
+    // open behavior is no longer relevant; W3 will rebuild the new
+    // onboarding flow and re-wire this CTA. For now we just assert the
+    // button exists so the surface stays clickable.
     useStore.setState((s) => ({ ui: { ...s.ui, demoMode: true } }));
     render(<DemoModeBanner />);
-    expect(useStore.getState().ui.setupWizardOpen).toBe(false);
     fireEvent.click(screen.getByTestId("demo-mode-banner-connect"));
-    expect(useStore.getState().ui.setupWizardOpen).toBe(true);
-    // The banner should still be rendered — connecting doesn't auto-hide
-    // the banner (the user needs to actually finish the wizard / replace
-    // the sample data first).
     expect(screen.getByTestId("demo-mode-banner")).toBeInTheDocument();
   });
 });

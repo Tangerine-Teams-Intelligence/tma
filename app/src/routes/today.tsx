@@ -32,19 +32,14 @@ import {
 } from "@/lib/tauri";
 import { loadAITools, type AIToolStatus } from "@/lib/ai-tools";
 import ReactMarkdown from "react-markdown";
-import { OnboardingChat } from "@/components/OnboardingChat";
-// === wave 20 === — dashboard widget cards. Each owns its own data
-// fetch + loading / error / empty state.
+// === v1.16 Wave 1 === — OnboardingChat + EmptyStateCard imports砍
+// (smart layer gone). Widget cards stay; their per-card empty states
+// already render when the activity bus is quiet.
 import { DashboardWidget } from "@/components/dashboard/DashboardWidget";
 import { RecentDecisionsWidget } from "@/components/dashboard/RecentDecisionsWidget";
 import { TodaysActivityWidget } from "@/components/dashboard/TodaysActivityWidget";
 import { BrainStatusWidget } from "@/components/dashboard/BrainStatusWidget";
 import { ConnectedToolsWidget } from "@/components/dashboard/ConnectedToolsWidget";
-// === v1.15.0 Wave 2.2 === — first-time onboarding card; appears above
-// the widget stack only when the activity bus is truly empty AND the
-// user has never captured an atom. Returning users with a quiet day
-// keep seeing the widgets' own per-card empty states untouched.
-import { EmptyStateCard } from "@/components/EmptyStateCard";
 
 /**
  * /today — the home dashboard.
@@ -71,17 +66,10 @@ export default function TodayRoute() {
   const { t } = useTranslation();
   const today = todayIso();
   const primaryAITool = useStore((s) => s.ui.primaryAITool);
-  const setupWizardChannelReady = useStore(
-    (s) => s.ui.setupWizardChannelReady,
-  );
-  const onboardingMode = useStore((s) => s.ui.onboardingMode);
-  const inSetupMode =
-    onboardingMode === "chat" && !setupWizardChannelReady;
-  // === v1.15.0 Wave 2.2 === — defensive read of W1.4's flag.
-  const firstAtomCapturedAt = useStore(
-    (s) => (s.ui as unknown as { firstAtomCapturedAt?: string | null }).firstAtomCapturedAt ?? null,
-  );
-  const isFirstTime = firstAtomCapturedAt === null;
+  // === v1.16 Wave 1 === — `inSetupMode` short-circuit砍 (smart layer
+  // gone). /today now always renders the dashboard; W2/W3 will gate
+  // first-run state at the AppShell level.
+  const inSetupMode = false;
 
   // === wave 20 === — stat strip data. Pulled in parallel on mount.
   const [statAtoms, setStatAtoms] = useState<number>(0);
@@ -218,35 +206,7 @@ export default function TodayRoute() {
     el.style.height = Math.min(el.scrollHeight, 240) + "px";
   };
 
-  // === wave 18 === — setup-mode early return. OnboardingChat owns the
-  // full content area; widgets / hero / stat strip are not rendered at
-  // all so React doesn't waste a fetch cycle on data the user can't see.
-  if (inSetupMode) {
-    return (
-      <div className="ti-hero-bg">
-        <header
-          className="ti-no-select flex h-9 items-center gap-2 border-b border-stone-200 bg-stone-50/60 px-6 font-mono text-[11px] text-stone-500 backdrop-blur-sm dark:border-stone-800 dark:bg-stone-950/60 dark:text-stone-400"
-          data-testid="today-header"
-        >
-          <span>~ /today</span>
-          <span className="ml-auto">
-            {t("today.now")}{" "}
-            <span className="text-stone-700 dark:text-stone-300">{now}</span>
-          </span>
-        </header>
-        <div className="mx-auto max-w-3xl px-8 py-8" data-testid="today-setup">
-          {/* Smoke-test contract (`findByText(/^Today$/i)`) — keep an
-              h1-shaped element with the literal "Today" text reachable
-              even in setup mode so routes.smoke.test.tsx stays green. */}
-          <p className="ti-section-label flex items-center gap-2">
-            <Calendar size={14} className="text-[var(--ti-orange-500)]" />
-            <span>{t("today.title")}</span>
-          </p>
-          <OnboardingChat />
-        </div>
-      </div>
-    );
-  }
+  // === v1.16 Wave 1 === — wave-18 setup-mode early-return砍.
 
   return (
     <div className="ti-hero-bg">
@@ -439,26 +399,9 @@ export default function TodayRoute() {
           )}
         </header>
 
-        {/* === v1.15.0 Wave 2.2 === — first-time onboarding card.
-            Renders above the widget stack ONLY when (a) the activity
-            bus returned 0 atoms AND (b) the user has never captured one
-            (`firstAtomCapturedAt === null`). Returning users with a
-            quiet day keep seeing the widgets' per-card empty states
-            untouched — they don't need the "Capture from your AI tool"
-            pitch. R6/R7/R8 defense: gated on `!statError` so a fetch
-            failure doesn't masquerade as an empty bus. */}
-        {isFirstTime && statAtoms === 0 && !statError && (
-          <div className="mb-4">
-            <EmptyStateCard
-              icon={<Calendar size={24} />}
-              title="Today's activity will appear here"
-              description="Once you capture your first atom from your AI tool, today's decisions, threads, and brain reasoning land in this view."
-              ctaLabel="Capture from your AI tool →"
-              ctaAction="/setup/connect"
-              telemetrySurface="today"
-            />
-          </div>
-        )}
+        {/* === v1.16 Wave 1 === — first-time onboarding EmptyStateCard
+            砍. Quiet-day users get the widgets' per-card empty states
+            unchanged. */}
 
         {/* === wave 20 === — Widget stack. Single column, full-width
             within the page padding. Order top → bottom: decisions,

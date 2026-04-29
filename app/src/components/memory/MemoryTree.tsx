@@ -19,13 +19,14 @@
  */
 
 import { useMemo, useState } from "react";
-import { ChevronDown, ChevronRight, Folder, FileText, FileText as FileTextIcon } from "lucide-react";
+import { ChevronDown, ChevronRight, Folder, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { vendorColor, ALL_VENDOR_IDS, type VendorId } from "@/lib/vendor-colors";
 import type { MemoryTreeNode } from "@/lib/tauri";
-// === v1.15.0 Wave 2.2 ===
-import { EmptyStateCard } from "@/components/EmptyStateCard";
-import { useStore } from "@/lib/store";
+// === v1.16 Wave 1 === — EmptyStateCard + firstAtomCapturedAt latch砍.
+// Empty memory now renders the same minimal "(empty)" line returning users
+// see; W2/W3 will reintroduce a richer first-time empty state on top of
+// the new onboarding surface.
 
 interface Props {
   nodes: MemoryTreeNode[];
@@ -53,31 +54,11 @@ export function MemoryTree({
     () => nodes.filter((n) => nodeMatchesFilter(n, trimmed, vendorFilter)),
     [nodes, trimmed, vendorFilter],
   );
-  // === v1.15.0 Wave 2.2 === — defensive read of W1.4's flag.
-  const firstAtomCapturedAt = useStore(
-    (s) => (s.ui as unknown as { firstAtomCapturedAt?: string | null }).firstAtomCapturedAt ?? null,
-  );
 
   if (visibleNodes.length === 0) {
-    // === v1.15.0 Wave 2.2 === — first-time onboarding card when the
-    // entire memory dir is empty (no filter active either). Returning
-    // users — and anyone with an active filter that just happens to
-    // miss — keep the lighter "(empty)" / "no matches" line so the
-    // sidebar isn't shouting CTAs at people who already onboarded.
-    const isFirstTime = firstAtomCapturedAt === null;
-    if (isFirstTime && nodes.length === 0 && !trimmed) {
-      return (
-        <EmptyStateCard
-          icon={<FileTextIcon size={24} />}
-          title="Your atoms appear here as you capture"
-          description="Capture an atom from your AI tool to populate memory."
-          ctaLabel="Capture your first atom →"
-          ctaAction="/setup/connect"
-          telemetrySurface="memory-tree"
-          testId="memory-tree-empty-onboarding"
-        />
-      );
-    }
+    // === v1.16 Wave 1 === — EmptyStateCard onboarding CTA砍 (smart layer
+    // gone). All empty-state cases collapse to the lighter "(empty)" /
+    // "no matches" line until W2/W3 lands the new first-run surface.
     return (
       <div
         data-testid="memory-tree-empty"

@@ -35,16 +35,10 @@ import ProjectsListRoute from "@/routes/projects";
 import ProjectDetailRoute from "@/routes/projects/detail";
 import ThreadsListRoute from "@/routes/threads";
 import ThreadDetailRoute from "@/routes/threads/detail";
-// v1.8 Phase 1 — per-tool setup pages for the AI Tools sidebar section.
-import AIToolSetupRoute from "@/routes/ai-tools/[id]";
-// === v1.15.0 wave 1.2 ===
-// /setup/connect — onboarding "Connect AI tool" step. Render OUTSIDE the
-// AppShell layout so the wizard owns the full viewport with no sidebar.
-import SetupConnectRoute from "@/routes/setup/connect";
-// === end v1.15.0 wave 1.2 ===
-// v1.8 Phase 1 — Canvas + Co-thinker placeholder routes (Phase 4 / Phase 3).
-import CanvasRoute from "@/routes/canvas";
-import CoThinkerRoute from "@/routes/co-thinker";
+// === v1.16 Wave 1 === — AI Tools setup page + /setup/connect onboarding
+// step砍. Personal AI capture is now configured inline from
+// settings/PersonalAgents → no per-tool setup route needed. Canvas +
+// Co-thinker route imports砍 (smart layer gone).
 // === v2.5 billing route ===
 import BillingRoute from "@/routes/billing";
 // === end v2.5 billing route ===
@@ -166,10 +160,9 @@ export default function App() {
       <Route path="/dashboard" element={<Navigate to="/today" replace />} />
       <Route path="/skills" element={<Navigate to="/today" replace />} />
       <Route path="/skills/meeting" element={<Navigate to="/sources/discord" replace />} />
-      {/* === v1.15.0 wave 1.2 === — /setup/connect must beat the
-          /setup → /today redirect below; it's a real wizard step. */}
-      <Route path="/setup/connect" element={<SetupConnectRoute />} />
-      {/* === end v1.15.0 wave 1.2 === */}
+      {/* === v1.16 Wave 1 === — /setup/connect 砍. /setup keeps the
+          fall-through redirect for any old bookmark. */}
+      <Route path="/setup/*" element={<Navigate to="/today" replace />} />
       <Route path="/setup" element={<Navigate to="/today" replace />} />
       <Route path="/home" element={<Navigate to="/today" replace />} />
       {/* Old "Meeting tool" surface — Meeting was the Discord source. */}
@@ -219,21 +212,10 @@ export default function App() {
         <Route path="threads" element={<ThreadsListRoute />} />
         <Route path="threads/:topic" element={<ThreadDetailRoute />} />
 
-        {/* v1.8 Phase 1 — Canvas + Co-thinker placeholder surfaces. Real
-            implementations land in Phase 4 (Canvas, AGI peer ideation) and
-            Phase 3 (Co-thinker, persistent agent transcript). v1.8 Phase 4-B
-            shipped the canvas surface; `:project` flips canvas.tsx into the
-            per-project view. */}
-        <Route path="canvas" element={<CanvasRoute />} />
-        <Route path="canvas/:project" element={<CanvasRoute />} />
-        <Route path="co-thinker" element={<CoThinkerRoute />} />
-        {/* === wave 19 === — /brain alias to the existing /co-thinker
-            route. Wave 19 sidebar shows "Brain" as the primary label;
-            the /co-thinker URL stays alive forever so existing
-            bookmarks + deep links keep working. Same component on
-            both paths — no fork in the route handler. */}
-        <Route path="brain" element={<CoThinkerRoute />} />
-        {/* === end wave 19 === */}
+        {/* === v1.16 Wave 1 === — Canvas + Co-thinker (+ /brain alias)
+            routes 砍. Old bookmarks fall through to the / catch-all
+            `Navigate to /today`. Wave 2 may reuse /brain for a Memory
+            tree; until then no route owns those URLs. */}
 
         {/* === v2.5 reviews route === */}
         <Route path="reviews" element={<ReviewsRoute />} />
@@ -249,8 +231,9 @@ export default function App() {
         {/* SINKS */}
         <Route path="sinks/:id" element={<SinkDetailRoute />} />
 
-        {/* AI TOOLS — v1.8 Phase 1: per-tool setup + Test Query buttons. */}
-        <Route path="ai-tools/:id" element={<AIToolSetupRoute />} />
+        {/* === v1.16 Wave 1 === — AI Tools per-tool setup route砍. The
+            sidebar entry now points at settings/PersonalAgents. Old links
+            fall through to the / → /today catch-all. */}
 
         {/* INBOX — real implementation; reads briefs/pending.md */}
         <Route path="inbox" element={<InboxRoute />} />

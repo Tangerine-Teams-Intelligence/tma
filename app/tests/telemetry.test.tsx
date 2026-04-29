@@ -62,7 +62,9 @@ describe("logEvent — frontend wrapper", () => {
 
     // Payload with nested object + array — telemetry must accept anything
     // shallow + serializable so call sites don't have to flatten.
-    await logEvent("canvas_throw_sticky", {
+    // === v1.16 Wave 1 === — `canvas_throw_sticky` event砍; reuse a
+    // surviving event name for the same shape assertion.
+    await logEvent("dismiss_chip", {
       project: "demo",
       topic: "first",
       color: "yellow",
@@ -95,9 +97,12 @@ describe("logEvent — frontend wrapper", () => {
     expect(events).toEqual([]);
   });
 
-  it("logEvent fires for all 12 declared event names without crashing", async () => {
+  it("logEvent fires for the surviving declared event names without crashing", async () => {
     const spy = vi.spyOn(tauri, "telemetryLog").mockResolvedValue(undefined);
 
+    // === v1.16 Wave 1 === — co_thinker_edit / canvas_throw_sticky /
+    // canvas_propose_lock event names砍 alongside the smart layer; the
+    // assertion shifts to surviving names.
     const allNames = [
       "navigate_route",
       "edit_atom",
@@ -109,10 +114,9 @@ describe("logEvent — frontend wrapper", () => {
       "accept_suggestion",
       "mute_channel",
       "trigger_heartbeat",
-      "co_thinker_edit",
       "search",
-      "canvas_throw_sticky",
-      "canvas_propose_lock",
+      "palette_open",
+      "palette_select",
     ] as const;
 
     for (const name of allNames) {
@@ -120,10 +124,9 @@ describe("logEvent — frontend wrapper", () => {
     }
 
     expect(spy).toHaveBeenCalledTimes(allNames.length);
-    // Spot-check a couple of names to confirm they were passed through.
     const seenNames = spy.mock.calls.map((c) => c[0].event);
     expect(seenNames).toContain("navigate_route");
     expect(seenNames).toContain("dismiss_chip");
-    expect(seenNames).toContain("canvas_propose_lock");
+    expect(seenNames).toContain("palette_open");
   });
 });

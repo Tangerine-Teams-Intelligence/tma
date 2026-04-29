@@ -141,12 +141,12 @@ async-trait = "0.1"
 regex = "1"
 # === end wave 1.13-C ===
 
-# === v1.15.0 wave 1.3 ===
-# `toml` powers the Codex MCP config writer (`~/.codex/config.toml`). Need
-# the `parse` feature for round-tripping (read existing TOML → merge in our
-# `[mcp_servers.tangerine]` table → write back) without clobbering the
-# user's other tables. Pure-Rust, no native deps.
-toml = "0.8"
+# === v1.15.0 wave 1.3 — REMOVED in v1.16 ===
+# `toml` was pulled in to power the Codex MCP config writer. v1.16 PIVOT
+# (W1A2): Tangerine no longer writes MCP entries — capture is read-only
+# from log files. The Codex `~/.codex/config.toml` writer was deleted
+# along with the rest of the v15 configure pipeline; no other Rust source
+# uses `toml`, so the dep is dropped to keep the dep tree lean.
 # === end v1.15.0 wave 1.3 ===
 
 [target.'cfg(windows)'.dependencies]
@@ -155,13 +155,12 @@ winapi = { version = "0.3", features = ["winuser", "processthreadsapi", "handlea
 [features]
 custom-protocol = ["tauri/custom-protocol"]
 
-# === v1.15.2 Fix #5 ===
-# Real-spawn end-to-end test for the MCP sampling-bridge handshake. Cargo
-# auto-discovers `tests/spawn_handshake_e2e.rs` so no [[test]] entry is
-# required, but we list it here as a CI hint: this test spawns
-# `npx -y tangerine-mcp@^0.1.0` and waits for it to phone home over ws.
-# Run with `cargo test --test spawn_handshake_e2e`. Skips cleanly if `npx`
-# is not on PATH; CI must have node >= 20 installed for this to run.
+# === v1.15.2 Fix #5 — REMOVED in v1.16 ===
+# `tests/spawn_handshake_e2e.rs` was deleted by W1A2 along with the
+# `mcp-server/` npm package. The test spawned `npx -y tangerine-mcp@^0.1.0`
+# and asserted on the in-process sampling-bridge registry; both the package
+# and the registry are gone in v1.16. No replacement test is wired here —
+# the W2 capture-side handshake will get its own integration test.
 # === end v1.15.2 Fix #5 ===
 
 [profile.release]

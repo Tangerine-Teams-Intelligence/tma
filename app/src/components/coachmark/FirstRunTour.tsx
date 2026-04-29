@@ -104,10 +104,10 @@ export function FirstRunTour() {
     (s) => s.ui.firstRunTourCompleted,
   );
   const demoMode = useStore((s) => s.ui.demoMode);
-  const setupWizardChannelReady = useStore(
-    (s) => s.ui.setupWizardChannelReady,
-  );
-  const welcomed = useStore((s) => s.ui.welcomed);
+  // === v1.16 Wave 1 === — `setupWizardChannelReady` + `welcomed` gates砍
+  // (smart-layer onboarding gone). Tour now mounts as soon as the demo
+  // seed is on disk; W3 will reintroduce a fresh first-run gate when the
+  // capture-only onboarding surface lands.
   const setFirstRunTourCompleted = useStore(
     (s) => s.ui.setFirstRunTourCompleted,
   );
@@ -117,12 +117,7 @@ export function FirstRunTour() {
   // Decide whether to mount at all. Conditions stack:
   //   - tour not completed
   //   - demo data on disk (so the coachmark targets render)
-  //   - WelcomeOverlay finished (welcomed=true) + chat onboarding done
-  const shouldMount =
-    !firstRunTourCompleted &&
-    demoMode &&
-    welcomed &&
-    setupWizardChannelReady;
+  const shouldMount = !firstRunTourCompleted && demoMode;
 
   // Auto-start the tour on mount. We give a small beat (250ms) so the
   // dashboard widgets have a chance to land their data fetch + paint.

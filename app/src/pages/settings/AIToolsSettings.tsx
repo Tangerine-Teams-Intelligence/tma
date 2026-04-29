@@ -21,8 +21,9 @@
  *
  * Wave-11 store keys preserved for back-compat:
  *   - `primaryAITool` (this picker writes it)
- *   - `setupWizardPrimaryChannel` (untouched — only SetupWizard writes it)
  *   - `personalAgentsEnabled` (the capture grid toggles it)
+ *
+ * v1.16 Wave 1: `setupWizardPrimaryChannel` reference砍 (smart layer gone).
  *
  * The legacy stand-alone Primary-AI-tool picker (the wave-11 layout that
  * shipped pre-1.15.2) is preserved as `_LegacyAIToolsPicker` below for

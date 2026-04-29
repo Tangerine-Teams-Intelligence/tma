@@ -32,7 +32,6 @@ import {
   FileText,
   Compass,
   Zap,
-  Brain,
   Languages,
   FolderOpen,
   PlayCircle,
@@ -49,9 +48,7 @@ import { logEvent } from "@/lib/telemetry";
 // === wave 10 === — git auto-sync palette commands.
 import { gitSyncPull, gitSyncPush, gitSyncStatus } from "@/lib/tauri";
 // === end wave 10 ===
-// === wave 11 === — Test LLM channel palette command.
-import { setupWizardTestChannel } from "@/lib/tauri";
-// === end wave 11 ===
+// === wave 11 === — setupWizardTestChannel import砍 (smart layer gone v1.16 W1).
 // === wave 15 === — Atom-content full memory search via the new
 // `search_atoms` Tauri command. Distinct from `searchMemory` (above):
 // that wrapper does a JS-side substring scan on top of `readDir` /
@@ -147,9 +144,8 @@ const ROUTE_CATALOG: RouteEntry[] = [
   // Logseq find it on first try.
   { path: "/daily", label: "Daily notes", aliases: ["daily", "journal", "log", "diary", "today's note"] },
   // === end wave 24 ===
-  { path: "/brain", label: "Brain", aliases: ["agi", "co-thinker", "thinker", "team brain"] },
-  { path: "/co-thinker", label: "Co-thinker (legacy)", aliases: ["agi", "brain", "thinker"] },
-  { path: "/canvas", label: "Canvas", aliases: ["board", "stickies"] },
+  // === v1.16 Wave 1 === — /brain /co-thinker /canvas route entries砍
+  // (smart layer gone). Old aliases fall through to the no-match branch.
   { path: "/this-week", label: "This Week", aliases: ["weekly", "7 days"] },
   { path: "/reviews", label: "Reviews", aliases: ["meeting reviews", "decisions only"] },
   { path: "/marketplace", label: "Marketplace", aliases: ["shop", "store", "templates"] },
@@ -270,11 +266,10 @@ export function CommandPalette({ open, onClose }: Props) {
   const memoryRoot = useStore((s) => s.ui.memoryRoot);
   const cycleTheme = useStore((s) => s.ui.cycleTheme);
   const setWelcomed = useStore((s) => s.ui.setWelcomed);
-  // === wave 11 === — pull setup wizard open setter + toast push so the
-  // "Set up LLM channel" / "Test LLM channel" palette items can dispatch.
-  const setSetupWizardOpen = useStore((s) => s.ui.setSetupWizardOpen);
+  // === wave 11 === — setSetupWizardOpen for LLM-channel palette items砍
+  // (smart layer gone v1.16 W1). pushToast stays — wave-24 daily templates
+  // flow uses it to surface "no templates installed" feedback.
   const pushToast = useStore((s) => s.ui.pushToast);
-  // === end wave 11 ===
   const inputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<MemorySearchHit[]>([]);
@@ -305,42 +300,20 @@ export function CommandPalette({ open, onClose }: Props) {
       },
     }));
 
-    // === wave 19 === — AI tool labels keep the "AI Tool · <id>" prefix so
-    // a user typing "cursor" / "claude" lands on the per-tool setup page.
-    // The hint reads "/ai-tools/<id>" so the destination is unambiguous
-    // (these used to live in the sidebar's AI tools section pre-wave-19).
-    const aiTools: PaletteItem[] = AI_TOOL_IDS.map((id) => ({
-      id: `route:/ai-tools/${id}`,
-      kind: "route" as const,
-      label: `AI Tool · ${id}`,
-      search: `ai-tools ${id} ${id.replace(/-/g, " ")} setup configure`,
-      hint: `/ai-tools/${id}`,
-      icon: Compass,
-      onSelect: () => {
-        navigate(`/ai-tools/${id}`);
-        close();
-      },
-    }));
-    // === end wave 19 ===
+    // === v1.16 Wave 1 === — `/ai-tools/<id>` per-tool setup palette
+    // entries砍 alongside the route. AI tool capture is configured from
+    // settings/PersonalAgents now; the palette no longer offers a direct
+    // route. `AI_TOOL_IDS` constant is left in place for any future surface.
+    const aiTools: PaletteItem[] = [];
 
     const actions: PaletteItem[] = [
-      {
-        id: "action:init-co-thinker",
-        kind: "action",
-        label: "Initialize co-thinker brain",
-        search: "initialize co-thinker brain agi heartbeat init start",
-        hint: "trigger first heartbeat",
-        icon: Brain,
-        onSelect: () => {
-          navigate("/co-thinker");
-          // Defer one tick so the route's effect chain is mounted
-          // before we dispatch — otherwise the listener isn't there.
-          window.setTimeout(() => {
-            window.dispatchEvent(new Event(CO_THINKER_INIT_EVENT));
-          }, 50);
-          close();
-        },
-      },
+      // === v1.16 Wave 1 === — co-thinker init / setup-llm-channel /
+      // test-llm-channel palette actions砍 (smart layer gone). The
+      // welcome-tour replay item stays — WelcomeOverlay砍 in W1 too,
+      // but the `welcomed` latch persists for the W2/W3 redo so a
+      // future first-run surface can read it. The replay action
+      // simply flips the latch off; the W2/W3 surface decides what
+      // to do when it's mounted.
       {
         id: "action:welcome-replay",
         kind: "action",
@@ -349,61 +322,11 @@ export function CommandPalette({ open, onClose }: Props) {
         hint: "re-show overlay",
         icon: PlayCircle,
         onSelect: () => {
-          // Resetting `welcomed` causes the WelcomeOverlay to re-mount
-          // on the current route. No navigation needed.
           setWelcomed(false);
           window.dispatchEvent(new Event(WELCOME_REPLAY_EVENT));
           close();
         },
       },
-      // === wave 11 === — first-run LLM channel setup wizard. Opens the
-      // SetupWizard modal directly. Independent of the welcome-tour replay
-      // (above) so a returning user can re-run the LLM setup without also
-      // re-watching the 4-card welcome overlay.
-      {
-        id: "action:setup-llm-channel",
-        kind: "action",
-        label: "Set up LLM channel",
-        search: "setup llm channel ai brain wizard mcp ollama configure init",
-        hint: "open setup wizard",
-        icon: Brain,
-        onSelect: () => {
-          setSetupWizardOpen(true);
-          close();
-        },
-      },
-      // Run the test prompt through session_borrower::dispatch and toast
-      // the result. Useful for "did my channel break?" debugging without
-      // walking the wizard again.
-      {
-        id: "action:test-llm-channel",
-        kind: "action",
-        label: "Test LLM channel",
-        search: "test llm channel probe sample prompt borrow check",
-        hint: "send test prompt",
-        icon: PlayCircle,
-        onSelect: async () => {
-          close();
-          try {
-            const r = await setupWizardTestChannel({});
-            if (r.ok) {
-              pushToast(
-                "success",
-                `LLM channel OK · ${r.channel_used} · ${r.latency_ms}ms`,
-              );
-            } else {
-              pushToast(
-                "error",
-                `LLM channel test failed: ${r.error ?? "unknown"}`,
-              );
-            }
-          } catch (e) {
-            const msg = e instanceof Error ? e.message : String(e);
-            pushToast("error", `LLM channel test failed: ${msg}`);
-          }
-        },
-      },
-      // === end wave 11 ===
       // === wave 24 ===
       // Daily notes — primary entry point for "open today's daily note".
       // Idempotent ensure-on-click so the file always exists by the time
@@ -587,10 +510,7 @@ export function CommandPalette({ open, onClose }: Props) {
     cycleTheme,
     setWelcomed,
     memoryRoot,
-    // === wave 11 === — new deps for setup-wizard palette items.
-    setSetupWizardOpen,
     pushToast,
-    // === end wave 11 ===
   ]);
 
   // Run memory search whenever the query changes (debounced via the

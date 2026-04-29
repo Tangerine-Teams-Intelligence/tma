@@ -12,13 +12,9 @@ import ThreadsListRoute from "../src/routes/threads";
 import ThreadDetailRoute from "../src/routes/threads/detail";
 import AlignmentRoute from "../src/routes/alignment";
 import InboxRoute from "../src/routes/inbox";
-import CanvasRoute from "../src/routes/canvas";
-import CoThinkerRoute from "../src/routes/co-thinker";
+// === v1.16 Wave 1 === — CanvasRoute / CoThinkerRoute imports砍.
 
 import * as views from "../src/lib/views";
-// === v1.15.0 Wave 2.2 === — flip the W1.4 latch so the legacy
-// /co-thinker pre-init explainer still renders for this smoke test.
-import { useStore } from "../src/lib/store";
 
 function renderRoute(path: string, element: React.ReactNode) {
   return render(
@@ -130,28 +126,5 @@ describe("Stage 1 Wave 3 routes — smoke", () => {
   });
   // === end wave 1.13-A ===
 
-  // v1.8 Phase 4-B — canvas index renders the empty/list state by default.
-  it("/canvas renders the index", async () => {
-    renderRoute("/canvas", <CanvasRoute />);
-    expect(
-      await screen.findByRole("heading", { level: 1, name: /Canvas/i }),
-    ).toBeInTheDocument();
-    // No canvases on disk in vitest mock → empty index.
-    expect(await screen.findByText(/No canvases yet/i)).toBeInTheDocument();
-  });
-
-  it("/co-thinker renders the route (empty state by default)", async () => {
-    // === v1.15.0 Wave 2.2 === — exercise returning-user empty path.
-    useStore.getState().ui.setFirstAtomCapturedAt(Date.now());
-    renderRoute("/co-thinker", <CoThinkerRoute />);
-    // === wave 12 === — H1 renamed "Co-thinker" → "Team brain" + explainer
-    // lede shifted from "This is your team's AGI brain" to
-    // "This is your team's shared brain" (drop AGI prefix in user UI).
-    expect(
-      await screen.findByRole("heading", { level: 1, name: /^Team brain$/i }),
-    ).toBeInTheDocument();
-    expect(
-      await screen.findByText(/This is your team's shared brain/i),
-    ).toBeInTheDocument();
-  });
+  // === v1.16 Wave 1 === — /canvas + /co-thinker smoke tests砍 (routes deleted).
 });

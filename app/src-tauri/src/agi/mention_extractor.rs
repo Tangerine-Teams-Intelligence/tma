@@ -202,20 +202,11 @@ pub async fn extract(
     let should_llm = enable_llm && (body_len > LLM_MIN_BODY_CHARS || out.is_empty());
     if should_llm {
         let cache_key = atom_path.to_string_lossy().to_string();
-        let cached = LLM_CACHE
-            .lock()
-            .ok()
-            .and_then(|g| g.get(&cache_key).cloned());
-        let llm_results: Vec<ExtractedMention> = match cached {
-            Some(c) => c,
-            None => {
-                let res = llm_extract(body, &roster_set).await.unwrap_or_default();
-                if let Ok(mut g) = LLM_CACHE.lock() {
-                    g.insert(cache_key, res.clone());
-                }
-                res
-            }
-        };
+        // v1.16 — LLM extractor removed. Heuristic regex pass is the only
+        // mention extraction now. LLM_CACHE / cache_key code below is dead
+        // but kept to minimize diff; can be cleaned in W2.
+        let _ = (&LLM_CACHE, &cache_key);
+        let llm_results: Vec<ExtractedMention> = Vec::new();
         out.extend(llm_results);
     }
 
@@ -460,121 +451,13 @@ fn snap_right(s: &str, mut i: usize) -> usize {
 }
 
 // --------------------------------------------------------------------------
-// LLM extractor
+// LLM extractor — v1.16 砍干净
+//
+// Heuristic regex pass (`heuristic_extract`) is the only mention extraction
+// path now. The LLM-borrow stack was removed in v1.16 W1A1; the entire
+// llm_extract / parse_llm_json / strip_code_fence / cap_snippet helpers
+// became dead code. Removed in v1.16 W1 cleanup pass.
 // --------------------------------------------------------------------------
-
-/// JSON-extraction prompt sent to whatever LLM the user's primary AI
-/// tool exposes via `session_borrower::dispatch`.
-const LLM_SYSTEM_PROMPT: &str = "You are an assistant that extracts mentions of people from a user's notes. \
-Given a body of text and a list of valid team-member handles, identify any references the user makes to those people \
-that suggest they want to notify, ask, or hand work off to them. \
-Return ONLY a JSON array (no prose, no markdown fence) of objects with shape: \
-{\"username\": string, \"intent\": string, \"snippet\": string, \"confidence\": number}. \
-`username` MUST be one of the supplied handles, lowercase. \
-`intent` is one of: ask, tell, review, todo, mention. \
-`snippet` is a short (<=200 char) excerpt from the body containing the reference. \
-`confidence` is in [0.0, 1.0]. \
-If no mentions are found, return [].";
-
-async fn llm_extract(
-    body: &str,
-    roster: &HashSet<&str>,
-) -> Result<Vec<ExtractedMention>, String> {
-    use crate::agi::session_borrower::{dispatch, LlmRequest};
-
-    let roster_list: Vec<&str> = roster.iter().copied().collect();
-    let user_prompt = format!(
-        "Valid team handles: {:?}\n\n--- BODY ---\n{}\n--- END BODY ---",
-        roster_list, body
-    );
-    let req = LlmRequest {
-        system_prompt: LLM_SYSTEM_PROMPT.to_string(),
-        user_prompt,
-        max_tokens: Some(800),
-        temperature: Some(0.1),
-    };
-    let resp = dispatch(req, None)
-        .await
-        .map_err(|e| format!("dispatch: {}", e))?;
-    parse_llm_json(&resp.text, roster)
-}
-
-/// Parse the LLM's JSON output into `ExtractedMention`s. Permissive —
-/// strips a leading markdown code fence if present, ignores entries
-/// whose `username` isn't in the roster, clamps confidence to [0, 1].
-fn parse_llm_json(text: &str, roster: &HashSet<&str>) -> Result<Vec<ExtractedMention>, String> {
-    let trimmed = strip_code_fence(text.trim());
-    let parsed: Value = serde_json::from_str(trimmed).map_err(|e| format!("json: {}", e))?;
-    let arr = match parsed {
-        Value::Array(a) => a,
-        _ => return Ok(Vec::new()),
-    };
-    let mut out: Vec<ExtractedMention> = Vec::new();
-    for item in arr {
-        let obj = match item {
-            Value::Object(o) => o,
-            _ => continue,
-        };
-        let username = obj
-            .get("username")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_lowercase())
-            .unwrap_or_default();
-        if username.is_empty() || !roster.contains(username.as_str()) {
-            continue;
-        }
-        let intent = obj
-            .get("intent")
-            .and_then(|v| v.as_str())
-            .unwrap_or("mention")
-            .to_lowercase();
-        let snippet = obj
-            .get("snippet")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
-        let confidence = obj
-            .get("confidence")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.5)
-            .clamp(0.0, 1.0) as f32;
-        out.push(ExtractedMention {
-            username,
-            intent,
-            snippet: cap_snippet(&snippet),
-            confidence,
-            source: "llm".to_string(),
-        });
-    }
-    Ok(out)
-}
-
-fn strip_code_fence(s: &str) -> &str {
-    if let Some(rest) = s.strip_prefix("```json") {
-        rest.trim_end_matches("```").trim()
-    } else if let Some(rest) = s.strip_prefix("```") {
-        rest.trim_end_matches("```").trim()
-    } else {
-        s
-    }
-}
-
-fn cap_snippet(s: &str) -> String {
-    if s.chars().count() <= SNIPPET_MAX_CHARS {
-        return s.to_string();
-    }
-    let mut buf = String::new();
-    let mut count = 0usize;
-    for c in s.chars() {
-        if count >= SNIPPET_MAX_CHARS - 1 {
-            break;
-        }
-        buf.push(c);
-        count += 1;
-    }
-    buf.push('…');
-    buf
-}
 
 // --------------------------------------------------------------------------
 // Dedupe

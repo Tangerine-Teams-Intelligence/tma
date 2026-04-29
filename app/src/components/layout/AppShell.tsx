@@ -34,12 +34,7 @@ import { CoachmarkProvider } from "@/components/coachmark/CoachmarkProvider";
 import { FirstRunTour } from "@/components/coachmark/FirstRunTour";
 import { TryThisFAB } from "@/components/coachmark/TryThisFAB";
 // === end wave 22 ===
-// === wave 1.15 W2.1 === — non-blocking demo-tour overlay. Self-gates on
-// `demoMode === true && demoTourCompleted === false`; the W1.1
-// SetupWizard's "Try with sample data" card flips `demoMode = true` so
-// this overlay appears the moment the user enters demo mode.
-import { DemoTourOverlay } from "@/components/onboarding/DemoTourOverlay";
-// === end wave 1.15 W2.1 ===
+// === v1.16 Wave 1 === — DemoTourOverlay砍 (chat onboarding gone, W3 redoes the empty-state animation).
 // === wave 1.13-D ===
 // v1.13 — team presence layer. Provider wraps the AppShell so every
 // route shares one heartbeat + reader pair (no duplicate intervals
@@ -54,20 +49,11 @@ import { TeammatesPill } from "@/components/presence/TeammatesPill";
 // build is already latest, or if the user dismissed.
 import { UpdaterCheck } from "@/components/UpdaterCheck";
 // === end wave 25 ===
-// Wave 4-C — first-run welcome tour. Mounted inside AppShell so it
-// covers every route the user might land on (default is /today). The
-// overlay self-hides once `ui.welcomed` flips, so re-renders after the
-// first cold launch are zero-cost.
-import { WelcomeOverlay } from "@/components/WelcomeOverlay";
-// === wave 11 === — first-run LLM channel setup wizard + banner.
-// Boot flow: WelcomeOverlay (~30s) → SetupWizard (~60s) → /today.
-// The wizard auto-opens once after the welcome overlay closes for fresh
-// installs that haven't already verified an LLM channel; the banner
-// stays visible across cold launches until the user finishes the wizard
-// or flips `setupWizardSkipped` to true via the in-wizard Skip link.
-import { SetupWizard } from "@/components/SetupWizard";
-import { SetupWizardBanner } from "@/components/SetupWizardBanner";
-// === end wave 11 ===
+// === v1.16 Wave 1 === — WelcomeOverlay砍 (smart-layer onboarding gone).
+// W2/W3 will reintroduce a fresh first-run surface that does not depend
+// on the chat primer / SetupWizard scaffold.
+// === end v1.16 Wave 1 ===
+// === wave 11 === — SetupWizard砍 (smart-layer onboarding gone).
 // Wave 3 — offline indicator (OBSERVABILITY_SPEC §8 edge case catalog)
 import { ConnectionBanner } from "@/components/ConnectionBanner";
 // === wave 13 ===
@@ -80,15 +66,7 @@ import { ConnectionBanner } from "@/components/ConnectionBanner";
 // lands on disk.
 import { DemoModeBanner } from "@/components/DemoModeBanner";
 // === end wave 13 ===
-// === v1.15.0 Wave 1.4 ===
-// Solo Cloud upgrade prompt — non-blocking global banner that fires once
-// the solo user crosses 7 days OR ≥ 50 atoms. FirstRealAtomActivation is
-// the headless listener that converts the wave-16 `activity:atom_written`
-// stream into the activation telemetry event. Both mount once at AppShell
-// root so they survive route changes (atom captures land on any route).
-import { SoloCloudUpgradePromptContainer } from "@/components/SoloCloudUpgradePromptContainer";
-import { FirstRealAtomActivation } from "@/components/FirstRealAtomActivation";
-// === end v1.15.0 Wave 1.4 ===
+// === v1.16 Wave 1 === — Solo Cloud + FirstRealAtomActivation 砍 (smart layer gone).
 // === wave 10 === — v1.10 git-init wizard banner. Mounts in the system
 // banner stack, only renders while `gitMode === "unknown"`.
 import { GitInitBannerContainer } from "@/components/GitInitBannerContainer";
@@ -250,28 +228,11 @@ export function AppShell() {
   const setDemoSeedAttempted = useStore((s) => s.ui.setDemoSeedAttempted);
   // === end wave 13 ===
   const memoryConfigMode = useStore((s) => s.ui.memoryConfig.mode);
-  // === wave 11 === — first-run setup-wizard auto-trigger state.
-  // Read once per render so the auto-trigger effect can decide whether to
-  // mount SetupWizard right after WelcomeOverlay closes. The wizard only
-  // auto-shows ONCE per fresh install: skip = wizard suppressed forever
-  // (until user opens via banner / Cmd+K), channelReady = wizard never
-  // re-prompts (banner self-hides too).
-  const welcomed = useStore((s) => s.ui.welcomed);
-  const setupWizardOpen = useStore((s) => s.ui.setupWizardOpen);
-  const setSetupWizardOpen = useStore((s) => s.ui.setSetupWizardOpen);
-  const setupWizardChannelReady = useStore(
-    (s) => s.ui.setupWizardChannelReady,
-  );
-  const setupWizardSkipped = useStore((s) => s.ui.setupWizardSkipped);
-  // === end wave 11 ===
-  // === wave 1.15 W1.1 === — first-launch latch. Drives the full-screen
-  // SetupWizard mount (firstLaunch mode). Once the user picks a path
-  // (or explicitly skips) the latch flips and the wizard never mounts
-  // again on subsequent launches.
-  const onboardingCompletedAt = useStore(
-    (s) => s.ui.onboardingCompletedAt,
-  );
-  // === end wave 1.15 W1.1 ===
+  // === v1.16 Wave 1 === — wave-11 setup-wizard auto-trigger state砍
+  // alongside the wave-1.15 first-launch SetupWizard latch. W2/W3 will
+  // reintroduce a fresh capture-only first-run surface; until then the
+  // shell auto-prompts nothing on cold launch.
+  // === end v1.16 Wave 1 ===
   // === v2.5 trial gate ===
   // Track the team-id used for billing scoping. When the user is solo,
   // we anchor on `solo-${currentUser}`; in team mode we use the repoUrl
@@ -733,63 +694,7 @@ export function AppShell() {
     };
   }, [currentUser]);
 
-  // === wave 11 === — auto-trigger the SetupWizard on first launch.
-  //
-  // Sequence: WelcomeOverlay (4-C) closes → flips `welcomed = true`. THIS
-  // effect watches `welcomed` and opens the wizard exactly once if the
-  // user hasn't already finished it (`channelReady`) or explicitly skipped
-  // (`skipped`). The wizard's persisted state controls future cold launches
-  // — once channelReady or skipped flips, the auto-trigger never re-fires.
-  //
-  // We don't gate on a route since the user may have arrived on /today via
-  // a deep link; the wizard is route-agnostic. WelcomeOverlay is the only
-  // gate (so the welcome 4-card tour comes first), and we leave a beat for
-  // the welcome dismissal to render through before opening to avoid a
-  // layered modal stacking glitch.
-  //
-  // === wave 18 === — when the user is in conversational onboarding mode
-  // (default), we DO NOT auto-pop the form-based SetupWizard. The
-  // OnboardingChat that lives inline on /today owns the first-run
-  // experience instead. The form wizard is still reachable via Cmd+K and
-  // the inline "Use form-based setup" link in the chat shell.
-  const onboardingMode = useStore((s) => s.ui.onboardingMode);
-  // === end wave 18 ===
-  useEffect(() => {
-    if (!welcomed) return;
-    if (setupWizardChannelReady) return;
-    if (setupWizardSkipped) return;
-    if (setupWizardOpen) return;
-    // === wave 18 ===
-    // Chat mode owns first-run. Bail out of the form-wizard auto-trigger
-    // entirely so the user lands on /today and sees the OnboardingChat,
-    // not a layered modal on top of it.
-    if (onboardingMode === "chat") return;
-    // === end wave 18 ===
-    // === wave 1.15 W1.1 === — first-launch wizard owns first-run gate
-    // when `onboardingCompletedAt === null`. The dedicated mount below
-    // (firstLaunch=true) renders separately, so suppress this on-demand
-    // auto-trigger to avoid a double-mounted wizard on top of itself.
-    if (onboardingCompletedAt === null) return;
-    // === end wave 1.15 W1.1 ===
-    const timer = window.setTimeout(() => {
-      setSetupWizardOpen(true);
-      void logEvent("setup_wizard_auto_triggered", {});
-    }, 250);
-    return () => window.clearTimeout(timer);
-  }, [
-    welcomed,
-    setupWizardChannelReady,
-    setupWizardSkipped,
-    setupWizardOpen,
-    setSetupWizardOpen,
-    // === wave 18 ===
-    onboardingMode,
-    // === end wave 18 ===
-    // === wave 1.15 W1.1 ===
-    onboardingCompletedAt,
-    // === end wave 1.15 W1.1 ===
-  ]);
-  // === end wave 11 ===
+  // === v1.16 Wave 1 === — wave-11 SetupWizard auto-trigger effect砍.
 
   // === wave 1.13-A ===
   // Wave 1.13-A — collab inbox listener.
@@ -954,19 +859,7 @@ export function AppShell() {
             <DemoModeBanner />
           </ErrorBoundary>
           {/* === end wave 13 === */}
-          {/* === v1.15.0 Wave 1.4 === — Solo Cloud upgrade prompt.
-              Non-blocking global banner. Self-hides until the user is
-              past onboarding AND (7 days elapsed OR atom count ≥ 50).
-              Sits above the Setup wizard banner so a returning solo
-              user sees the upsell before any wizard nag. ErrorBoundary
-              follows the wave-10.1 pattern. The headless
-              FirstRealAtomActivation listener fires once per install
-              when the first real (non-sample) atom lands. */}
-          <ErrorBoundary label="SoloCloudUpgradePrompt">
-            <SoloCloudUpgradePromptContainer />
-          </ErrorBoundary>
-          <FirstRealAtomActivation />
-          {/* === end v1.15.0 Wave 1.4 === */}
+          {/* === v1.16 Wave 1 === — Solo Cloud upgrade prompt + FirstRealAtomActivation砍. */}
           {/* === wave 10 === — git-init wizard banner. Self-hides when
               `gitMode !== "unknown"` or when the memory dir is already a
               git repo. Sits below ConnectionBanner so a network drop is
@@ -978,14 +871,7 @@ export function AppShell() {
             <GitInitBannerContainer />
           </ErrorBoundary>
           {/* === end wave 10 === */}
-          {/* === wave 11 === — first-run LLM channel banner. Self-hides
-              when the user finishes the wizard (channelReady) or
-              dismisses for the session. ErrorBoundary so a thrown
-              render never blanks the shell (Wave 10.1 lesson). */}
-          <ErrorBoundary label="SetupWizardBanner">
-            <SetupWizardBanner />
-          </ErrorBoundary>
-          {/* === end wave 11 === */}
+          {/* === v1.16 Wave 1 === — SetupWizardBanner砍 (W2/W3 重做 onboarding). */}
           <WhatsNewBanner />
           {/* === v2.0-beta.3 co-thinker home strip ===
               Sits between the system banners and the suggestion banner so
@@ -1117,47 +1003,10 @@ export function AppShell() {
             portal-rendered backdrop covers the full viewport. */}
         <ModalHost />
 
-        {/* Wave 4-C — first-run welcome tour. Sits at the top of the
-            z-stack so it covers banners + modals on a fresh install.
-            Self-hides on subsequent launches via persisted `welcomed`
-            flag, so this mount is a no-op for returning users. */}
-        <WelcomeOverlay />
-
-        {/* === wave 11 === — first-run LLM channel setup wizard. Auto-
-            opens once after WelcomeOverlay closes (effect above). Also
-            opened on demand from the SetupWizardBanner / Cmd+K palette /
-            heartbeat-fail toast. Wrapped in an ErrorBoundary so a thrown
-            render never blanks the shell. Mounted ABOVE WelcomeOverlay
-            in z-order so a fast re-trigger doesn't end up trapped under
-            a stale welcome tour. */}
-        <ErrorBoundary label="SetupWizard">
-          <SetupWizard
-            open={setupWizardOpen}
-            onClose={() => setSetupWizardOpen(false)}
-          />
-        </ErrorBoundary>
-        {/* === end wave 11 === */}
-
-        {/* === wave 1.15 W1.1 === — First-launch SetupWizard.
-            Renders ONCE per fresh install (`onboardingCompletedAt
-            === null`). `firstLaunch=true` flips the wizard into card
-            mode (3 paths) and hides the X close. Each path stamps the
-            latch so this mount unmounts itself after the user picks.
-            Wrapped in ErrorBoundary so a thrown render in the new
-            paths step never blanks the shell (Wave 10.1 lesson). */}
-        {onboardingCompletedAt === null && (
-          <ErrorBoundary label="FirstLaunchSetupWizard">
-            <SetupWizard
-              open
-              firstLaunch
-              onClose={() => {
-                /* no-op — first-launch dismiss happens via the latch
-                 * setter inside the wizard's path / skip handlers */
-              }}
-            />
-          </ErrorBoundary>
-        )}
-        {/* === end wave 1.15 W1.1 === */}
+        {/* === v1.16 Wave 1 === — Wave 4-C WelcomeOverlay + Wave 11
+            SetupWizard + Wave 1.15 first-launch SetupWizard mounts砍.
+            W2/W3 will reintroduce a single capture-only first-run
+            surface to replace them. */}
 
         {/* === wave 5-β === */}
         {/* Discoverability layer. HelpButton is a fixed-position floating
@@ -1198,15 +1047,7 @@ export function AppShell() {
         </ErrorBoundary>
         {/* === end wave 22 === */}
 
-        {/* === wave 1.15 W2.1 === — demo-tour overlay. Self-gates on
-            demoMode + !demoTourCompleted; renders nothing otherwise.
-            Wrapped in ErrorBoundary because the overlay calls into the
-            Tauri bridge (demoSeedClear) on conversion and we never
-            want a Rust failure to blank the shell. */}
-        <ErrorBoundary label="DemoTourOverlay">
-          <DemoTourOverlay />
-        </ErrorBoundary>
-        {/* === end wave 1.15 W2.1 === */}
+        {/* === v1.16 Wave 1 === — DemoTourOverlay砍. */}
       </div>
     </AmbientInputObserver>
     {/* === wave 1.13-D === */}

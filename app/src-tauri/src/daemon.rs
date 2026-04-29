@@ -29,7 +29,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use chrono::{DateTime, Local, Timelike, Utc};
+use chrono::{Local, Timelike, Utc};
 use parking_lot::Mutex;
 use serde::Serialize;
 use tokio::sync::Notify;
@@ -118,20 +118,17 @@ pub struct DaemonControl {
     pub status: Mutex<DaemonStatus>,
     pub stop: Arc<Notify>,
     pub kick: Arc<Notify>,
-    /// v1.8 Phase 3-B: long-lived co-thinker engine. `Some` after the first
-    /// `co_thinker_tick` initialises it; `None` on a fresh daemon. We carry
-    /// it across heartbeats so `last_heartbeat_ts` (the engine's incremental
-    /// scan cutoff) persists without round-tripping through the filesystem.
-    pub co_thinker: Mutex<Option<crate::agi::co_thinker::CoThinkerEngine>>,
     /// v1.8 Phase 3-B: hint from the UI/window-focus event ("am I visible?").
-    /// True ⇒ 5 min cadence; false ⇒ 30 min. Defaults to false (background)
-    /// so a headless daemon doesn't burn LLM calls before the UI signals.
+    /// True ⇒ 5 min cadence; false ⇒ 30 min. v1.16 — co-thinker tick is
+    /// gone, but the foreground signal is still consumed by other ticks
+    /// (suppression recompute cadence, etc.) so we keep it.
     pub foreground: parking_lot::Mutex<bool>,
     /// v1.9.0-beta.2 P2-A: event sink for rule-based template matches.
     /// `None` until `main.rs` calls `install_event_sink` at boot with a
-    /// `TauriEventSink<Wry>`; once installed, every co_thinker_tick wires
-    /// it into the long-lived engine so heartbeat-driven template matches
-    /// reach the frontend's `template_match` listener.
+    /// `TauriEventSink<Wry>`. v1.16: the heartbeat path that consumed
+    /// this is gone (co-thinker engine removed). The field stays
+    /// installable so a future per-template caller can pull it without
+    /// reintroducing the daemon-side glue.
     pub template_event_sink:
         parking_lot::Mutex<Option<Arc<dyn crate::agi::templates::common::EventSink>>>,
 }
@@ -151,20 +148,16 @@ impl DaemonControl {
         }
     }
 
-    /// v1.9.0-beta.2 P2-A — install a template-match event sink. Called
-    /// once at boot from `main.rs` with a `TauriEventSink<Wry>`. Replaces
-    /// any prior sink (so a hot-restart in dev re-points cleanly).
+    /// v1.9.0-beta.2 P2-A — install a template-match event sink. v1.16:
+    /// the co-thinker heartbeat that consumed this is removed; the
+    /// installer is kept as a pass-through so the boot-time call site in
+    /// `main.rs` does not have to be torn down. Future callers can
+    /// snapshot the slot without recreating daemon plumbing.
     pub fn install_event_sink(
         &self,
         sink: Arc<dyn crate::agi::templates::common::EventSink>,
     ) {
-        *self.template_event_sink.lock() = Some(sink.clone());
-        // Also push the sink onto a live engine if one already exists, so
-        // the next heartbeat picks it up without waiting for an engine
-        // teardown.
-        if let Some(engine) = self.co_thinker.lock().as_mut() {
-            engine.set_event_sink(sink);
-        }
+        *self.template_event_sink.lock() = Some(sink);
     }
 }
 
@@ -436,22 +429,11 @@ async fn do_heartbeat(cfg: &DaemonConfig, control: &Arc<DaemonControl>) {
         }
     }
 
-    // 9. v1.8 Phase 3-B — co-thinker brain heartbeat.
-    //
-    // Cadence:
-    //   * foreground (UI window focused, signalled by `control.foreground`)
-    //     → fire every 5 min
-    //   * background → fire every 30 min
-    //   * high-priority "decision atom landed" trigger → Phase 4 (file
-    //     watcher hook). Phase 3 ships only the cadence-gated path.
-    //
-    // The co-thinker engine has its own throttle, so a long heartbeat won't
-    // pile up; a daemon tick that arrives mid-LLM-call short-circuits in
-    // the engine. We swallow errors here — co-thinker failures must never
-    // kill the daemon.
-    if let Err(e) = co_thinker_tick(cfg, control).await {
-        control.record_error("co_thinker_tick", e);
-    }
+    // 9. v1.16 — co-thinker heartbeat removed. The brain.md / observation
+    // log / proposal pipeline depended on the borrowed-LLM dispatcher;
+    // both are gone. The daemon tick still runs every other tick (email,
+    // suppression, personal agents, sources, etc.) — they were never
+    // co-thinker-dependent.
 
     // 10. v1.9.0-beta.3 P3-A — recompute the dismiss-suppression map.
     //
@@ -659,76 +641,12 @@ async fn recompute_suppression(cfg: &DaemonConfig) -> Result<(), String> {
     Ok(())
 }
 
-/// One co-thinker brain tick. Initialises the long-lived engine on first
-/// call, then runs `engine.heartbeat()` only if the elapsed-since-last-tick
-/// exceeds the cadence threshold (5 min foreground / 30 min background).
-async fn co_thinker_tick(cfg: &DaemonConfig, control: &Arc<DaemonControl>) -> Result<(), String> {
-    use crate::agi::co_thinker::{CoThinkerEngine, HeartbeatCadence};
-
-    let foreground = *control.foreground.lock();
-    let cadence = if foreground {
-        HeartbeatCadence::Foreground
-    } else {
-        HeartbeatCadence::Background
-    };
-    let cadence_threshold = if foreground {
-        Duration::from_secs(5 * 60)
-    } else {
-        Duration::from_secs(30 * 60)
-    };
-
-    // Cadence gate. Skip entirely if not enough time elapsed since the last
-    // successful tick. First-ever tick (None) always proceeds.
-    {
-        let snap = control.status.lock();
-        if let Some(last_str) = &snap.last_co_thinker_tick {
-            if let Ok(last) = DateTime::parse_from_rfc3339(last_str) {
-                let last_utc = last.with_timezone(&Utc);
-                if let Ok(elapsed) = Utc::now().signed_duration_since(last_utc).to_std() {
-                    if elapsed < cadence_threshold {
-                        return Ok(());
-                    }
-                }
-            }
-        }
-    }
-
-    // Move the engine out of the slot for the duration of the heartbeat,
-    // then put it back. Avoids holding the parking_lot mutex across await
-    // points — that would be a `Send` violation.
-    let mut engine = {
-        let mut slot = control.co_thinker.lock();
-        slot.take()
-            .unwrap_or_else(|| CoThinkerEngine::new(cfg.memory_root.clone()))
-    };
-    // v1.9.0-beta.2 P2-A — wire the template-match sink onto every engine
-    // we use. Idempotent — safe to set on an already-configured engine.
-    // When no sink has been installed (`main.rs` hasn't called
-    // `install_event_sink` yet), the engine keeps its NoopSink default
-    // and template matches accumulate but emit nowhere.
-    if let Some(sink) = control.template_event_sink.lock().clone() {
-        engine.set_event_sink(sink);
-    }
-
-    let outcome = engine
-        .heartbeat(cadence, None)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    {
-        let mut s = control.status.lock();
-        s.last_co_thinker_tick = Some(Utc::now().to_rfc3339());
-        if outcome.brain_updated {
-            s.co_thinker_brain_updates = s.co_thinker_brain_updates.saturating_add(1);
-        }
-        s.co_thinker_proposals_total = s
-            .co_thinker_proposals_total
-            .saturating_add(outcome.proposals_created as u64);
-    }
-
-    *control.co_thinker.lock() = Some(engine);
-    Ok(())
-}
+// v1.16 — `co_thinker_tick` and `CoThinkerEngine` were removed. The
+// brain.md / observation log / proposal pipeline depended on the
+// borrowed-LLM dispatcher; both are gone. The `last_co_thinker_tick` /
+// `co_thinker_brain_updates` / `co_thinker_proposals_total` fields on
+// `DaemonStatus` are kept (zero-valued, never updated) so existing
+// frontend status surfaces still deserialize.
 
 /// True when the daemon should run an email fetch this heartbeat. Honours
 /// `cfg.email_min_interval` (default 24h). Always true on first run

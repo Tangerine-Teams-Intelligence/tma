@@ -37,6 +37,26 @@ export const APP_VERSION: string = __APP_VERSION__;
 const CHANGELOG_MARKDOWN = `
 # What's new in this version
 
+## v1.16.0 — 2026-04-29
+
+Wave 1 — smart layer砍.
+
+- **Onboarding chat / SetupWizard / WelcomeOverlay砍.** The chat-mode
+  onboarding required a live LLM the fresh install hadn't wired yet
+  (chicken-and-egg deadlock); the form-wizard variant doubled the maze
+  without paying its keep. The whole layer is gone — Tangerine now opens
+  straight to /today on first launch. Wave 2/3 will reintroduce a single
+  capture-only first-run surface.
+- **Co-thinker / Canvas / Solo Cloud routes砍.** The smart-layer surfaces
+  (canvas board, co-thinker brain edit, Solo Cloud upgrade prompt, demo
+  tour overlay) followed the chat flow out the door. Old bookmarks
+  redirect to /today.
+- **AI tool per-tool setup pages砍.** Personal AI tool capture is now
+  configured inline from Settings → Personal Agents.
+- **Cmd+K palette pruned.** Palette open / select telemetry stays; the
+  setup-llm-channel / test-llm-channel / init-co-thinker / per-tool
+  ai-tools entries are gone.
+
 ## v1.15.2 — 2026-04-28
 
 Wave 1.15 hotfix #4 — kill the stale upgrade toast.

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, User } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import {
   readPerson,
   markAtomViewed,
@@ -9,8 +9,7 @@ import {
 import { useStore } from "@/lib/store";
 import { TangerineNotes } from "@/components/TangerineNotes";
 import { PersonView } from "@/components/PersonView";
-// === v1.15.0 Wave 2.2 ===
-import { EmptyStateCard } from "@/components/EmptyStateCard";
+// === v1.16 Wave 1 === — EmptyStateCard onboarding card砍 (smart layer gone).
 
 /**
  * /people/:alias — detail page. Loads readPerson(alias) and renders
@@ -21,12 +20,7 @@ export default function PersonDetailRoute() {
   const params = useParams();
   const alias = decodeURIComponent(params.alias ?? "");
   const currentUser = useStore((s) => s.ui.currentUser);
-  // === v1.15.0 Wave 2.2 === — read W1.4's `firstAtomCapturedAt` flag
-  // defensively (the field may not exist yet during the parallel ship).
-  const firstAtomCapturedAt = useStore(
-    (s) => (s.ui as unknown as { firstAtomCapturedAt?: string | null }).firstAtomCapturedAt ?? null,
-  );
-  const isFirstTime = firstAtomCapturedAt === null;
+  // === v1.16 Wave 1 === — `firstAtomCapturedAt` latch read砍.
   const [data, setData] = useState<PersonDetailData | null>(null);
   const [loading, setLoading] = useState(true);
   // === v1.13.8 round-8 === — readPerson re-throws on Tauri failure
@@ -99,25 +93,12 @@ export default function PersonDetailRoute() {
             <h1 className="font-display text-2xl tracking-tight text-stone-900 dark:text-stone-100">
               @{alias}
             </h1>
-            {isFirstTime ? (
-              <div className="mt-4">
-                <EmptyStateCard
-                  icon={<User size={24} />}
-                  title={`No interactions with @${alias} yet`}
-                  description="Capture an atom that mentions this teammate from your AI tool, and it will land here."
-                  ctaLabel="Capture from your AI tool →"
-                  ctaAction="/setup/connect"
-                  telemetrySurface="people-detail"
-                />
-              </div>
-            ) : (
-              <p
-                data-testid="person-detail-empty-returning"
-                className="mt-4 text-[12px] text-stone-500 dark:text-stone-400"
-              >
-                No data for @{alias}.
-              </p>
-            )}
+            <p
+              data-testid="person-detail-empty-returning"
+              className="mt-4 text-[12px] text-stone-500 dark:text-stone-400"
+            >
+              No data for @{alias}.
+            </p>
           </div>
         )}
       </div>

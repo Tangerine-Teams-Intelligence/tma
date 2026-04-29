@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, MessageCircle } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import {
   readThread,
   markAtomViewed,
@@ -9,18 +9,13 @@ import {
 import { useStore } from "@/lib/store";
 import { TangerineNotes } from "@/components/TangerineNotes";
 import { ThreadView } from "@/components/ThreadView";
-// === v1.15.0 Wave 2.2 ===
-import { EmptyStateCard } from "@/components/EmptyStateCard";
+// === v1.16 Wave 1 === — EmptyStateCard onboarding card砍 (smart layer gone).
 
 export default function ThreadDetailRoute() {
   const params = useParams();
   const topic = decodeURIComponent(params.topic ?? "");
   const currentUser = useStore((s) => s.ui.currentUser);
-  // === v1.15.0 Wave 2.2 ===
-  const firstAtomCapturedAt = useStore(
-    (s) => (s.ui as unknown as { firstAtomCapturedAt?: string | null }).firstAtomCapturedAt ?? null,
-  );
-  const isFirstTime = firstAtomCapturedAt === null;
+  // === v1.16 Wave 1 === — `firstAtomCapturedAt` latch read砍.
   const [data, setData] = useState<ThreadDetailData | null>(null);
   const [loading, setLoading] = useState(true);
   // === v1.13.8 round-8 === — readThread re-throws on Tauri failure
@@ -84,25 +79,12 @@ export default function ThreadDetailRoute() {
             <h1 className="font-display text-2xl tracking-tight text-stone-900 dark:text-stone-100">
               #{topic}
             </h1>
-            {isFirstTime ? (
-              <div className="mt-4">
-                <EmptyStateCard
-                  icon={<MessageCircle size={24} />}
-                  title={`No atoms tagged #${topic} yet`}
-                  description="Capture an atom that mentions this topic from your AI tool, and it will land here."
-                  ctaLabel="Capture from your AI tool →"
-                  ctaAction="/setup/connect"
-                  telemetrySurface="threads-detail"
-                />
-              </div>
-            ) : (
-              <p
-                data-testid="thread-detail-empty-returning"
-                className="mt-4 text-[12px] text-stone-500 dark:text-stone-400"
-              >
-                No data for #{topic}.
-              </p>
-            )}
+            <p
+              data-testid="thread-detail-empty-returning"
+              className="mt-4 text-[12px] text-stone-500 dark:text-stone-400"
+            >
+              No data for #{topic}.
+            </p>
           </div>
         )}
       </div>
