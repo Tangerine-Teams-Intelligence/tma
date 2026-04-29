@@ -38,6 +38,20 @@ use serde::{Deserialize, Serialize};
 
 use super::AppError;
 
+/// v1.15.1 fix — apply `CREATE_NO_WINDOW` on Windows so spawning `git`
+/// at app startup (`init_user_profile` flow) doesn't flash a console
+/// window. No-op on macOS / Linux.
+#[cfg(windows)]
+fn no_window(cmd: &mut Command) -> &mut Command {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+    cmd.creation_flags(CREATE_NO_WINDOW)
+}
+#[cfg(not(windows))]
+fn no_window(cmd: &mut Command) -> &mut Command {
+    cmd
+}
+
 /// A teammate. The alias is the primary key (matches the
 /// `<memory_dir>/personal/<alias>/` directory name + the `@username` tag
 /// the mention parser emits).
@@ -146,11 +160,10 @@ fn git_config_value(memory_dir: &Path, key: &str) -> Option<String> {
 }
 
 fn run_git(cwd: &Path, key: &str) -> Option<String> {
-    let out = Command::new("git")
-        .args(["config", "--get", key])
-        .current_dir(cwd)
-        .output()
-        .ok()?;
+    let mut cmd = Command::new("git");
+    cmd.args(["config", "--get", key]).current_dir(cwd);
+    no_window(&mut cmd);
+    let out = cmd.output().ok()?;
     if !out.status.success() {
         return None;
     }
@@ -309,11 +322,11 @@ pub(crate) fn discover_roster(memory_dir: &Path) -> Vec<TeamMember> {
 }
 
 fn last_git_author(dir: &Path) -> Option<(String, String)> {
-    let out = Command::new("git")
-        .args(["log", "-1", "--format=%an|%ae", "--", "."])
-        .current_dir(dir)
-        .output()
-        .ok()?;
+    let mut cmd = Command::new("git");
+    cmd.args(["log", "-1", "--format=%an|%ae", "--", "."])
+        .current_dir(dir);
+    no_window(&mut cmd);
+    let out = cmd.output().ok()?;
     if !out.status.success() {
         return None;
     }

@@ -1903,28 +1903,65 @@ export const useStore = create<Store>()(
                 ?.onboardingChatStarted ?? current.ui.onboardingChatStarted,
             // === end wave 18 hydration ===
             // === wave 1.15 W1.1 === — first-launch latch hydration.
-            // Bare cast so a v1.14-and-earlier install (no key persisted)
-            // upgrades to `null` AND ALSO pre-stamps it forward when the
-            // user has obviously already completed onboarding via wave-11
-            // / wave-18 (channelReady true OR welcomed true). This avoids
-            // showing the W1.1 wizard to existing dogfood users on the
-            // v1.14.6 → v1.15.0 upgrade.
+            //
+            // v1.15.1 fix — the original W1.1 hydration was TOO AGGRESSIVE.
+            // It pre-stamped the latch when EITHER `setupWizardChannelReady`
+            // OR `welcomed` was true. But `welcomed === true` only proves
+            // the user saw the splash — it does NOT prove they completed
+            // onboarding. Wave-18 chat-onboarded dogfood users (Daizhe
+            // included) had `welcomed=true` AND were stuck in the chicken-
+            // and-egg LLM loop → got auto-pre-stamped → never saw the new
+            // v1.15.0 wizard → "v1.15.0 changed nothing for me". Telemetry
+            // confirmed: zero `onboarding_path_chosen` events from these
+            // users on v1.15.0.
+            //
+            // Tighter rule: pre-stamp ONLY when there is hard evidence the
+            // user ACTUALLY completed channel setup:
+            //   - `setupWizardChannelReady === true` (wave 11 finished + a
+            //     real channel was tested), OR
+            //   - `setupWizardPrimaryChannel` is set to a non-null tool id
+            //     (user picked a primary channel via the wave-11 form), OR
+            //   - `primaryAITool` is set (any path that committed a
+            //     primary-tool choice).
+            //
+            // `welcomed` alone is NOT enough. `onboardingScope` alone is
+            // NOT enough (just picked solo/team but never finished). This
+            // means stuck wave-18 users WILL see the v1.15.0 wizard on
+            // first launch after upgrade — which is the correct behavior
+            // (they never finished, the new wizard finishes for them).
             onboardingCompletedAt: ((): number | null => {
               const persisted = (
                 p?.ui as { onboardingCompletedAt?: number | null } | undefined
               )?.onboardingCompletedAt;
-              if (typeof persisted === "number") return persisted;
-              if (persisted === null) return null;
-              // No key persisted — first time we've seen this slice. If
-              // the user already passed wave-11 wizard or has welcomed
-              // flipped, treat as already-onboarded so the W1.1 wizard
-              // does not pop. Otherwise leave null so the wizard shows.
               const channelReady = (
                 p?.ui as { setupWizardChannelReady?: boolean } | undefined
               )?.setupWizardChannelReady;
-              const welcomed = (p?.ui as { welcomed?: boolean } | undefined)
-                ?.welcomed;
-              if (channelReady === true || welcomed === true) {
+              const primaryChannel = (
+                p?.ui as { setupWizardPrimaryChannel?: string | null } | undefined
+              )?.setupWizardPrimaryChannel;
+              const primaryAITool = (
+                p?.ui as { primaryAITool?: string | null } | undefined
+              )?.primaryAITool;
+              const hasHardEvidence =
+                channelReady === true ||
+                (typeof primaryChannel === "string" &&
+                  primaryChannel.length > 0) ||
+                (typeof primaryAITool === "string" && primaryAITool.length > 0);
+              // v1.15.1 fix — heal bogus pre-stamps written by the original
+              // over-aggressive v1.15.0 W1.1 hydration. If the latch is set
+              // BUT we have NO hard evidence of channel setup, the stamp is
+              // likely the bogus one from `welcomed === true`. Clear it so
+              // the wizard pops on this launch and the user can finally
+              // finish setup. The user will re-stamp legitimately once they
+              // pick a path.
+              if (typeof persisted === "number" && !hasHardEvidence) {
+                return null;
+              }
+              if (typeof persisted === "number") return persisted;
+              if (persisted === null) return null;
+              // First time we've seen this slice (no key persisted) — apply
+              // the same hard-evidence pre-stamp criteria.
+              if (hasHardEvidence) {
                 return Date.now();
               }
               return current.ui.onboardingCompletedAt;

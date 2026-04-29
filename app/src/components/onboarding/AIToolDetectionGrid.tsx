@@ -87,19 +87,27 @@ export interface AIToolDescriptor {
   /** US/EU developer market share rank (1 = largest). Used for the
    *  NotInstalled fallback ordering when no tool is detected. */
   marketRank: number;
+  /** v1.15.1 — diagnostic-only display string showing where Tangerine
+   *  writes the MCP entry for this tool. The user sees this as a small
+   *  monospace caption under the card heading so they can verify the
+   *  file lives where their AI tool actually reads from (the Daizhe
+   *  v1.15.0 trust-collapse: Tangerine wrote to `~/.claude/mcp_servers
+   *  .json`, CC reads `~/.claude.json`). Use the `~` prefix shorthand
+   *  for HOME. */
+  configPathHint: string;
 }
 
 /** 8 tools per W1.2 spec. Order in this array == market rank for the
  *  fallback sort. Detected tools jump to the top regardless of rank. */
 export const AI_TOOL_CATALOG: readonly AIToolDescriptor[] = [
-  { id: "cursor", name: "Cursor", sourceKey: "cursor", installUrl: "https://www.cursor.com/", marketRank: 1 },
-  { id: "claude-code", name: "Claude Code", sourceKey: "claude-code", installUrl: "https://www.anthropic.com/claude-code", marketRank: 2 },
-  { id: "codex", name: "Codex", sourceKey: "codex", installUrl: "https://github.com/openai/codex", marketRank: 3 },
-  { id: "windsurf", name: "Windsurf", sourceKey: "windsurf", installUrl: "https://codeium.com/windsurf", marketRank: 4 },
-  { id: "devin", name: "Devin", sourceKey: "devin", installUrl: "https://devin.ai/", marketRank: 5 },
-  { id: "replit", name: "Replit", sourceKey: "replit", installUrl: "https://replit.com/", marketRank: 6 },
-  { id: "apple-intelligence", name: "Apple Intelligence", sourceKey: "apple-intelligence", installUrl: "https://www.apple.com/apple-intelligence/", marketRank: 7 },
-  { id: "ms-copilot", name: "MS Copilot", sourceKey: "ms-copilot", installUrl: "https://copilot.microsoft.com/", marketRank: 8 },
+  { id: "cursor", name: "Cursor", sourceKey: "cursor", installUrl: "https://www.cursor.com/", marketRank: 1, configPathHint: "~/.cursor/mcp.json" },
+  { id: "claude-code", name: "Claude Code", sourceKey: "claude-code", installUrl: "https://www.anthropic.com/claude-code", marketRank: 2, configPathHint: "~/.claude.json" },
+  { id: "codex", name: "Codex", sourceKey: "codex", installUrl: "https://github.com/openai/codex", marketRank: 3, configPathHint: "~/.codex/config.toml" },
+  { id: "windsurf", name: "Windsurf", sourceKey: "windsurf", installUrl: "https://codeium.com/windsurf", marketRank: 4, configPathHint: "~/.codeium/windsurf/mcp_config.json" },
+  { id: "devin", name: "Devin", sourceKey: "devin", installUrl: "https://devin.ai/", marketRank: 5, configPathHint: "OS keychain (tangerine.tool.devin)" },
+  { id: "replit", name: "Replit", sourceKey: "replit", installUrl: "https://replit.com/", marketRank: 6, configPathHint: "OS keychain (tangerine.tool.replit)" },
+  { id: "apple-intelligence", name: "Apple Intelligence", sourceKey: "apple-intelligence", installUrl: "https://www.apple.com/apple-intelligence/", marketRank: 7, configPathHint: "(macOS only — pending Apple notarisation)" },
+  { id: "ms-copilot", name: "MS Copilot", sourceKey: "ms-copilot", installUrl: "https://copilot.microsoft.com/", marketRank: 8, configPathHint: "(Windows only — pending MS Partner sign-off)" },
 ] as const;
 
 // ----------------------------------------------------------------------------
@@ -390,6 +398,20 @@ function ToolCard({ tool, status, onRetryScan }: CardProps) {
           >
             {tool.name}
           </h3>
+          {/* v1.15.1 — diagnostic line. Shows the user EXACTLY where
+              Tangerine writes (or will write) the MCP entry for this
+              tool. R6/R7/R8 trust extension: not just honest UI, but
+              auditable behavior. The Daizhe v1.15.0 trust-collapse
+              ("you wrote nothing") was actually a path mismatch
+              between Tangerine and CC; this caption surfaces that
+              ground truth so users can verify on disk. */}
+          <p
+            data-testid={`grid-config-path-${tool.id}`}
+            title={`Tangerine writes the MCP entry for ${tool.name} here.`}
+            className="mt-0.5 truncate font-mono text-[10px] text-stone-400 dark:text-stone-500"
+          >
+            {tool.configPathHint}
+          </p>
           <div className="mt-1 flex flex-wrap items-center gap-2">
             <StatusChip status={status} />
             {phase.kind === "waiting_restart" && (

@@ -46,22 +46,29 @@ export const SOLO_CLOUD_PROMPT_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
  *  memory dir crosses 50 atoms even when they're under 7 days old. */
 export const SOLO_CLOUD_PROMPT_ATOM_THRESHOLD = 50;
 
-/** Fallback URL when `VITE_STRIPE_SOLO_CHECKOUT_URL` isn't injected at
- *  build time. Stripe responds with a generic-checkout 404 on the
- *  placeholder so a real click during dev is loud. */
-export const SOLO_CLOUD_FALLBACK_URL =
-  "https://buy.stripe.com/PLACEHOLDER_SOLO_CLOUD";
+/** v1.15.1 fix — Stripe checkout is not yet wired (no real product +
+ *  price + webhook configured), so the legacy "fall back to a 404
+ *  placeholder URL" behavior was an R6/R7/R8 violation: clicking
+ *  Upgrade promised a checkout and broke trust by 404'ing. The fix:
+ *  resolveCheckoutUrl returns `null` when the build-time env var is
+ *  absent, and the component renders a "Coming soon" disabled CTA
+ *  instead of a clickable button. The banner still shows so we still
+ *  measure intent (`solo_cloud_upgrade_prompt_shown`), but we never
+ *  paint a clickable button we cannot honor. */
+export const SOLO_CLOUD_FALLBACK_URL: string | null = null;
 
-/** Read the configured Stripe URL from Vite env. Centralised so tests
- *  can monkey-patch with a hard-coded value. */
-function resolveCheckoutUrl(): string {
+/** Read the configured Stripe URL from Vite env. Returns `null` when
+ *  unset so the component can decide between a real button and the
+ *  "Coming soon" placeholder. Centralised so tests can monkey-patch. */
+function resolveCheckoutUrl(): string | null {
   // Vite injects `import.meta.env.*` at build time. The cast through
   // `unknown` keeps strict TS happy when the key is absent.
   const env = (import.meta as unknown as {
     env?: { VITE_STRIPE_SOLO_CHECKOUT_URL?: string };
   }).env;
   const u = env?.VITE_STRIPE_SOLO_CHECKOUT_URL;
-  return typeof u === "string" && u.length > 0 ? u : SOLO_CLOUD_FALLBACK_URL;
+  if (typeof u === "string" && u.length > 0) return u;
+  return SOLO_CLOUD_FALLBACK_URL;
 }
 
 /**
@@ -149,14 +156,21 @@ export function SoloCloudUpgradePrompt({
 
   if (!shouldShow) return null;
 
+  // v1.15.1 fix — resolve checkout URL once. `null` means Stripe isn't
+  // wired yet → render the "Coming soon" disabled CTA below instead of
+  // a clickable button that 404s. R6/R7/R8 honesty: never paint a
+  // button we cannot honor.
+  const checkoutUrl = resolveCheckoutUrl();
+
   const handleUpgrade = async () => {
     void logEvent("solo_cloud_upgrade_clicked", {});
     if (onUpgrade) {
       await onUpgrade();
       return;
     }
+    if (checkoutUrl === null) return; // Disabled state — should be unreachable.
     try {
-      await openExternal(resolveCheckoutUrl());
+      await openExternal(checkoutUrl);
     } catch {
       // openExternal already swallows + console.errors; this catch is
       // belt-and-suspenders so the click handler never throws into
@@ -186,14 +200,28 @@ export function SoloCloudUpgradePrompt({
         Sync your memory across machines with Solo Cloud — encrypted, private,
         always available.
       </span>
-      <button
-        type="button"
-        onClick={() => void handleUpgrade()}
-        data-testid="solo-cloud-upgrade-cta"
-        className="rounded bg-[var(--ti-orange-500)] px-2 py-0.5 text-white hover:bg-[var(--ti-orange-600)]"
-      >
-        Upgrade $10/mo
-      </button>
+      {checkoutUrl !== null ? (
+        <button
+          type="button"
+          onClick={() => void handleUpgrade()}
+          data-testid="solo-cloud-upgrade-cta"
+          className="rounded bg-[var(--ti-orange-500)] px-2 py-0.5 text-white hover:bg-[var(--ti-orange-600)]"
+        >
+          Upgrade $10/mo
+        </button>
+      ) : (
+        // v1.15.1 — Stripe not wired; honest disabled state instead of
+        // a 404'ing button. The banner still measures intent via the
+        // `_shown` event so we know how many users would have clicked.
+        <span
+          data-testid="solo-cloud-upgrade-cta-coming-soon"
+          aria-disabled="true"
+          title="Solo Cloud sync is rolling out — set VITE_STRIPE_SOLO_CHECKOUT_URL to enable."
+          className="cursor-not-allowed rounded bg-stone-300 px-2 py-0.5 text-stone-700 dark:bg-stone-700 dark:text-stone-300"
+        >
+          Coming soon
+        </span>
+      )}
       <button
         type="button"
         aria-label="Dismiss Solo Cloud upgrade prompt"

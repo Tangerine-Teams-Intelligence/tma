@@ -8,6 +8,95 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
      Each version block focuses on user-visible features so this doc can
      also feed the in-app /whats-new-app route. -->
 
+## [1.15.1] — 2026-04-28 — Onboarding reboot **fix-up**
+
+v1.15.0 shipped the onboarding reboot but Daizhe (and any v1.14.6 dogfood
+user) couldn't actually configure Claude Code: the new wizard never
+appeared on upgraded installs (over-aggressive smart-upgrade hydration
+pre-stamped them), and even users who saw the grid had Auto-configure
+write to a stale path Claude Code ignores. v1.15.1 closes the loop:
+every layer that prevented "click Auto-configure → Connected ✓" is fixed.
+
+### Fixed
+
+- **Auto-configure now writes to the file Claude Code actually reads.**
+  Wave 11's catalog had `~/.claude/mcp_servers.json` (CC v0.x); current
+  CC reads `~/.claude.json` top-level `mcpServers` field. Same pattern
+  for Codex (`mcp.json` → `config.toml`) and Windsurf (`~/.windsurf/`
+  → `~/.codeium/windsurf/`). All 4 editor configures now route through
+  the v15 dispatcher (verified-correct paths, atomic write + idempotent
+  merge, 30 cargo tests). Wave 11 catalog stays for installation
+  detection only.
+- **v1.14.6 → v1.15.0 upgrade no longer skips the new wizard.** The
+  original W1.1 hydration treated `welcomed === true` as "user finished
+  onboarding" and pre-stamped `onboardingCompletedAt`. But `welcomed`
+  only proves the user saw the splash — Wave-18 chat-onboarded dogfood
+  users (everyone stuck in the v1.14.6 chicken-and-egg LLM loop) had
+  `welcomed=true` AND zero working channels. They upgraded to v1.15.0
+  and never saw the new wizard. Tighter rule: pre-stamp ONLY when there
+  is hard evidence of channel setup (`setupWizardChannelReady === true`,
+  OR a non-empty `setupWizardPrimaryChannel`, OR a non-empty
+  `primaryAITool`). v1.15.1 also **heals** bogus pre-stamps written by
+  v1.15.0: any latch-without-evidence is cleared on hydrate so the
+  wizard reappears for those users.
+- **Black console window flash on app launch (Windows).** `identity.rs`
+  spawned `git config --get` at boot to resolve the user's identity
+  without `CREATE_NO_WINDOW`, popping a brief console. Other spawn
+  sites (daemon, runner, git, voice_notes, whisper, git_sync) already
+  applied the flag; identity.rs was the holdout. Fixed.
+- **`tangerine-mcp@latest` pin removed.** The MCP entry now pins to
+  `^0.1.0` (semver-compatible 0.1.x range). Future v0.2.0 with a
+  breaking sampling-bridge protocol cannot silently break older
+  Tangerine app installs (the user's editor would npm-install the new
+  mcp, fail to register against the old bridge, and the wizard would
+  show "Connected" timeout forever).
+- **Solo Cloud "Upgrade $10/mo" button no longer 404s.** Stripe Checkout
+  isn't wired yet (no real product/price/webhook), so the button now
+  renders as a "Coming soon" disabled chip when
+  `VITE_STRIPE_SOLO_CHECKOUT_URL` is unset. The banner still fires
+  `solo_cloud_upgrade_prompt_shown` so analytics can measure intent;
+  R6/R7/R8 honesty: never paint a button we cannot honor.
+
+### Added
+
+- **Config-path hint under each detection-grid card.** Small monospace
+  caption showing exactly where Tangerine writes the MCP entry for that
+  tool (`~/.claude.json`, `~/.cursor/mcp.json`, `~/.codex/config.toml`,
+  `~/.codeium/windsurf/mcp_config.json`, OS keychain for Devin/Replit,
+  "macOS only" / "Windows only" markers for Apple Intelligence and MS
+  Copilot). Trust-narrative extension: not just honest UI, but
+  auditable behavior — users can verify Tangerine and their editor
+  share the same path on disk.
+
+### Tests
+
+- vitest **784 / 786** (2 pre-existing wave21 baseline flakes; +1
+  config-path-hint testid spec)
+- cargo --lib unchanged baseline + delegate path through v15 (existing
+  60 setup_wizard tests cover); **0 cargo warnings** preserved
+  (deprecated `merge_tangerine_into_mcp_json` annotated `#[allow(dead_code)]`
+  + comment as rollback path)
+- pytest **226 / 226** unchanged
+- tsc strict: **0 errors**
+
+### Honesty audit (R6/R7/R8 + R9)
+
+- Grepped all 5 changed files (+ all v1.15.0 new files) for new
+  `unwrap_or_default` / `invokeOrMock` / silent catch — zero
+  regressions introduced.
+- v15 dispatcher remains the single source of truth for editor MCP
+  config writes; wave 11 `merge_tangerine_into_mcp_json` is annotated
+  dead-but-kept for rollback. R7 lesson honored.
+
+### Defer
+
+- Stripe real wiring (need product / price / webhook decisions) →
+  v1.15.2 or later
+- Solo vs Team funnel split → v1.15.2
+- Apple AI / MS Copilot real implementation → v1.16
+- End-to-end spawn-and-handshake test (real `npx tangerine-mcp` boot)
+  → v1.15.x
+
 ## [1.15.0] — 2026-04-28 — Onboarding reboot + activation funnel
 
 The "装上就死" → "装上 5 分钟用起来" release. v1.14.6 first-launch fell

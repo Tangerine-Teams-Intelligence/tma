@@ -244,15 +244,28 @@ fn cursor_installed() -> bool {
 }
 
 fn claude_code_config_path() -> Option<PathBuf> {
-    dirs::home_dir().map(|h| h.join(".claude").join("mcp_servers.json"))
+    // v1.15.1 fix — Claude Code reads `~/.claude.json` top-level
+    // `mcpServers` field. The legacy `~/.claude/mcp_servers.json`
+    // path was CC v0.x and is silently ignored by current CC.
+    dirs::home_dir().map(|h| h.join(".claude.json"))
 }
 
 fn claude_code_installed() -> bool {
-    dirs::home_dir().map(|h| h.join(".claude").is_dir()).unwrap_or(false)
+    // v1.15.1 fix — also accept ~/.claude.json (the file CC writes on
+    // first launch, even before user opens any project) — was missing
+    // false positives where dir existed but file didn't.
+    let home = match dirs::home_dir() {
+        Some(h) => h,
+        None => return false,
+    };
+    home.join(".claude").is_dir() || home.join(".claude.json").is_file()
 }
 
 fn codex_config_path() -> Option<PathBuf> {
-    dirs::home_dir().map(|h| h.join(".codex").join("mcp.json"))
+    // v1.15.1 fix — Codex (OpenAI Codex CLI) writes TOML at
+    // `~/.codex/config.toml` (`[mcp_servers.tangerine]` table), not
+    // the JSON path some pre-1.0 tutorials suggest.
+    dirs::home_dir().map(|h| h.join(".codex").join("config.toml"))
 }
 
 fn codex_installed() -> bool {
@@ -264,7 +277,12 @@ fn codex_installed() -> bool {
 }
 
 fn windsurf_config_path() -> Option<PathBuf> {
-    dirs::home_dir().map(|h| h.join(".windsurf").join("mcp.json"))
+    // v1.15.1 fix — Windsurf (Codeium) is at
+    // `~/.codeium/windsurf/mcp_config.json`. The `~/.windsurf/`
+    // directory was an internal-tutorial leak that never matched
+    // shipped Windsurf builds.
+    dirs::home_dir()
+        .map(|h| h.join(".codeium").join("windsurf").join("mcp_config.json"))
 }
 
 fn windsurf_installed() -> bool {
@@ -570,6 +588,13 @@ pub async fn setup_wizard_detect() -> Result<SetupWizardDetection, AppError> {
 
 /// Merge a `tangerine` server entry into the editor's mcp.json. Idempotent.
 /// Never overwrites the user's other servers. Creates parent dirs as needed.
+///
+/// v1.15.1 — kept (with `#[allow(dead_code)]`) only as a rollback path
+/// in case the v15 dispatcher hits an unforeseen regression in the field.
+/// All production callers now route through `v15_delegate_auto_configure`
+/// (see `setup_wizard_auto_configure_mcp` above). The cargo tests below
+/// continue to exercise this function so the rollback path stays known-good.
+#[allow(dead_code)]
 fn merge_tangerine_into_mcp_json(path: &Path) -> Result<bool, String> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)
@@ -629,41 +654,19 @@ fn merge_tangerine_into_mcp_json(path: &Path) -> Result<bool, String> {
 pub async fn setup_wizard_auto_configure_mcp(
     tool_id: String,
 ) -> Result<SetupWizardAutoConfigResult, AppError> {
-    // Wave 4 wire-up — wave 11's catalog only knows the 4 MCP-editor
-    // tools (cursor / claude-code / codex / windsurf). v1.15.0 adds 4
-    // more (devin / replit / apple-intelligence / ms-copilot) which
-    // live in the Wave 1.3 v15 dispatcher with atomic JSON/TOML merge
-    // + keychain fallbacks + 30 cargo tests. Delegate unknown tool_ids
-    // to the v15 path so the AIToolDetectionGrid can call ONE wrapper
-    // for all 8 tools without forking the call site (R6/R7/R8: a
-    // consistent honest path beats two divergent ones).
-    let row = MCP_CATALOG.iter().find(|r| r.tool_id == tool_id);
-    if row.is_none() {
-        return v15_delegate_auto_configure(&tool_id).await;
-    }
-    let row = row.unwrap();
-    let path = (row.config_path_resolver)().ok_or_else(|| {
-        AppError::internal(
-            "no_config_path",
-            format!("could not resolve mcp config path for {tool_id}"),
-        )
-    })?;
-    match merge_tangerine_into_mcp_json(&path) {
-        Ok(_) => Ok(SetupWizardAutoConfigResult {
-            ok: true,
-            file_written: path,
-            // Cursor / Claude Code spawn MCP servers on startup; the new
-            // entry is only picked up after a full editor restart.
-            restart_required: true,
-            error: None,
-        }),
-        Err(e) => Ok(SetupWizardAutoConfigResult {
-            ok: false,
-            file_written: path,
-            restart_required: false,
-            error: Some(e),
-        }),
-    }
+    // v1.15.1 fix — wave 11's MCP_CATALOG had stale config paths for 3
+    // of the 4 editors (claude-code → ~/.claude/mcp_servers.json which
+    // CC ignores; codex → mcp.json which is now config.toml; windsurf
+    // → ~/.windsurf which is now ~/.codeium/windsurf). Auto-configure
+    // *succeeded* against the wrong file — silent failure of exactly
+    // the R6/R7/R8 kind we'd been chasing.
+    //
+    // Fix: delegate ALL 8 tools to the v15 dispatcher, which has
+    // verified-correct paths, atomic write + idempotent merge, 30
+    // cargo tests, and cross-platform handling. Wave 11 catalog stays
+    // around for installation detection only (`is_installed`), but
+    // never writes files. v15 is the single source of truth.
+    v15_delegate_auto_configure(&tool_id).await
 }
 
 /// Wave 4 wire-up — bridges wave 11's struct-returning entry point to
@@ -1644,9 +1647,17 @@ const V15_TOOL_IDS: &[&str] = &[
 /// `mcp-server/` workspace publishes `tangerine-mcp@latest` to npm via
 /// `package.json::bin::tangerine-mcp` — npx is the canonical entry.
 fn tangerine_mcp_entry_json() -> serde_json::Value {
+    // v1.15.1 fix — pin to a semver-compatible range instead of `@latest`
+    // so a future v0.2.0 release with a breaking sampling-bridge protocol
+    // cannot silently break older Tangerine app installs (the user's
+    // editor would npm-install the new mcp, fail to register against the
+    // old bridge, and the wizard would show "Connected" timeout). The
+    // `^` range allows patch + minor updates within 0.1.x but rejects
+    // 0.2.x. Bump the floor when shipping a v1.15.x compatible with a
+    // newer mcp.
     serde_json::json!({
         "command": "npx",
-        "args": ["-y", "tangerine-mcp@latest"],
+        "args": ["-y", "tangerine-mcp@^0.1.0"],
         "env": {
             "TANGERINE_SAMPLING_BRIDGE": "1"
         }
@@ -1669,7 +1680,8 @@ fn tangerine_mcp_entry_toml() -> toml::Value {
         "args".to_string(),
         toml::Value::Array(vec![
             toml::Value::String("-y".to_string()),
-            toml::Value::String("tangerine-mcp@latest".to_string()),
+            // v1.15.1 fix — see tangerine_mcp_entry_json doc comment.
+            toml::Value::String("tangerine-mcp@^0.1.0".to_string()),
         ]),
     );
     entry.insert("env".to_string(), toml::Value::Table(env));
