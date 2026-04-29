@@ -1,148 +1,301 @@
-import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import { Users, AlertCircle } from "lucide-react";
+/**
+ * v1.16 Wave 2 Agent B3 — /people People grid (REWRITE).
+ *
+ * Use case: future-hire onboarding. New teammate opens Tangerine on
+ * day one and at a glance sees "who has been active, what are they
+ * working on" before filing into project / threads detail.
+ *
+ * v1.16 Wave 1 砍 the LLM smart layer; this surface is pure
+ * capture-derived aggregation:
+ *   - Read atoms via readTimelineRecent(500).
+ *   - Group by `actor` to build a PersonStats row per unique alias.
+ *   - For each person: count last-24h atoms, extract top 3 hashtags
+ *     (concepts + body `#tag` regex), latest timestamp.
+ *   - Click a person → filter the AtomCard list shown below to that
+ *     actor only (max 50, desc by ts).
+ *
+ * Default selection = currentUser (zustand store). Empty state
+ * fires only when the user is solo (only their own alias appears) —
+ * we still show their own card and a "Invite a teammate" CTA.
+ *
+ * R6/R7/R8 honesty: loading + error states are explicit. We never
+ * paint a populated grid with mock teammates.
+ */
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
-  readPeopleList,
-  formatRelativeTime,
-  type PersonRow,
+  readTimelineRecent,
+  type TimelineEvent,
   type TangerineNote,
 } from "@/lib/views";
+import { useStore } from "@/lib/store";
+import { ViewTabs } from "@/components/layout/ViewTabs";
+import { AtomCard } from "@/components/feed/AtomCard";
 import { TangerineNotes } from "@/components/TangerineNotes";
-import { Skeleton } from "@/components/ui/Skeleton";
-// === v1.16 Wave 1 === — EmptyStateCard onboarding card砍 (smart layer gone).
+import { PersonCard, type PersonStats } from "@/components/people/PersonCard";
 
-/**
- * /people — list of every alias Tangerine has captured atoms for. Auto-
- * derived from atoms (actor + actors + refs.people). Each row links to
- * /people/:alias with last-active + atom count + same-screen rate.
- *
- * Same-screen rate column is null in Stage 1 unless the alignment
- * snapshot has tracked the user; we render — when null.
- */
+const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
+const MAX_FILTERED_ATOMS = 50;
+/** Body text matches `#tag` for hashtag detection. Mirrors the regex
+ *  used by AtomCard's @mention detection so we stay consistent. */
+const HASHTAG_RE = /#([a-z0-9][a-z0-9_-]*)/gi;
+
 export default function PeopleListRoute() {
-  const [rows, setRows] = useState<PersonRow[]>([]);
+  const currentUser = useStore((s) => s.ui.currentUser);
+  const navigate = useNavigate();
+  const [events, setEvents] = useState<TimelineEvent[]>([]);
   const [notes, setNotes] = useState<TangerineNote[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [refreshKey, setRefreshKey] = useState(0);
-  // === v1.16 Wave 1 === — `firstAtomCapturedAt` latch read砍.
+  const [selected, setSelected] = useState<string | null>(null);
 
   useEffect(() => {
     let cancel = false;
     setLoading(true);
     setError(null);
-    readPeopleList()
+    readTimelineRecent(500)
       .then((d) => {
         if (cancel) return;
-        setRows(d.people);
+        setEvents(d.events);
         setNotes(d.notes);
         setLoading(false);
       })
       .catch((e: unknown) => {
         if (cancel) return;
-        setError(typeof e === "string" ? e : (e as Error)?.message ?? "Could not read people.");
         setLoading(false);
+        setError(
+          typeof e === "string"
+            ? e
+            : (e as Error)?.message ?? "Could not read recent timeline.",
+        );
       });
     return () => {
       cancel = true;
     };
-  }, [refreshKey]);
+  }, []);
+
+  const people = useMemo(() => buildPeopleStats(events), [events]);
+
+  // Default selection = currentUser. If the current user has no atoms
+  // yet (fresh install), fall back to the first person in the grid.
+  const effectiveSelected = useMemo(() => {
+    if (selected && people.some((p) => p.alias === selected)) return selected;
+    const cu = currentUser.toLowerCase();
+    if (people.some((p) => p.alias.toLowerCase() === cu)) return cu;
+    return people.length > 0 ? people[0].alias : null;
+  }, [selected, people, currentUser]);
+
+  const activeCount = useMemo(
+    () => people.filter((p) => p.countToday > 0).length,
+    [people],
+  );
+
+  const filteredAtoms = useMemo(() => {
+    if (!effectiveSelected) return [];
+    const sel = effectiveSelected.toLowerCase();
+    return events
+      .filter((ev) => (ev.actor || "").toLowerCase() === sel)
+      .slice()
+      .sort((a, b) => Date.parse(b.ts || "") - Date.parse(a.ts || ""))
+      .slice(0, MAX_FILTERED_ATOMS);
+  }, [events, effectiveSelected]);
+
+  // Empty state = solo user (only own alias OR 0 people total). We
+  // still want to show the user their own card if it exists, but the
+  // CTA appears when there are no teammates to compare to.
+  const isSolo =
+    !loading &&
+    !error &&
+    (people.length === 0 ||
+      (people.length === 1 &&
+        people[0].alias.toLowerCase() === currentUser.toLowerCase()));
 
   return (
-    <div className="bg-stone-50 dark:bg-stone-950">
-      <div className="mx-auto max-w-3xl px-8 py-10">
-        <TangerineNotes notes={notes} route="people" />
+    <div
+      data-testid="people-route"
+      className="flex h-full flex-col bg-stone-50 dark:bg-stone-950"
+    >
+      <ViewTabs />
+      <main className="flex-1 overflow-y-auto px-4 py-6">
+        <div className="mx-auto max-w-5xl">
+          {notes.length > 0 && <TangerineNotes notes={notes} route="/people" />}
 
-        <header className="flex items-center gap-4">
-          <div className="flex h-12 w-12 items-center justify-center rounded-md border border-stone-200 dark:border-stone-800">
-            <Users size={20} className="text-stone-500" />
-          </div>
-          <div>
-            <p className="ti-section-label">People</p>
-            <h1 className="font-display text-3xl tracking-tight text-stone-900 dark:text-stone-100">
-              Team
-            </h1>
-            <p className="mt-1 font-mono text-[11px] text-stone-500 dark:text-stone-400">
-              {rows.length} member{rows.length === 1 ? "" : "s"} captured from atoms
-            </p>
-          </div>
-        </header>
-
-        <section className="mt-8 overflow-hidden rounded-md border border-stone-200 dark:border-stone-800">
-          {loading ? (
-            <div className="space-y-2 px-4 py-4" aria-busy="true" data-testid="people-loading">
-              {Array.from({ length: 4 }).map((_, i) => (
-                <div key={i} className="grid grid-cols-[2fr_1fr_1fr_1fr] items-center gap-3">
-                  <Skeleton className="h-3 w-24" />
-                  <Skeleton className="ml-auto h-3 w-8" />
-                  <Skeleton className="ml-auto h-3 w-12" />
-                  <Skeleton className="ml-auto h-3 w-10" />
-                </div>
-              ))}
-            </div>
-          ) : error ? (
-            <div role="alert" className="px-4 py-8 text-center">
-              <AlertCircle size={20} className="mx-auto text-[var(--ti-danger)]" />
-              <p className="mt-3 text-[12px] text-stone-700 dark:text-stone-300">
-                Couldn't read people.
-              </p>
-              <p className="mt-1 font-mono text-[10px] text-stone-500 dark:text-stone-400">
-                {error}
-              </p>
-              <button
-                type="button"
-                onClick={() => setRefreshKey((k) => k + 1)}
-                className="mt-3 rounded border border-stone-300 px-2 py-0.5 font-mono text-[11px] text-stone-700 hover:bg-stone-100 dark:border-stone-700 dark:text-stone-200 dark:hover:bg-stone-800"
+          <header className="mb-6">
+            <h1
+              data-testid="people-header"
+              className="font-display text-2xl tracking-tight text-stone-900 dark:text-stone-100"
+            >
+              People
+              <span
+                className="ml-2 font-mono text-[12px] font-normal text-stone-500 dark:text-stone-400"
+                data-testid="people-active-count"
               >
-                Retry
-              </button>
+                · {activeCount} active in last 24h
+              </span>
+            </h1>
+          </header>
+
+          {loading && (
+            <div
+              data-testid="people-loading"
+              className="flex items-center justify-center py-16 text-stone-500"
+            >
+              <span className="font-mono text-[12px]">Loading people…</span>
             </div>
-          ) : rows.length === 0 ? (
-            <div className="px-4 py-8 text-center" data-testid="people-empty-returning">
-              <Users size={20} className="mx-auto text-stone-400" />
-              <p className="mt-3 text-[12px] text-stone-700 dark:text-stone-300">
-                No people captured yet.
-              </p>
-              <p className="mt-2 text-[11px] text-stone-500 dark:text-stone-400">
-                Connect a source — once an atom mentions @someone, they'll show up here.
-              </p>
-            </div>
-          ) : (
-            <ul className="divide-y divide-stone-200 dark:divide-stone-800">
-              <li className="grid grid-cols-[2fr_1fr_1fr_1fr] gap-3 bg-stone-100 px-4 py-2 font-mono text-[10px] uppercase tracking-wider text-stone-500 dark:bg-stone-900 dark:text-stone-400">
-                <span>alias</span>
-                <span className="text-right">atoms</span>
-                <span className="text-right">last active</span>
-                <span className="text-right">same-screen</span>
-              </li>
-              {rows.map((r) => (
-                <li
-                  key={r.alias}
-                  className="grid grid-cols-[2fr_1fr_1fr_1fr] gap-3 px-4 py-2 hover:bg-stone-100 dark:hover:bg-stone-900"
-                >
-                  <Link
-                    to={`/people/${encodeURIComponent(r.alias)}`}
-                    className="font-mono text-[12px] text-[var(--ti-orange-700)] hover:underline dark:text-[var(--ti-orange-500)]"
-                  >
-                    @{r.alias}
-                  </Link>
-                  <span className="text-right font-mono text-[12px] text-stone-700 dark:text-stone-300">
-                    {r.atom_count}
-                  </span>
-                  <span className="text-right font-mono text-[11px] text-stone-500 dark:text-stone-400">
-                    {formatRelativeTime(r.last_active)}
-                  </span>
-                  <span className="text-right font-mono text-[11px] text-stone-500 dark:text-stone-400">
-                    {r.same_screen_rate == null
-                      ? "—"
-                      : `${Math.round(r.same_screen_rate * 100)}%`}
-                  </span>
-                </li>
-              ))}
-            </ul>
           )}
-        </section>
-      </div>
+
+          {error && !loading && (
+            <div
+              data-testid="people-error"
+              role="alert"
+              className="rounded-md border border-rose-300 bg-rose-50 p-4 text-[13px] text-rose-800 dark:border-rose-900/50 dark:bg-rose-950/40 dark:text-rose-200"
+            >
+              <div className="font-semibold">Couldn't load people.</div>
+              <div className="mt-1 font-mono text-[11px]">{error}</div>
+            </div>
+          )}
+
+          {!loading && !error && (
+            <>
+              {people.length > 0 && (
+                <section
+                  data-testid="people-grid"
+                  data-count={people.length}
+                  className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"
+                >
+                  {people.map((p) => (
+                    <PersonCard
+                      key={p.alias}
+                      person={p}
+                      selected={p.alias === effectiveSelected}
+                      onSelect={setSelected}
+                    />
+                  ))}
+                </section>
+              )}
+
+              {isSolo && (
+                <div
+                  data-testid="people-empty-solo"
+                  className="mt-8 flex flex-col items-center justify-center rounded-md border border-dashed border-stone-300 bg-white px-6 py-10 text-center dark:border-stone-700 dark:bg-stone-900"
+                >
+                  <div className="text-[14px] font-semibold text-stone-700 dark:text-stone-200">
+                    Invite a teammate to share memory
+                  </div>
+                  <p className="mt-2 max-w-md text-[12px] text-stone-500 dark:text-stone-400">
+                    Tangerine becomes useful with two or more people. Set up
+                    sync to share captured atoms with your team.
+                  </p>
+                  <button
+                    type="button"
+                    data-testid="people-empty-cta"
+                    onClick={() => navigate("/settings/sync")}
+                    className="mt-4 rounded-md bg-[var(--ti-orange-500)] px-3 py-1.5 text-[12px] font-semibold text-white hover:bg-[var(--ti-orange-700)]"
+                  >
+                    Set up team sync
+                  </button>
+                </div>
+              )}
+
+              {effectiveSelected && filteredAtoms.length > 0 && (
+                <section className="mt-8">
+                  <h2
+                    className="mb-3 font-mono text-[11px] uppercase tracking-wider text-stone-500 dark:text-stone-400"
+                    data-testid="people-filtered-heading"
+                  >
+                    Recent atoms · {effectiveSelected}
+                  </h2>
+                  <ol
+                    data-testid="people-filtered-list"
+                    data-count={filteredAtoms.length}
+                    data-actor={effectiveSelected}
+                    className="space-y-2"
+                  >
+                    {filteredAtoms.map((ev) => (
+                      <li key={ev.id}>
+                        <AtomCard event={ev} />
+                      </li>
+                    ))}
+                  </ol>
+                </section>
+              )}
+
+              {effectiveSelected && filteredAtoms.length === 0 && people.length > 0 && (
+                <div
+                  data-testid="people-filtered-empty"
+                  className="mt-8 rounded-md border border-stone-200 bg-white px-4 py-6 text-center text-[12px] text-stone-500 dark:border-stone-800 dark:bg-stone-900 dark:text-stone-400"
+                >
+                  No atoms from {effectiveSelected} yet.
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </main>
     </div>
   );
+}
+
+/**
+ * Aggregate atoms into one PersonStats row per unique actor.
+ *
+ * - countToday: atoms whose ts is within the last 24h.
+ * - hashtags: top 3 by frequency across concepts[] AND body `#tag`
+ *   regex matches. Concepts are already curated (lowercase), so we
+ *   feed them in directly. Body matches are lowercased for stable
+ *   counting.
+ * - latestTs: max(ts) across the actor's atoms.
+ *
+ * Sorted by countToday desc, then by latestTs desc as tiebreak — so
+ * the most-active teammate lands top-left in the grid.
+ */
+export function buildPeopleStats(events: TimelineEvent[]): PersonStats[] {
+  const cutoff = Date.now() - TWENTY_FOUR_HOURS_MS;
+  const byActor = new Map<
+    string,
+    { countToday: number; tagCounts: Map<string, number>; latestTs: string | null }
+  >();
+  for (const ev of events) {
+    const actor = (ev.actor || "").trim();
+    if (!actor) continue;
+    const key = actor.toLowerCase();
+    let entry = byActor.get(key);
+    if (!entry) {
+      entry = { countToday: 0, tagCounts: new Map(), latestTs: null };
+      byActor.set(key, entry);
+    }
+    const tsMs = Date.parse(ev.ts || "");
+    if (!Number.isNaN(tsMs) && tsMs >= cutoff) entry.countToday += 1;
+    if (entry.latestTs === null || (ev.ts && ev.ts > entry.latestTs)) {
+      entry.latestTs = ev.ts ?? entry.latestTs;
+    }
+    for (const c of ev.concepts ?? []) {
+      const t = (c || "").trim().toLowerCase();
+      if (t) entry.tagCounts.set(t, (entry.tagCounts.get(t) ?? 0) + 1);
+    }
+    const body = ev.body ?? "";
+    for (const m of body.matchAll(HASHTAG_RE)) {
+      const t = m[1].toLowerCase();
+      if (t) entry.tagCounts.set(t, (entry.tagCounts.get(t) ?? 0) + 1);
+    }
+  }
+  const rows: PersonStats[] = [];
+  for (const [alias, entry] of byActor.entries()) {
+    const hashtags = [...entry.tagCounts.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .slice(0, 3)
+      .map(([t]) => t);
+    rows.push({
+      alias,
+      countToday: entry.countToday,
+      hashtags,
+      latestTs: entry.latestTs,
+    });
+  }
+  rows.sort(
+    (a, b) =>
+      b.countToday - a.countToday ||
+      Date.parse(b.latestTs ?? "") - Date.parse(a.latestTs ?? ""),
+  );
+  return rows;
 }

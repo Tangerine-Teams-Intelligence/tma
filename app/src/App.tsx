@@ -26,6 +26,10 @@ import SettingsPage from "@/pages/settings";
 // Stage 1 Wave 3 — Chief of Staff views.
 import TodayRoute from "@/routes/today";
 import ThisWeekRoute from "@/routes/this-week";
+// === v1.16 Wave 2 === — Story Feed, the new default landing surface.
+// Replaces /today as the v1.16 entry point. /today still works (legacy
+// muscle memory) until v1.17 drops it.
+import FeedRoute from "@/routes/feed";
 // === wave 24 ===
 import DailyRoute from "@/routes/daily";
 // === end wave 24 ===
@@ -190,9 +194,14 @@ export default function App() {
 
       {/* Everything else lives inside the always-on sidebar shell. */}
       <Route element={<AppShell />}>
-        <Route index element={<Navigate to="/today" replace />} />
+        {/* v1.16 Wave 2 — /feed is the new default landing. /today
+            remains reachable for muscle memory but the index now lands
+            on Feed. */}
+        <Route index element={<Navigate to="/feed" replace />} />
 
-        {/* Stage 1 Wave 3 — Chief of Staff views (default landing). */}
+        <Route path="feed" element={<FeedRoute />} />
+
+        {/* Stage 1 Wave 3 — Chief of Staff views (legacy, kept reachable). */}
         <Route path="today" element={<TodayRoute />} />
         <Route path="this-week" element={<ThisWeekRoute />} />
         {/* === wave 24 === — Daily notes route, default lands on today. */}
