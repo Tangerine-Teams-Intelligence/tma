@@ -28,29 +28,73 @@ use super::{
 };
 
 /// Every directory we'll probe for Codex session files. First entry is the
-/// canonical one per spec; the rest are best-effort fallbacks.
+/// platform-canonical one; the rest are best-effort fallbacks. v1.15.2
+/// fix #2 — Windows surfaces `%APPDATA%\Codex\sessions` first because
+/// the OpenAI Codex CLI on Windows writes there (the POSIX
+/// `~/.config/openai/sessions` path is Linux/macOS only and never exists
+/// on Windows).
 fn candidate_dirs() -> Vec<PathBuf> {
     let mut v = Vec::new();
-    if let Some(home) = dirs::home_dir() {
-        v.push(home.join(".config").join("openai").join("sessions"));
-        v.push(home.join(".codex").join("sessions"));
+    // Platform-canonical first — the Settings UI shows the head of this
+    // list as "Looking for X at <path>".
+    if let Some(p) = platform_canonical_dir() {
+        v.push(p);
     }
-    if cfg!(windows) {
-        if let Ok(app) = std::env::var("APPDATA") {
-            v.push(PathBuf::from(app).join("Codex").join("sessions"));
+    // POSIX defaults — kept on every OS so users with cross-platform
+    // dotfiles or WSL setups still capture.
+    if let Some(home) = dirs::home_dir() {
+        let posix = home.join(".config").join("openai").join("sessions");
+        if !v.contains(&posix) {
+            v.push(posix);
+        }
+        let dot = home.join(".codex").join("sessions");
+        if !v.contains(&dot) {
+            v.push(dot);
         }
     }
     v
 }
 
-/// Resolve the canonical Codex sessions dir for the Settings UI's
-/// "looking for X at <path>" line. Returns the spec-anchored POSIX path
-/// even when missing.
+/// Resolve the canonical Codex sessions dir for the current OS. Used by
+/// the Settings UI's "looking for X at <path>" line. Returns the
+/// platform-canonical path even when missing on disk so the user sees
+/// the Windows path on Windows, not the POSIX placeholder.
+///
+///   * Windows: `%APPDATA%\Codex\sessions\`
+///   * macOS:   `~/.config/openai/sessions/`
+///   * Linux:   `~/.config/openai/sessions/`
 pub fn codex_home() -> PathBuf {
+    if let Some(p) = platform_canonical_dir() {
+        return p;
+    }
     if let Some(home) = dirs::home_dir() {
         return home.join(".config").join("openai").join("sessions");
     }
     PathBuf::from(".config").join("openai").join("sessions")
+}
+
+/// Platform-canonical Codex sessions dir. Pulled into a helper so the
+/// candidate-dir builder and the Settings-facing `codex_home()` agree.
+fn platform_canonical_dir() -> Option<PathBuf> {
+    #[cfg(target_os = "windows")]
+    {
+        if let Some(cfg) = dirs::config_dir() {
+            return Some(cfg.join("Codex").join("sessions"));
+        }
+        if let Ok(app) = std::env::var("APPDATA") {
+            return Some(PathBuf::from(app).join("Codex").join("sessions"));
+        }
+        return None;
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        if let Some(home) = dirs::home_dir() {
+            return Some(home.join(".config").join("openai").join("sessions"));
+        }
+        return None;
+    }
+    #[allow(unreachable_code)]
+    None
 }
 
 pub fn detected() -> bool {
@@ -346,4 +390,47 @@ mod tests {
         let raw = r#"{"messages": []}"#;
         assert!(parse_session(raw, "x").is_err());
     }
+
+    // === v1.15.2 fix #2 ===
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn codex_home_windows_resolves_to_appdata_codex_sessions() {
+        let p = codex_home();
+        let s = p.to_string_lossy().to_lowercase();
+        assert!(
+            s.contains("appdata") || s.contains("roaming"),
+            "Windows codex_home must point under %APPDATA%, got {}",
+            p.display()
+        );
+        assert!(
+            s.ends_with("codex\\sessions") || s.ends_with("codex/sessions"),
+            "Windows codex_home must end with Codex\\sessions, got {}",
+            p.display()
+        );
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn codex_home_macos_resolves_to_dot_config_openai_sessions() {
+        let p = codex_home();
+        let s = p.to_string_lossy();
+        assert!(
+            s.ends_with(".config/openai/sessions"),
+            "macOS codex_home must use ~/.config/openai/sessions, got {}",
+            p.display()
+        );
+    }
+
+    #[test]
+    #[cfg(all(unix, not(target_os = "macos")))]
+    fn codex_home_linux_resolves_to_dot_config_openai_sessions() {
+        let p = codex_home();
+        let s = p.to_string_lossy();
+        assert!(
+            s.ends_with(".config/openai/sessions"),
+            "Linux codex_home must use ~/.config/openai/sessions, got {}",
+            p.display()
+        );
+    }
+    // === end v1.15.2 fix #2 ===
 }

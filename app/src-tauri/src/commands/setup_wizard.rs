@@ -1646,30 +1646,47 @@ const V15_TOOL_IDS: &[&str] = &[
 /// resource, swap this for the absolute path. Today (2026-04-28) the
 /// `mcp-server/` workspace publishes `tangerine-mcp@latest` to npm via
 /// `package.json::bin::tangerine-mcp` — npx is the canonical entry.
-fn tangerine_mcp_entry_json() -> serde_json::Value {
-    // v1.15.1 fix — pin to a semver-compatible range instead of `@latest`
-    // so a future v0.2.0 release with a breaking sampling-bridge protocol
-    // cannot silently break older Tangerine app installs (the user's
-    // editor would npm-install the new mcp, fail to register against the
-    // old bridge, and the wizard would show "Connected" timeout). The
-    // `^` range allows patch + minor updates within 0.1.x but rejects
-    // 0.2.x. Bump the floor when shipping a v1.15.x compatible with a
-    // newer mcp.
+fn tangerine_mcp_entry_json_for(tool_id: &str) -> serde_json::Value {
+    // v1.15.1 — pin to a semver-compatible range instead of `@latest`.
+    // v1.15.2 fix — set `TANGERINE_MCP_TOOL_ID` per editor so the
+    // sampling-bridge registers under the correct tool_id. Without this
+    // the npm package defaults to `"cursor"` (back-compat default in
+    // mcp-server/src/sampling-bridge.ts), so wave-11 wizard test for
+    // `claude-code` (and codex / windsurf) silently fails the
+    // sampler-not-registered check even when the bridge is alive. R6/R7
+    // honesty: the wave-11 test correctly reported "not connected"
+    // because the matching sampler genuinely wasn't registered — it was
+    // registered under the wrong tool_id.
     serde_json::json!({
         "command": "npx",
         "args": ["-y", "tangerine-mcp@^0.1.0"],
         "env": {
-            "TANGERINE_SAMPLING_BRIDGE": "1"
+            "TANGERINE_SAMPLING_BRIDGE": "1",
+            "TANGERINE_MCP_TOOL_ID": tool_id
         }
     })
 }
 
+/// Back-compat shim — keeps the original signature for any caller that
+/// doesn't yet thread a tool_id through. New code should use
+/// `tangerine_mcp_entry_json_for(tool_id)` directly so the
+/// `TANGERINE_MCP_TOOL_ID` env value is correct per editor.
+#[allow(dead_code)]
+fn tangerine_mcp_entry_json() -> serde_json::Value {
+    tangerine_mcp_entry_json_for("cursor")
+}
+
 /// Same content shape, TOML inline-table form for Codex's `[mcp_servers.tangerine]`.
-fn tangerine_mcp_entry_toml() -> toml::Value {
+/// v1.15.2 fix — accept tool_id so `TANGERINE_MCP_TOOL_ID` lands correctly.
+fn tangerine_mcp_entry_toml_for(tool_id: &str) -> toml::Value {
     let mut env = toml::value::Table::new();
     env.insert(
         "TANGERINE_SAMPLING_BRIDGE".to_string(),
         toml::Value::String("1".to_string()),
+    );
+    env.insert(
+        "TANGERINE_MCP_TOOL_ID".to_string(),
+        toml::Value::String(tool_id.to_string()),
     );
     let mut entry = toml::value::Table::new();
     entry.insert(
@@ -1680,12 +1697,18 @@ fn tangerine_mcp_entry_toml() -> toml::Value {
         "args".to_string(),
         toml::Value::Array(vec![
             toml::Value::String("-y".to_string()),
-            // v1.15.1 fix — see tangerine_mcp_entry_json doc comment.
+            // v1.15.1 fix — see tangerine_mcp_entry_json_for doc comment.
             toml::Value::String("tangerine-mcp@^0.1.0".to_string()),
         ]),
     );
     entry.insert("env".to_string(), toml::Value::Table(env));
     toml::Value::Table(entry)
+}
+
+/// Back-compat shim. Defaults to "codex" (the only TOML caller).
+#[allow(dead_code)]
+fn tangerine_mcp_entry_toml() -> toml::Value {
+    tangerine_mcp_entry_toml_for("codex")
 }
 
 /// Resolve `$HOME` honoring the `TANGERINE_TEST_HOME_OVERRIDE` env var
@@ -1906,7 +1929,8 @@ fn root_type_name(v: &serde_json::Value) -> &'static str {
 
 fn v15_configure_claude_code(home: &Path) -> Result<(), String> {
     let path = home.join(".claude.json");
-    match merge_into_mcp_servers_json(&path, tangerine_mcp_entry_json())? {
+    // v1.15.2 — pass tool_id so TANGERINE_MCP_TOOL_ID env binds correctly.
+    match merge_into_mcp_servers_json(&path, tangerine_mcp_entry_json_for("claude-code"))? {
         true => tracing::info!(path = %path.display(), "wrote Tangerine MCP entry to Claude Code config"),
         false => tracing::warn!(path = %path.display(), "Claude Code config already has Tangerine entry — no-op"),
     }
@@ -1915,7 +1939,7 @@ fn v15_configure_claude_code(home: &Path) -> Result<(), String> {
 
 fn v15_configure_cursor(home: &Path) -> Result<(), String> {
     let path = home.join(".cursor").join("mcp.json");
-    match merge_into_mcp_servers_json(&path, tangerine_mcp_entry_json())? {
+    match merge_into_mcp_servers_json(&path, tangerine_mcp_entry_json_for("cursor"))? {
         true => tracing::info!(path = %path.display(), "wrote Tangerine MCP entry to Cursor config"),
         false => tracing::warn!(path = %path.display(), "Cursor config already has Tangerine entry — no-op"),
     }
@@ -1924,7 +1948,7 @@ fn v15_configure_cursor(home: &Path) -> Result<(), String> {
 
 fn v15_configure_codex(home: &Path) -> Result<(), String> {
     let path = home.join(".codex").join("config.toml");
-    match merge_into_mcp_servers_toml(&path, tangerine_mcp_entry_toml())? {
+    match merge_into_mcp_servers_toml(&path, tangerine_mcp_entry_toml_for("codex"))? {
         true => tracing::info!(path = %path.display(), "wrote Tangerine MCP entry to Codex config"),
         false => tracing::warn!(path = %path.display(), "Codex config already has Tangerine entry — no-op"),
     }
@@ -1936,7 +1960,7 @@ fn v15_configure_windsurf(home: &Path) -> Result<(), String> {
         .join(".codeium")
         .join("windsurf")
         .join("mcp_config.json");
-    match merge_into_mcp_servers_json(&path, tangerine_mcp_entry_json())? {
+    match merge_into_mcp_servers_json(&path, tangerine_mcp_entry_json_for("windsurf"))? {
         true => tracing::info!(path = %path.display(), "wrote Tangerine MCP entry to Windsurf config"),
         false => tracing::warn!(path = %path.display(), "Windsurf config already has Tangerine entry — no-op"),
     }
@@ -2289,10 +2313,21 @@ mod v15_tests {
     async fn v15_configure_claude_code_is_idempotent() {
         let td = V15Tmp::new("claude-idem");
         v15_dispatch_configure("claude-code", &td.0).await.unwrap();
-        let body1 = fs::read_to_string(td.0.join(".claude.json")).unwrap();
+        let p = td.0.join(".claude.json");
+        let body1 = fs::read_to_string(&p).unwrap();
+        // v1.15.2: capture mtime to prove the second call is a true no-op
+        // (merge_into_mcp_servers_json returns Ok(false) without invoking
+        // atomic_write when the on-disk entry already equals the
+        // tool_id-aware canonical entry).
+        let mtime1 = fs::metadata(&p).unwrap().modified().unwrap();
         v15_dispatch_configure("claude-code", &td.0).await.unwrap();
-        let body2 = fs::read_to_string(td.0.join(".claude.json")).unwrap();
-        assert_eq!(body1, body2, "second configure must be a no-op");
+        let body2 = fs::read_to_string(&p).unwrap();
+        let mtime2 = fs::metadata(&p).unwrap().modified().unwrap();
+        assert_eq!(body1, body2, "second configure must be a no-op (bytes)");
+        assert_eq!(
+            mtime1, mtime2,
+            "second configure must NOT touch the file (mtime preserved)"
+        );
     }
 
     #[tokio::test]
@@ -2301,9 +2336,12 @@ mod v15_tests {
         v15_dispatch_configure("cursor", &td.0).await.unwrap();
         let p = td.0.join(".cursor").join("mcp.json");
         let body1 = fs::read_to_string(&p).unwrap();
+        let mtime1 = fs::metadata(&p).unwrap().modified().unwrap();
         v15_dispatch_configure("cursor", &td.0).await.unwrap();
         let body2 = fs::read_to_string(&p).unwrap();
+        let mtime2 = fs::metadata(&p).unwrap().modified().unwrap();
         assert_eq!(body1, body2);
+        assert_eq!(mtime1, mtime2, "second configure must not rewrite file");
     }
 
     #[tokio::test]
@@ -2312,9 +2350,12 @@ mod v15_tests {
         v15_dispatch_configure("codex", &td.0).await.unwrap();
         let p = td.0.join(".codex").join("config.toml");
         let body1 = fs::read_to_string(&p).unwrap();
+        let mtime1 = fs::metadata(&p).unwrap().modified().unwrap();
         v15_dispatch_configure("codex", &td.0).await.unwrap();
         let body2 = fs::read_to_string(&p).unwrap();
+        let mtime2 = fs::metadata(&p).unwrap().modified().unwrap();
         assert_eq!(body1, body2);
+        assert_eq!(mtime1, mtime2, "second configure must not rewrite file");
     }
 
     #[tokio::test]
@@ -2327,9 +2368,12 @@ mod v15_tests {
             .join("windsurf")
             .join("mcp_config.json");
         let body1 = fs::read_to_string(&p).unwrap();
+        let mtime1 = fs::metadata(&p).unwrap().modified().unwrap();
         v15_dispatch_configure("windsurf", &td.0).await.unwrap();
         let body2 = fs::read_to_string(&p).unwrap();
+        let mtime2 = fs::metadata(&p).unwrap().modified().unwrap();
         assert_eq!(body1, body2);
+        assert_eq!(mtime1, mtime2, "second configure must not rewrite file");
     }
 
     // ---- 8 handshake tests ------------------------------------------------
@@ -2549,6 +2593,213 @@ args = ["/tmp/foo.js"]
             Some(v) => std::env::set_var("TANGERINE_TEST_HOME_OVERRIDE", v),
             None => std::env::remove_var("TANGERINE_TEST_HOME_OVERRIDE"),
         }
+    }
+
+    // ---- v1.15.2 TOOL_ID env per-editor entry-shape tests ------------------
+    //
+    // These prove the canonical entry built by `tangerine_mcp_entry_json_for`
+    // and `tangerine_mcp_entry_toml_for` carries the correct
+    // `TANGERINE_MCP_TOOL_ID` env var per editor. Without this, the spawned
+    // `tangerine-mcp` process defaults to `tool_id="cursor"` (back-compat
+    // default in mcp-server/src/sampling-bridge.ts) and the wave-11 wizard
+    // handshake silently fails the sampler-not-registered check for
+    // claude-code / codex / windsurf.
+
+    #[tokio::test]
+    async fn v15_claude_code_entry_has_tool_id_env() {
+        let entry = tangerine_mcp_entry_json_for("claude-code");
+        assert_eq!(entry["command"].as_str().unwrap(), "npx");
+        let args: Vec<&str> = entry["args"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap())
+            .collect();
+        assert_eq!(args, vec!["-y", "tangerine-mcp@^0.1.0"]);
+        assert_eq!(
+            entry["env"]["TANGERINE_MCP_TOOL_ID"].as_str().unwrap(),
+            "claude-code",
+            "claude-code must register under tool_id='claude-code', not 'cursor'"
+        );
+        assert_eq!(
+            entry["env"]["TANGERINE_SAMPLING_BRIDGE"].as_str().unwrap(),
+            "1"
+        );
+    }
+
+    #[tokio::test]
+    async fn v15_cursor_entry_has_tool_id_env() {
+        let entry = tangerine_mcp_entry_json_for("cursor");
+        assert_eq!(entry["command"].as_str().unwrap(), "npx");
+        let args: Vec<&str> = entry["args"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap())
+            .collect();
+        assert_eq!(args, vec!["-y", "tangerine-mcp@^0.1.0"]);
+        assert_eq!(
+            entry["env"]["TANGERINE_MCP_TOOL_ID"].as_str().unwrap(),
+            "cursor"
+        );
+        assert_eq!(
+            entry["env"]["TANGERINE_SAMPLING_BRIDGE"].as_str().unwrap(),
+            "1"
+        );
+    }
+
+    #[tokio::test]
+    async fn v15_windsurf_entry_has_tool_id_env() {
+        let entry = tangerine_mcp_entry_json_for("windsurf");
+        assert_eq!(entry["command"].as_str().unwrap(), "npx");
+        let args: Vec<&str> = entry["args"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap())
+            .collect();
+        assert_eq!(args, vec!["-y", "tangerine-mcp@^0.1.0"]);
+        assert_eq!(
+            entry["env"]["TANGERINE_MCP_TOOL_ID"].as_str().unwrap(),
+            "windsurf"
+        );
+        assert_eq!(
+            entry["env"]["TANGERINE_SAMPLING_BRIDGE"].as_str().unwrap(),
+            "1"
+        );
+    }
+
+    #[tokio::test]
+    async fn v15_codex_entry_has_tool_id_env_toml() {
+        let entry = tangerine_mcp_entry_toml_for("codex");
+        let table = entry.as_table().expect("entry must be a TOML table");
+        assert_eq!(
+            table.get("command").and_then(|v| v.as_str()).unwrap(),
+            "npx"
+        );
+        let args: Vec<&str> = table
+            .get("args")
+            .and_then(|v| v.as_array())
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap())
+            .collect();
+        assert_eq!(args, vec!["-y", "tangerine-mcp@^0.1.0"]);
+        let env = table
+            .get("env")
+            .and_then(|v| v.as_table())
+            .expect("env must be a TOML table");
+        assert_eq!(
+            env.get("TANGERINE_MCP_TOOL_ID")
+                .and_then(|v| v.as_str())
+                .unwrap(),
+            "codex",
+            "codex must register under tool_id='codex', not 'cursor'"
+        );
+        assert_eq!(
+            env.get("TANGERINE_SAMPLING_BRIDGE")
+                .and_then(|v| v.as_str())
+                .unwrap(),
+            "1"
+        );
+    }
+
+    // ---- v1.15.2 end-to-end via configure → on-disk read-back --------------
+    //
+    // Proves that running v15_configure_claude_code on a tempdir actually
+    // lands `TANGERINE_MCP_TOOL_ID="claude-code"` inside the on-disk
+    // .claude.json — i.e. the merge function preserves the env block we
+    // built. This is the regression test for the v1.15.1 dogfood failure
+    // where the file was written with no tool_id env at all.
+
+    #[tokio::test]
+    async fn v15_configure_claude_code_writes_tool_id_to_disk() {
+        let td = V15Tmp::new("claude-tool-id-disk");
+        v15_configure_claude_code(&td.0).expect("configure must succeed");
+        let body = fs::read_to_string(td.0.join(".claude.json")).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(
+            v["mcpServers"]["tangerine"]["env"]["TANGERINE_MCP_TOOL_ID"]
+                .as_str()
+                .unwrap(),
+            "claude-code",
+            "on-disk .claude.json must carry TANGERINE_MCP_TOOL_ID=claude-code"
+        );
+        assert_eq!(
+            v["mcpServers"]["tangerine"]["env"]["TANGERINE_SAMPLING_BRIDGE"]
+                .as_str()
+                .unwrap(),
+            "1"
+        );
+        let args: Vec<&str> = v["mcpServers"]["tangerine"]["args"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|x| x.as_str().unwrap())
+            .collect();
+        assert_eq!(args, vec!["-y", "tangerine-mcp@^0.1.0"]);
+    }
+
+    #[tokio::test]
+    async fn v15_configure_cursor_writes_tool_id_to_disk() {
+        let td = V15Tmp::new("cursor-tool-id-disk");
+        v15_configure_cursor(&td.0).expect("configure must succeed");
+        let body =
+            fs::read_to_string(td.0.join(".cursor").join("mcp.json")).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(
+            v["mcpServers"]["tangerine"]["env"]["TANGERINE_MCP_TOOL_ID"]
+                .as_str()
+                .unwrap(),
+            "cursor"
+        );
+    }
+
+    #[tokio::test]
+    async fn v15_configure_codex_writes_tool_id_to_disk() {
+        let td = V15Tmp::new("codex-tool-id-disk");
+        v15_configure_codex(&td.0).expect("configure must succeed");
+        let body =
+            fs::read_to_string(td.0.join(".codex").join("config.toml"))
+                .unwrap();
+        let v: toml::Value = toml::from_str(&body).unwrap();
+        let env = v
+            .get("mcp_servers")
+            .and_then(|m| m.get("tangerine"))
+            .and_then(|t| t.get("env"))
+            .and_then(|e| e.as_table())
+            .expect("env table must exist");
+        assert_eq!(
+            env.get("TANGERINE_MCP_TOOL_ID")
+                .and_then(|v| v.as_str())
+                .unwrap(),
+            "codex"
+        );
+        assert_eq!(
+            env.get("TANGERINE_SAMPLING_BRIDGE")
+                .and_then(|v| v.as_str())
+                .unwrap(),
+            "1"
+        );
+    }
+
+    #[tokio::test]
+    async fn v15_configure_windsurf_writes_tool_id_to_disk() {
+        let td = V15Tmp::new("windsurf-tool-id-disk");
+        v15_configure_windsurf(&td.0).expect("configure must succeed");
+        let body = fs::read_to_string(
+            td.0.join(".codeium")
+                .join("windsurf")
+                .join("mcp_config.json"),
+        )
+        .unwrap();
+        let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(
+            v["mcpServers"]["tangerine"]["env"]["TANGERINE_MCP_TOOL_ID"]
+                .as_str()
+                .unwrap(),
+            "windsurf"
+        );
     }
 }
 // === end v1.15.0 wave 1.3 ===

@@ -158,6 +158,17 @@ export type TelemetryEventName =
   | "setup_wizard_banner_open"
   | "setup_wizard_banner_dismissed"
   // === end wave 11 ===
+  // === v1.15.2 Fix #3 — banner CTR analytics ===
+  // Distinct from `setup_wizard_banner_open` (fired when the wizard
+  // actually opens). `setup_wizard_banner_clicked` fires the moment the
+  // user clicks the "立即配置" / "Set up now" CTA — even before the
+  // wizard mounts. Lets analytics compute click-through-rate
+  // (clicked / banner-impression) independent of wizard mount success.
+  // Payload: { channel_ready_flag: boolean, primary_channel: string | null }
+  // (channel_ready_flag captured at click-time so we can spot users who
+  // clicked despite a "ready" flag — symptom of broken handshake state.)
+  | "setup_wizard_banner_clicked"
+  // === end v1.15.2 Fix #3 ===
   // === wave 15 ===
   // v1.10.4 — Cmd+K full memory search. Fired by the CommandPalette
   // every time the debounced query length crosses the threshold and

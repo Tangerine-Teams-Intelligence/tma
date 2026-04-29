@@ -71,7 +71,8 @@ const AGENTS: AgentRow[] = [
     atomDir: "cursor",
     flagKey: "cursor",
     label: "Cursor",
-    description: "Reads ~/.cursor/conversations/*.json (or %APPDATA%/Cursor on Windows).",
+    description:
+      "Reads Cursor conversations from %APPDATA%\\Cursor\\User\\conversations (Windows), ~/Library/Application Support/Cursor/User/conversations (macOS), or ~/.config/Cursor/User/conversations (Linux). Falls back to legacy ~/.cursor/conversations.",
     capture: personalAgentsCaptureCursor,
     confidence: {
       kind: "unvalidated",
@@ -90,7 +91,8 @@ const AGENTS: AgentRow[] = [
     atomDir: "codex",
     flagKey: "codex",
     label: "Codex CLI",
-    description: "Reads ~/.config/openai/sessions/* (best-effort path probe).",
+    description:
+      "Reads Codex CLI sessions from %APPDATA%\\Codex\\sessions (Windows) or ~/.config/openai/sessions (macOS/Linux). Also probes ~/.codex/sessions (npm CLI install).",
     capture: personalAgentsCaptureCodex,
     confidence: {
       kind: "unvalidated",
@@ -101,7 +103,8 @@ const AGENTS: AgentRow[] = [
     atomDir: "windsurf",
     flagKey: "windsurf",
     label: "Windsurf",
-    description: "Reads Windsurf sessions dir (Codeium fork, Cursor-like shape).",
+    description:
+      "Reads Windsurf sessions from ~/.codeium/windsurf/ (Codeium fork canonical) plus the platform Electron path: %APPDATA%\\Windsurf\\User on Windows, ~/Library/Application Support/Windsurf/User on macOS, ~/.config/Windsurf/User on Linux.",
     capture: personalAgentsCaptureWindsurf,
     confidence: {
       kind: "unvalidated",

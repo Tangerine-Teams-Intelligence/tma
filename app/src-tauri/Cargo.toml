@@ -155,6 +155,15 @@ winapi = { version = "0.3", features = ["winuser", "processthreadsapi", "handlea
 [features]
 custom-protocol = ["tauri/custom-protocol"]
 
+# === v1.15.2 Fix #5 ===
+# Real-spawn end-to-end test for the MCP sampling-bridge handshake. Cargo
+# auto-discovers `tests/spawn_handshake_e2e.rs` so no [[test]] entry is
+# required, but we list it here as a CI hint: this test spawns
+# `npx -y tangerine-mcp@^0.1.0` and waits for it to phone home over ws.
+# Run with `cargo test --test spawn_handshake_e2e`. Skips cleanly if `npx`
+# is not on PATH; CI must have node >= 20 installed for this to run.
+# === end v1.15.2 Fix #5 ===
+
 [profile.release]
 opt-level = "s"
 lto = true

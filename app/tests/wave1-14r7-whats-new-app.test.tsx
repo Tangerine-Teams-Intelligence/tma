@@ -57,12 +57,14 @@ describe("v1.14 R7 — /whats-new-app", () => {
     expect(useStore.getState().ui.lastSeenAppVersion).toBe(APP_VERSION);
   });
 
-  it("APP_VERSION matches the v1.14 ship target", () => {
-    // Single source of truth for the upgrade-toast comparison in
-    // AppShell. Bumping APP_VERSION without adding a new release block
-    // above is the lint signal — this assertion is a sentinel that the
-    // tag wasn't accidentally rewound.
-    expect(APP_VERSION).toBe("1.14.6");
+  it("APP_VERSION tracks the build-time __APP_VERSION__ constant", () => {
+    // v1.15.2 fix #4: APP_VERSION is no longer hardcoded — it's now
+    // sourced from `__APP_VERSION__` (injected by vite.config.ts from
+    // package.json) so the upgrade-toast comparison in AppShell can
+    // never fall out of sync with the shipped bundle.
+    expect(APP_VERSION).toBe(__APP_VERSION__);
+    // Sanity: the bundled version is a non-empty semver-shaped string.
+    expect(APP_VERSION).toMatch(/^\d+\.\d+\.\d+/);
   });
 });
 // === end v1.14.6 round-7 ===

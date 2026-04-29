@@ -22,14 +22,29 @@ import ReactMarkdown from "react-markdown";
 import { useEffect } from "react";
 import { useStore } from "@/lib/store";
 
-/** Bumped on every release. Drives the `lastSeenAppVersion` upgrade toast. */
-export const APP_VERSION = "1.14.6";
+/** Bumped on every release. Drives the `lastSeenAppVersion` upgrade toast.
+ *
+ *  v1.15.2 fix #4: was hardcoded ("1.14.6") which fell out of sync with the
+ *  shipped Tauri build and caused a stale "Tangerine v1.14 is here" toast
+ *  to appear on v1.15 cold installs. Now sourced from `__APP_VERSION__`
+ *  (injected by vite.config.ts at build time from package.json), so this
+ *  constant tracks the bundle automatically. */
+export const APP_VERSION: string = __APP_VERSION__;
 
 /** Roll-up changelog rendered into the route. Keep entries terse and
  *  user-visible — this is the "what changed for me" view, not the
  *  engineering log. */
 const CHANGELOG_MARKDOWN = `
 # What's new in this version
+
+## v1.15.2 — 2026-04-28
+
+Wave 1.15 hotfix #4 — kill the stale upgrade toast.
+
+- **Dynamic version in the upgrade toast.** Bottom-right "Tangerine
+  v1.14 is here" toast was hardcoded to v1.14 and persisted into
+  v1.15 cold installs. Now sourced from the build-time bundle so it
+  always matches the running app.
 
 ## v1.14.6 — 2026-04-28
 

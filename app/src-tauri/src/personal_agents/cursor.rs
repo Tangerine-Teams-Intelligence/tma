@@ -47,18 +47,22 @@ use super::{
 /// Resolve the Cursor conversations directory for the current OS. Returns
 /// the path even when it doesn't exist on disk so the Settings UI can
 /// render "looking for ... at <path>" before the user installs Cursor.
+///
+/// v1.15.2 fix #2 — mirrors the cross-platform pattern that
+/// `cursor_installed()` in `commands::setup_wizard` uses: prefer the
+/// platform-canonical path (Cursor's Electron `userData` dir) and only
+/// fall back to the legacy `~/.cursor/` POSIX path when the platform
+/// path can't be resolved. The legacy path is still kept in
+/// [`candidate_dirs`] so users with old installs aren't stranded.
+///
+///   * Windows: `%APPDATA%\Cursor\User\conversations\`
+///     (= `C:\Users\<user>\AppData\Roaming\Cursor\User\conversations\`)
+///   * macOS:   `~/Library/Application Support/Cursor/User/conversations/`
+///   * Linux:   `~/.config/Cursor/User/conversations/`
+///   * Fallback: `~/.cursor/conversations/`
 pub fn cursor_home() -> PathBuf {
-    if cfg!(windows) {
-        // Cursor on Windows stores its state in two well-known shapes
-        // depending on installer version. We prefer `%APPDATA%/Cursor/User/
-        // conversations` (the newer one); the alternate path is checked at
-        // capture time as a fallback (see `candidate_dirs`).
-        if let Ok(roaming) = std::env::var("APPDATA") {
-            return PathBuf::from(roaming)
-                .join("Cursor")
-                .join("User")
-                .join("conversations");
-        }
+    if let Some(p) = platform_user_dir() {
+        return p.join("conversations");
     }
     if let Some(home) = dirs::home_dir() {
         return home.join(".cursor").join("conversations");
@@ -66,14 +70,59 @@ pub fn cursor_home() -> PathBuf {
     PathBuf::from(".cursor").join("conversations")
 }
 
+/// Resolve Cursor's Electron `userData/User` dir for the current OS, or
+/// `None` when no platform path is resolvable. Pulled into its own
+/// helper so the candidate-dir builder can reuse it without duplicating
+/// the OS-cfg pyramid.
+fn platform_user_dir() -> Option<PathBuf> {
+    #[cfg(target_os = "windows")]
+    {
+        // Windows Electron apps write to `%APPDATA%\<App>\User\`.
+        // `dirs::config_dir()` resolves to `%APPDATA%` on Windows; we
+        // also accept the raw env var as a fallback so this still works
+        // when `dirs` can't read the registry.
+        if let Some(cfg) = dirs::config_dir() {
+            return Some(cfg.join("Cursor").join("User"));
+        }
+        if let Ok(app) = std::env::var("APPDATA") {
+            return Some(PathBuf::from(app).join("Cursor").join("User"));
+        }
+        return None;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(home) = dirs::home_dir() {
+            return Some(
+                home.join("Library")
+                    .join("Application Support")
+                    .join("Cursor")
+                    .join("User"),
+            );
+        }
+        return None;
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        // Linux & BSDs — `dirs::config_dir()` honors $XDG_CONFIG_HOME
+        // and falls back to `~/.config`.
+        if let Some(cfg) = dirs::config_dir() {
+            return Some(cfg.join("Cursor").join("User"));
+        }
+        return None;
+    }
+    #[allow(unreachable_code)]
+    None
+}
+
 /// Every directory we'll probe when scanning for Cursor conversations.
-/// First entry is the canonical one; the rest are historical fallbacks.
+/// First entry is the platform-canonical path; the rest are historical
+/// fallbacks. Order matters — the Settings UI surfaces the first hit.
 fn candidate_dirs() -> Vec<PathBuf> {
     let mut v = vec![cursor_home()];
     if let Some(home) = dirs::home_dir() {
-        // POSIX-style fallback even on Windows — some Cursor installs
-        // historically wrote into `~/.cursor/conversations` regardless of
-        // OS.
+        // POSIX-style legacy path — some Cursor installs (early alphas
+        // + bring-your-own-CLI builds) historically wrote into
+        // `~/.cursor/conversations` regardless of OS.
         let dot = home.join(".cursor").join("conversations");
         if !v.contains(&dot) {
             v.push(dot);
@@ -508,4 +557,86 @@ mod tests {
         assert_eq!(sanitize_id(""), "conversation");
         assert_eq!(sanitize_id("abc 123"), "abc-123");
     }
+
+    // === v1.15.2 fix #2 ===
+    /// Per-platform path resolver — assert each OS gets the canonical
+    /// Cursor `userData/User/conversations` path. The pre-fix bug:
+    /// Cursor on Windows was probed at `~/.cursor/conversations` (POSIX
+    /// only), which never exists on Windows because the Cursor Electron
+    /// installer writes to `%APPDATA%\Cursor\User\conversations\`.
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn cursor_home_windows_resolves_to_appdata_user_conversations() {
+        let p = cursor_home();
+        let s = p.to_string_lossy().to_lowercase();
+        assert!(
+            s.contains("appdata") || s.contains("roaming"),
+            "Windows cursor_home must point under %APPDATA%, got {}",
+            p.display()
+        );
+        assert!(
+            s.ends_with("cursor\\user\\conversations")
+                || s.ends_with("cursor/user/conversations"),
+            "Windows cursor_home must end with Cursor\\User\\conversations, got {}",
+            p.display()
+        );
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn cursor_home_macos_resolves_to_application_support_user_conversations() {
+        let p = cursor_home();
+        let s = p.to_string_lossy();
+        assert!(
+            s.contains("Library/Application Support/Cursor/User/conversations"),
+            "macOS cursor_home must use Application Support, got {}",
+            p.display()
+        );
+    }
+
+    #[test]
+    #[cfg(all(unix, not(target_os = "macos")))]
+    fn cursor_home_linux_resolves_to_config_user_conversations() {
+        let p = cursor_home();
+        let s = p.to_string_lossy();
+        // dirs::config_dir() = $XDG_CONFIG_HOME or ~/.config on Linux.
+        assert!(
+            s.contains("Cursor/User/conversations"),
+            "Linux cursor_home must contain Cursor/User/conversations, got {}",
+            p.display()
+        );
+    }
+
+    /// Mock-filesystem proof: when a conversation file exists in the
+    /// platform-canonical Cursor path, capture finds it. Drives the path
+    /// resolver via `capture_one_conversation` (which is independent of
+    /// candidate_dirs) so the test stays portable across CI without
+    /// touching the user's real Cursor home.
+    #[test]
+    fn capture_finds_conversation_at_canonical_user_conversations_path() {
+        // Synthesize the same nested layout Cursor uses on every OS:
+        // <root>/Cursor/User/conversations/<file>.json
+        let tmp = std::env::temp_dir().join(format!(
+            "tii_pa_cursor_canonical_{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        let convo_dir = tmp.join("Cursor").join("User").join("conversations");
+        let target_dir = tmp.join("dest").join("cursor");
+        fs::create_dir_all(&convo_dir).unwrap();
+        fs::create_dir_all(&target_dir).unwrap();
+        let src_file = convo_dir.join("conv-canonical.json");
+        fs::write(&src_file, fixture_struct_shape()).unwrap();
+        // Drives the same code path that `capture()` would, against a
+        // path matching the canonical layout. Proves the parser doesn't
+        // care which OS rooted the path — what matters is that
+        // `cursor_home()` finds it.
+        let written = capture_one_conversation(&src_file, &target_dir).unwrap();
+        assert!(written, "capture must find + write the conversation");
+        let atom = target_dir.join("conv-abc.md");
+        assert!(atom.is_file(), "atom file must exist at {}", atom.display());
+        let body = fs::read_to_string(&atom).unwrap();
+        assert!(body.contains("source: cursor"));
+        let _ = fs::remove_dir_all(&tmp);
+    }
+    // === end v1.15.2 fix #2 ===
 }

@@ -13,6 +13,14 @@
  * Personal Agents are visible. Adapters / Team / Advanced live behind a
  * "Show advanced settings" toggle persisted in `ui.showAdvancedSettings`.
  * === end wave 5-α ===
+ *
+ * === v1.15.2 fix-6 ===
+ * The "AI tools" tab now hosts the merged surface: Primary channel picker
+ * (wave-11 layout) at the top, capture sources grid (v1.15 PersonalAgents
+ * 8-tool grid) below. The standalone "Personal Agents" advanced tab is
+ * removed — having two tabs that disagreed on which AI tools the user
+ * had was the root cause of the dogfood confusion.
+ * === end v1.15.2 fix-6 ===
  */
 // === wave 4-D i18n ===
 import { useEffect, useState } from "react";
@@ -31,9 +39,12 @@ import { AdaptersSettings } from "./AdaptersSettings";
 import { AdvancedSettings } from "./AdvancedSettings";
 import { AIToolsSettings } from "./AIToolsSettings";
 import { AGISettings } from "./AGISettings";
-// v3.0 §1 — Personal Agents tab. Strict opt-in capture for Cursor / Claude
-// Code / Codex / Windsurf logs into the personal vault.
-import { PersonalAgentsSettings } from "./PersonalAgentsSettings";
+// === v1.15.2 fix-6 === — PersonalAgentsSettings import removed.
+// The 8-tool capture grid is now inlined into AIToolsSettings.tsx
+// alongside the Primary channel picker (Settings → AI tools tab).
+// PersonalAgentsSettings.tsx still exists on disk for any direct
+// importers / future reuse, but Settings no longer mounts it.
+// === end v1.15.2 fix-6 ===
 // === wave 19 ===
 // Wave 19 IA — Sources tab (was a sidebar section pre-wave-19). Lives in
 // the default tab band so connectors are still one click away.
@@ -69,9 +80,15 @@ const DEFAULT_TABS = [
   // === end wave 1.13-E ===
 ] as const;
 
+// === v1.15.2 fix-6 === — `personal-agents` removed from ADVANCED_TABS.
+// The 8-tool capture grid that lived behind 显示高级设置 → 个人 AI 工具
+// is now merged into the default "AI tools" tab (see AIToolsSettings.tsx),
+// so a separate advanced tab would just be a confusing duplicate. The
+// PersonalAgentsSettings component is intentionally left in the codebase
+// for any deep-link or test that imports it directly, but no UI mounts it.
+// === end v1.15.2 fix-6 ===
 const ADVANCED_TABS = [
   { id: "agi", label: "AGI" },
-  { id: "personal-agents", label: "Personal Agents" },
   { id: "adapters", label: "Adapters" },
   { id: "team", label: "Team" },
   { id: "advanced", label: "Advanced" },
@@ -120,7 +137,6 @@ export default function Settings() {
       "sources",
       "privacy",
       "agi",
-      "personal-agents",
       "team",
       "adapters",
       "advanced",
@@ -200,7 +216,6 @@ export default function Settings() {
     privacy: "settings.tabs.privacy",
     // === end wave 1.13-E ===
     agi: "settings.tabs.agi",
-    "personal-agents": "settings.tabs.personalAgents",
     team: "settings.tabs.team",
     adapters: "settings.tabs.adapters",
     advanced: "settings.tabs.advanced",
@@ -273,7 +288,10 @@ export default function Settings() {
         {tab === "privacy" && <PrivacySettings />}
         {/* === end wave 1.13-E === */}
         {tab === "agi" && <AGISettings />}
-        {tab === "personal-agents" && <PersonalAgentsSettings />}
+        {/* === v1.15.2 fix-6 === — `personal-agents` tab removed from
+            ADVANCED_TABS; PersonalAgentsSettings is no longer mounted
+            anywhere. The 8-tool capture grid lives inside the merged
+            "AI tools" tab now. */}
         {tab === "team" && <TeamSettings draft={draft} update={update} />}
         {tab === "adapters" && <AdaptersSettings draft={draft} update={update} />}
         {tab === "advanced" && <AdvancedSettings draft={draft} update={update} />}

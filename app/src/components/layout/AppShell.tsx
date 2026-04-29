@@ -156,6 +156,36 @@ import { systemNotify } from "@/lib/tauri";
 export const MEMORY_REFRESHED_EVENT = "tangerine:memory-refreshed";
 
 /**
+ * v1.15.2 fix #4 — pure helper that computes the upgrade-toast plan
+ * given the running app version and the user's persisted
+ * `lastSeenAppVersion`. Returns `null` when no toast should fire
+ * (versions match), otherwise returns the message string + a
+ * `firstInstall` flag indicating which copy variant fired.
+ *
+ * Extracted so the toast wording is unit-testable without booting the
+ * full AppShell tree (it pulls in i18n, presence, billing, demo seed,
+ * and ~25 other providers). The AppShell effect calls this helper
+ * with `__APP_VERSION__` and the current store value.
+ */
+export function computeUpgradeToast(
+  appVersion: string,
+  lastSeenAppVersion: string | null,
+): { msg: string; firstInstall: boolean } | null {
+  if (lastSeenAppVersion === appVersion) return null;
+  const majorMinor = appVersion.split(".").slice(0, 2).join(".");
+  if (lastSeenAppVersion === null) {
+    return {
+      msg: `Tangerine v${majorMinor} is here — see what shipped`,
+      firstInstall: true,
+    };
+  }
+  return {
+    msg: `Updated to v${appVersion} — see what's new`,
+    firstInstall: false,
+  };
+}
+
+/**
  * v1.9.0-beta.2 P2-A — payload shape of a `template_match` Tauri event.
  *
  * Mirrors the Rust struct `agi::templates::common::TemplateMatch`. We
@@ -408,28 +438,34 @@ export function AppShell() {
     };
   }, [toasts, dismissToast]);
 
-  // === v1.14.6 round-7 ===
+  // === v1.14.6 round-7 === (v1.15.2 fix #4: dynamic version)
   // First-launch-after-upgrade toast. Compares `lastSeenAppVersion` to
-  // the bundled APP_VERSION ("1.14.6"); if they don't match (or the
-  // user has never seen the changelog) push a one-shot toast pointing
-  // at /whats-new-app. We DON'T flip lastSeenAppVersion here — the
-  // route itself stamps it forward on visit. That way a user who
-  // dismisses the toast without clicking still sees it on their next
-  // launch until they actually read the changelog. Mount-only — the
-  // lookup runs once when currentUser flips, not on every toast change.
+  // the bundled `__APP_VERSION__` (injected by vite.config.ts from
+  // package.json); if they don't match (or the user has never seen the
+  // changelog) push a one-shot toast pointing at /whats-new-app. We
+  // DON'T flip lastSeenAppVersion here — the route itself stamps it
+  // forward on visit. That way a user who dismisses the toast without
+  // clicking still sees it on their next launch until they actually
+  // read the changelog. Mount-only — the lookup runs once when
+  // currentUser flips, not on every toast change.
+  //
+  // v1.15.2 fix #4: prior versions hardcoded "v1.14" / "v1.14.6" in
+  // both the gate and the toast copy. After v1.15 shipped, dogfood
+  // surfaced a stale "Tangerine v1.14 is here" toast on cold install.
+  // Source the version dynamically so the toast tracks the running
+  // build forever. Major.minor (e.g. "1.15") drives the cold-install
+  // tagline, full version (e.g. "1.15.2") drives the upgrade tagline.
   const upgradeToastFiredRef = useRef(false);
   useEffect(() => {
     if (!currentUser) return;
     if (upgradeToastFiredRef.current) return;
     const ui = useStore.getState().ui;
-    if (ui.lastSeenAppVersion === "1.14.6") return;
+    const plan = computeUpgradeToast(__APP_VERSION__, ui.lastSeenAppVersion);
+    if (!plan) return;
     upgradeToastFiredRef.current = true;
     ui.pushToast({
       kind: "info",
-      msg:
-        ui.lastSeenAppVersion === null
-          ? "Tangerine v1.14 is here — see what shipped"
-          : "Updated to v1.14.6 — see what's new",
+      msg: plan.msg,
       ctaLabel: "What's new",
       ctaHref: "/whats-new-app",
       durationMs: 12_000,
