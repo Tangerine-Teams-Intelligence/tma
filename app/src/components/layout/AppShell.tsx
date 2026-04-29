@@ -43,6 +43,14 @@ import { TryThisFAB } from "@/components/coachmark/TryThisFAB";
 import { PresenceProvider } from "@/components/presence/PresenceProvider";
 import { TeammatesPill } from "@/components/presence/TeammatesPill";
 // === end wave 1.13-D ===
+// === v1.16 Wave 4 D2 ===
+// Always-pinned status bar: 4 chips (Source / Today / Online / @me)
+// rendered above ViewTabs on every route. Mounts once at AppShell so
+// /feed /threads /people share a single fetch interval rather than
+// each remounting one of their own. Self-gates on `welcomed === true`
+// so MagicMoment doesn't compete with the bar on first launch.
+import { StatusBar } from "@/components/layout/StatusBar";
+// === end v1.16 Wave 4 D2 ===
 // === wave 25 === — auto-update banner. Sits in top-right notification slot,
 // fires once on mount after WelcomeOverlay closes. Self-suppresses if the
 // updater bridge isn't available (browser dev / vitest), if the running
@@ -887,6 +895,17 @@ export function AppShell() {
           </ErrorBoundary>
           {/* === end wave 10 === */}
           {/* === v1.16 Wave 1 === — SetupWizardBanner砍 (W2/W3 重做 onboarding). */}
+          {/* === v1.16 Wave 4 D2 ===
+              Always-pinned StatusBar. Mounts unconditionally; the
+              component itself returns null when `welcomed === false`
+              so MagicMoment doesn't compete with the live signal on
+              first launch. Wrapped in ErrorBoundary because it polls
+              the timeline every 30s — a thrown render in the chip
+              row should never blank the shell (Wave 10.1 lesson). */}
+          <ErrorBoundary label="StatusBar">
+            <StatusBar />
+          </ErrorBoundary>
+          {/* === end v1.16 Wave 4 D2 === */}
           <WhatsNewBanner />
           {/* === v2.0-beta.3 co-thinker home strip ===
               Sits between the system banners and the suggestion banner so

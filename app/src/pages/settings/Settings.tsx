@@ -1,105 +1,67 @@
 /**
- * ST-0 Settings — tabbed: General / AI tools / Team / Adapters / Advanced.
+ * v1.16 Wave 4 D1 — 3-section Settings shell.
  *
- * Spec mentions Discord/Whisper/Claude tabs too; we collapse those into
- * "Adapters" + "Advanced" to keep ST-0 lean. T1 may split them later if user
- * feedback wants it.
+ * Pre-D1 layout: 9 tabs (General / AI tools / Sources / Privacy / AGI /
+ * Adapters / Team / Advanced + show-advanced toggle). 9 tabs is the same
+ * "where do I find X?" disease that bloated v1.15 — D1 collapses to 3:
  *
- * v1.8 adds the "AI tools" tab — the user picks a primary external AI tool
- * (Cursor / Claude Code / etc.) for the co-thinker brain to think through.
+ *   1. Connect — AI tool capture (4 IDE) + external sources (Slack /
+ *      GitHub / Lark / etc.) + theme & language.
+ *   2. Privacy — the R6 honest panel (ASCII data-flow + ✓ list).
+ *   3. Sync — Solo vs Team mode, GitHub remote URL, auto-sync, personal
+ *      vault toggle, meeting repo, team roster, debug bundle / samples.
  *
- * === wave 5-α ===
- * Progressive disclosure: by default only General / AI tools / AGI /
- * Personal Agents are visible. Adapters / Team / Advanced live behind a
- * "Show advanced settings" toggle persisted in `ui.showAdvancedSettings`.
- * === end wave 5-α ===
+ * Cut entirely:
+ *   - "AI 工具" Primary-channel picker (smart layer is gone in v1.16 W1)
+ *   - "AGI" tab (smart layer)
+ *   - "Adapters" tab (LLM adapter wiring — smart layer)
+ *   - All "show advanced" indirection — there are 3 things, all visible.
  *
- * === v1.15.2 fix-6 ===
- * The "AI tools" tab now hosts the merged surface: Primary channel picker
- * (wave-11 layout) at the top, capture sources grid (v1.15 PersonalAgents
- * 8-tool grid) below. The standalone "Personal Agents" advanced tab is
- * removed — having two tabs that disagreed on which AI tools the user
- * had was the root cause of the dogfood confusion.
- * === end v1.15.2 fix-6 ===
+ * Backwards-compat:
+ *   - All store keys preserved: theme / personalAgentsEnabled / memoryConfig
+ *     / gitMode / gitAutoPullIntervalMin / etc.
+ *   - All Tauri commands called the same way (the 4-IDE filter is purely
+ *     view-side; backend still tracks all 8 personal-agent keys).
+ *   - `?tab=privacy` deep-link from WelcomeOverlay still works (now maps
+ *     to the privacy section).
+ *   - `?tab=ai-tools` / `?tab=sources` legacy deep-links redirect to the
+ *     Connect section so external links don't 404.
  */
-// === wave 4-D i18n ===
+
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-// === wave 1.13-A === — `?tab=privacy` deep-link from WelcomeOverlay
-// card 5 CTA. Lets the welcome tour drop the user straight on the
-// privacy panel without manually clicking through the tab row.
 import { useLocation, useNavigate } from "react-router-dom";
-// === end wave 1.13-A ===
 
 import { getConfig, setConfig } from "@/lib/tauri";
-import { useStore } from "@/lib/store";
-import { GeneralSettings } from "./GeneralSettings";
-import { TeamSettings } from "./TeamSettings";
-import { AdaptersSettings } from "./AdaptersSettings";
-import { AdvancedSettings } from "./AdvancedSettings";
-import { AIToolsSettings } from "./AIToolsSettings";
-import { AGISettings } from "./AGISettings";
-// === v1.15.2 fix-6 === — PersonalAgentsSettings import removed.
-// The 8-tool capture grid is now inlined into AIToolsSettings.tsx
-// alongside the Primary channel picker (Settings → AI tools tab).
-// PersonalAgentsSettings.tsx still exists on disk for any direct
-// importers / future reuse, but Settings no longer mounts it.
-// === end v1.15.2 fix-6 ===
-// === wave 19 ===
-// Wave 19 IA — Sources tab (was a sidebar section pre-wave-19). Lives in
-// the default tab band so connectors are still one click away.
-import { SourcesSettings } from "./SourcesSettings";
-// === end wave 19 ===
-// === wave 1.13-E ===
-// Privacy panel — load-bearing for the dual-layer capture positioning.
-// Lives in the default tab band alongside General / AI tools / Sources so
-// the local-first claim has a one-click receipt.
-import { PrivacySettings } from "./PrivacySettings";
-// === end wave 1.13-E ===
+import { ConnectSection } from "./sections/ConnectSection";
+import { PrivacySection } from "./sections/PrivacySection";
+import { SyncSection } from "./sections/SyncSection";
 
-// === wave 5-α ===
-// Tab classification:
-//   default — always visible (small, opinionated set)
-//   advanced — only visible when `ui.showAdvancedSettings` is true
-// === wave 14 === — DRASTIC SIMPLIFICATION. Default drops to 2 tabs
-// (General, AI tools). AGI + Personal Agents move behind the
-// "Show advanced" toggle alongside Team / Adapters / Advanced.
-// Rationale: a brand-new user lands on Settings and only sees the
-// two opinionated controls (general prefs + AI tool detection); the
-// dev-grade tabs (sensitivity sliders, parser configs, adapter wiring)
-// are one click away, not in their face.
-// === wave 19 === — Sources joins the default tab band (was a sidebar
-// section pre-wave-19). Connectors are user-facing config — they belong
-// alongside General / AI tools, not behind the advanced toggle.
-const DEFAULT_TABS = [
-  { id: "general", label: "General" },
-  { id: "ai-tools", label: "AI tools" },
-  { id: "sources", label: "Sources" },
-  // === wave 1.13-E === — Privacy panel default-visible.
+type SectionId = "connect" | "privacy" | "sync";
+
+const SECTIONS: ReadonlyArray<{ id: SectionId; label: string }> = [
+  { id: "connect", label: "Connect" },
   { id: "privacy", label: "Privacy" },
-  // === end wave 1.13-E ===
-] as const;
+  { id: "sync", label: "Sync" },
+];
 
-// === v1.15.2 fix-6 === — `personal-agents` removed from ADVANCED_TABS.
-// The 8-tool capture grid that lived behind 显示高级设置 → 个人 AI 工具
-// is now merged into the default "AI tools" tab (see AIToolsSettings.tsx),
-// so a separate advanced tab would just be a confusing duplicate. The
-// PersonalAgentsSettings component is intentionally left in the codebase
-// for any deep-link or test that imports it directly, but no UI mounts it.
-// === end v1.15.2 fix-6 ===
-const ADVANCED_TABS = [
-  { id: "agi", label: "AGI" },
-  { id: "adapters", label: "Adapters" },
-  { id: "team", label: "Team" },
-  { id: "advanced", label: "Advanced" },
-] as const;
+// Legacy `?tab=` query values mapped to their v1.16 home. Lets old
+// WelcomeOverlay / palette / external links keep working without a 404.
+const LEGACY_TAB_MAP: Record<string, SectionId> = {
+  general: "connect",
+  "ai-tools": "connect",
+  sources: "connect",
+  privacy: "privacy",
+  agi: "sync",
+  team: "sync",
+  adapters: "sync",
+  advanced: "sync",
+  "personal-agents": "connect",
+  // New canonical names (idempotent if already correct)
+  connect: "connect",
+  sync: "sync",
+};
 
-type DefaultTabId = (typeof DEFAULT_TABS)[number]["id"];
-type AdvancedTabId = (typeof ADVANCED_TABS)[number]["id"];
-type TabId = DefaultTabId | AdvancedTabId;
-// === end wave 5-α ===
-
-// Minimal in-app shape; T1's WizardData lives in store.
 export interface ConfigDraft {
   meetings_repo: string;
   log_level: string;
@@ -120,78 +82,46 @@ const DEFAULT_DRAFT: ConfigDraft = {
 
 export default function Settings() {
   const { t } = useTranslation();
-  // === wave 5-α ===
-  const showAdvanced = useStore((s) => s.ui.showAdvancedSettings);
-  const setShowAdvanced = useStore((s) => s.ui.setShowAdvancedSettings);
-  // === wave 1.13-A === — Pre-select tab from `?tab=` query so
-  // WelcomeOverlay card 5 ("See what stays local →") deep-links into
-  // the Privacy panel.
   const location = useLocation();
   const navigate = useNavigate();
-  const initialTab: TabId = (() => {
+
+  const initialSection: SectionId = (() => {
     const q = new URLSearchParams(location.search).get("tab");
-    if (!q) return "general";
-    const all: TabId[] = [
-      "general",
-      "ai-tools",
-      "sources",
-      "privacy",
-      "agi",
-      "team",
-      "adapters",
-      "advanced",
-    ];
-    return (all as string[]).includes(q) ? (q as TabId) : "general";
+    if (!q) return "connect";
+    return LEGACY_TAB_MAP[q] ?? "connect";
   })();
-  const [tab, setTab] = useState<TabId>(initialTab);
-  // === end wave 1.13-A ===
-  // === end wave 5-α ===
+  const [section, setSection] = useState<SectionId>(initialSection);
+
   const [draft, setDraft] = useState<ConfigDraft>(DEFAULT_DRAFT);
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // === wave 1.13-A === — strip the `?tab=` query after consuming it so
-  // a later in-page tab switch doesn't fight the URL state.
+  // Strip `?tab=` after first paint so later in-page nav doesn't fight the URL.
   useEffect(() => {
     if (location.search) {
       navigate("/settings", { replace: true });
     }
-    // run only once on mount — stripping is idempotent
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  // === end wave 1.13-A ===
 
   useEffect(() => {
     void getConfig().then((cfg) => {
-      // Best-effort: real cfg comes from yaml string. In mock we just keep defaults.
       if (typeof cfg === "object" && cfg !== null) {
         setDraft({ ...DEFAULT_DRAFT, ...(cfg as Partial<ConfigDraft>) });
       }
     });
   }, []);
 
-  // === wave 5-α ===
-  // If the user hides advanced while sitting on an advanced tab, fall
-  // back to the general tab so the page never renders nothing.
-  useEffect(() => {
-    if (
-      !showAdvanced &&
-      ADVANCED_TABS.some((tt) => tt.id === tab)
-    ) {
-      setTab("general");
-    }
-  }, [showAdvanced, tab]);
-  // === end wave 5-α ===
-
-  const update = <K extends keyof ConfigDraft>(key: K, val: ConfigDraft[K]) => {
+  const update = <K extends keyof ConfigDraft>(
+    key: K,
+    val: ConfigDraft[K],
+  ) => {
     setDraft((d) => ({ ...d, [key]: val }));
   };
 
   const save = async () => {
     setError(null);
     try {
-      // Render minimal yaml. T1's full builder lives in tauri.ts → finishWizard;
-      // we just stringify here so the user sees something on disk.
       const yaml = renderYaml(draft);
       await setConfig(yaml);
       setSavedAt(Date.now());
@@ -200,117 +130,69 @@ export default function Settings() {
     }
   };
 
-  // === wave 5-α ===
-  const visibleTabs: ReadonlyArray<{ id: TabId; label: string }> = showAdvanced
-    ? [...DEFAULT_TABS, ...ADVANCED_TABS]
-    : [...DEFAULT_TABS];
-  // === end wave 5-α ===
-
-  const tabLabelKey: Record<TabId, string> = {
-    general: "settings.tabs.general",
-    "ai-tools": "settings.tabs.aiTools",
-    // === wave 19 === — Sources tab i18n key.
-    sources: "settings.tabs.sources",
-    // === end wave 19 ===
-    // === wave 1.13-E === — Privacy panel i18n key.
-    privacy: "settings.tabs.privacy",
-    // === end wave 1.13-E ===
-    agi: "settings.tabs.agi",
-    team: "settings.tabs.team",
-    adapters: "settings.tabs.adapters",
-    advanced: "settings.tabs.advanced",
-  };
-
   return (
-    <div className="mx-auto flex h-full max-w-4xl flex-col gap-6 p-8" data-testid="st-0">
+    <div
+      className="mx-auto flex h-full max-w-4xl flex-col gap-6 p-8"
+      data-testid="st-0"
+    >
       <header>
-        <h1 className="font-display text-3xl">{t("settings.title")}</h1>
+        <h1 className="font-display text-3xl">
+          {t("settings.title", { defaultValue: "Settings" })}
+        </h1>
         <p className="mt-1 text-sm text-[var(--ti-ink-500)]">
-          {t("settings.subtitleHint")} <code className="font-mono">~/.tmi/config.yaml</code>
-          {t("settings.subtitleHintTail")}
+          {t("settings.subtitleHint", {
+            defaultValue: "Stored in",
+          })}{" "}
+          <code className="font-mono">~/.tmi/config.yaml</code>
+          {t("settings.subtitleHintTail", { defaultValue: "" })}
         </p>
       </header>
 
-      <nav className="flex gap-1 border-b border-[var(--ti-border-faint)]">
-        {visibleTabs.map((tab2) => (
+      <nav
+        className="flex gap-1 border-b border-[var(--ti-border-faint)]"
+        data-testid="st-section-nav"
+      >
+        {SECTIONS.map((s) => (
           <button
-            key={tab2.id}
-            onClick={() => setTab(tab2.id)}
-            data-testid={`st-tab-${tab2.id}`}
+            key={s.id}
+            onClick={() => setSection(s.id)}
+            data-testid={`st-tab-${s.id}`}
             className={
               "border-b-2 px-3 py-2 text-sm transition-colors duration-fast " +
-              (tab === tab2.id
+              (section === s.id
                 ? "border-[var(--ti-orange-500)] text-[var(--ti-orange-700)]"
                 : "border-transparent text-[var(--ti-ink-500)] hover:text-[var(--ti-ink-700)]")
             }
           >
-            {t(tabLabelKey[tab2.id])}
+            {s.label}
           </button>
         ))}
       </nav>
 
-      {/* === wave 5-α ===
-          Show / hide advanced tabs link. Sits below the tab row, mono
-          11px font so it reads as a power-user affordance rather than
-          a primary action. */}
-      <div className="-mt-3 flex flex-wrap items-center gap-3">
-        <button
-          type="button"
-          onClick={() => setShowAdvanced(!showAdvanced)}
-          data-testid="st-advanced-toggle"
-          className="font-mono text-[11px] text-[var(--ti-ink-500)] underline-offset-2 hover:text-[var(--ti-orange-600)] hover:underline"
-        >
-          {showAdvanced
-            ? t("settings.hideAdvanced")
-            : t("settings.showAdvanced")}
-        </button>
-        {!showAdvanced && (
-          <span className="text-[11px] text-[var(--ti-ink-500)]">
-            {t("settings.advancedHint")}
-          </span>
-        )}
-      </div>
-      {/* === end wave 5-α === */}
-
       <section className="flex-1 overflow-auto">
-        {tab === "general" && (
-          <GeneralSettings
-            draft={draft}
-            update={update}
-            onJumpToAGI={() => setTab("agi")}
-          />
+        {section === "connect" && <ConnectSection />}
+        {section === "privacy" && <PrivacySection />}
+        {section === "sync" && (
+          <SyncSection draft={draft} update={update} />
         )}
-        {tab === "ai-tools" && <AIToolsSettings />}
-        {/* === wave 19 === — Sources directory tab. */}
-        {tab === "sources" && <SourcesSettings />}
-        {/* === end wave 19 === */}
-        {/* === wave 1.13-E === — Privacy panel. */}
-        {tab === "privacy" && <PrivacySettings />}
-        {/* === end wave 1.13-E === */}
-        {tab === "agi" && <AGISettings />}
-        {/* === v1.15.2 fix-6 === — `personal-agents` tab removed from
-            ADVANCED_TABS; PersonalAgentsSettings is no longer mounted
-            anywhere. The 8-tool capture grid lives inside the merged
-            "AI tools" tab now. */}
-        {tab === "team" && <TeamSettings draft={draft} update={update} />}
-        {tab === "adapters" && <AdaptersSettings draft={draft} update={update} />}
-        {tab === "advanced" && <AdvancedSettings draft={draft} update={update} />}
       </section>
 
       <footer className="flex items-center justify-between border-t border-[var(--ti-border-faint)] pt-4">
         <p className="text-xs text-[var(--ti-ink-500)]">
-          {error
-            ? <span className="text-[var(--ti-danger)]">{error}</span>
-            : savedAt
-              ? `${t("settings.savedAt")} · ${new Date(savedAt).toLocaleTimeString()}`
-              : t("settings.unsavedHint")}
+          {error ? (
+            <span className="text-[var(--ti-danger)]">{error}</span>
+          ) : savedAt ? (
+            `${t("settings.savedAt", { defaultValue: "Saved" })} · ${new Date(savedAt).toLocaleTimeString()}`
+          ) : (
+            t("settings.unsavedHint", { defaultValue: "Unsaved changes" })
+          )}
         </p>
         <button
           onClick={save}
           data-testid="st-save"
           className="rounded-md bg-[var(--ti-orange-500)] px-4 py-1.5 text-sm text-white hover:bg-[var(--ti-orange-600)]"
         >
-          {t("settings.save")}
+          {t("settings.save", { defaultValue: "Save" })}
         </button>
       </footer>
     </div>
@@ -321,7 +203,7 @@ function renderYaml(d: ConfigDraft): string {
   const team = d.team
     .map(
       (m) =>
-        `  - alias: ${m.alias}\n    display_name: "${m.display_name}"\n    discord_id: ${m.discord_id || "null"}`
+        `  - alias: ${m.alias}\n    display_name: "${m.display_name}"\n    discord_id: ${m.discord_id || "null"}`,
     )
     .join("\n");
   const adapters = d.output_adapters
