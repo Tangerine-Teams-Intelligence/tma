@@ -172,6 +172,36 @@ export async function demoSeedClear(): Promise<DemoSeedClearResult> {
 // === end wave 13 ===
 
 // ============================================================
+// v1.17.1 — TEAM_INDEX.md auto-write (AI session bridge)
+// ============================================================
+
+export interface TeamIndexOut {
+  /** Absolute path to the file we just wrote. */
+  path: string;
+  /** Total events scanned out of timeline.json. */
+  atoms_scanned: number;
+  /** On-disk byte size of the file. */
+  bytes_written: number;
+}
+
+/**
+ * Manually re-emit `<memory_root>/TEAM_INDEX.md` — the AI session bridge
+ * file the user can `@import` from their project's CLAUDE.md (or Cursor
+ * rules / etc.) so a fresh AI session inherits the team's recent working
+ * memory.
+ *
+ * Outside Tauri (vitest / vite dev) the mock returns a plausible shape
+ * so the setup wizard's copy-pasta card can still render.
+ */
+export async function writeTeamIndex(): Promise<TeamIndexOut> {
+  return safeInvoke("write_team_index", undefined, () => ({
+    path: "~/.tangerine-memory/TEAM_INDEX.md",
+    atoms_scanned: 0,
+    bytes_written: 0,
+  }));
+}
+
+// ============================================================
 // System / external
 // ============================================================
 

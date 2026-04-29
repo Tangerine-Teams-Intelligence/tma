@@ -320,9 +320,33 @@ async fn do_heartbeat(cfg: &DaemonConfig, control: &Arc<DaemonControl>) {
     // === end wave 10 ===
 
     // 2. Index refresh — shell out to python CLI.
-    if let Err(e) = run_python_subcommand(cfg, "index-rebuild").await {
-        control.record_error("index_rebuild", e);
+    let index_ok = match run_python_subcommand(cfg, "index-rebuild").await {
+        Ok(()) => true,
+        Err(e) => {
+            control.record_error("index_rebuild", e);
+            false
+        }
+    };
+
+    // === v1.17.1 ===
+    // 2b. TEAM_INDEX.md auto-write — refreshes the AI-session bridge file
+    // any time the timeline rebuild succeeds. Pure file I/O, runs in the
+    // tokio runtime via a tiny `spawn_blocking` (write is microseconds
+    // but `std::fs::write` is sync). Failures are recorded in the
+    // daemon's ring buffer; they never abort the rest of the heartbeat.
+    if index_ok {
+        let memory_root = cfg.memory_root.clone();
+        let join = tokio::task::spawn_blocking(move || {
+            crate::commands::team_index::write_team_index_to(&memory_root)
+        })
+        .await;
+        match join {
+            Ok(Ok(_)) => {}
+            Ok(Err(e)) => control.record_error("team_index_write", e.to_string()),
+            Err(e) => control.record_error("team_index_join", e.to_string()),
+        }
     }
+    // === end v1.17.1 ===
 
     // 3. Pending alerts.
     if let Err(e) = run_python_subcommand(cfg, "alerts-refresh").await {

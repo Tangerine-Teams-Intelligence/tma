@@ -565,6 +565,14 @@ mod tests {
         assert!(hongyu_count <= 2, "expected dedupe, got {}: {:?}", hongyu_count, out);
     }
 
+    // === v1.17.1 fixup ===
+    // v1.16 W1 removed `parse_llm_json` (the LLM extractor was deleted) but
+    // left these three tests pointing at the removed symbol, so the lib
+    // test target stopped compiling. Gating them out with `#[cfg(any())]`
+    // is the smallest reversible fix to unblock cargo test for unrelated
+    // modules; deleting them is the right v1.18 cleanup.
+    // === end v1.17.1 fixup ===
+    #[cfg(any())]
     #[tokio::test]
     async fn llm_combines_with_heuristic() {
         // The LLM extractor's own dispatch is gated behind a real
@@ -614,6 +622,9 @@ mod tests {
 
     // ------ supporting tests for dedupe + LLM parse robustness ------
 
+    // v1.17.1 fixup — these two tests reference `parse_llm_json` which was
+    // removed in v1.16 W1; gated out to unblock cargo test. Delete in v1.18.
+    #[cfg(any())]
     #[test]
     fn parse_llm_json_strips_code_fence() {
         let mut r: HashSet<&str> = HashSet::new();
@@ -624,6 +635,7 @@ mod tests {
         assert_eq!(parsed[0].username, "daizhe");
     }
 
+    #[cfg(any())]
     #[test]
     fn parse_llm_json_drops_entries_outside_roster() {
         let mut r: HashSet<&str> = HashSet::new();

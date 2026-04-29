@@ -41,8 +41,9 @@ use super::AppError;
 
 /// Default memory root: `<home>/.tangerine-memory/`. Mirrors the helper in
 /// `commands::memory` — kept private so callers never need to reach across
-/// modules to build the same path.
-fn memory_root() -> Result<PathBuf, AppError> {
+/// modules to build the same path. `pub(crate)` so the v1.17.1 `team_index`
+/// sibling module reuses the exact same resolution rule.
+pub(crate) fn memory_root() -> Result<PathBuf, AppError> {
     let home = dirs::home_dir()
         .ok_or_else(|| AppError::internal("home_dir", "home_dir() returned None"))?;
     Ok(home.join(".tangerine-memory"))
@@ -106,7 +107,9 @@ fn is_valid_alias(s: &str) -> bool {
 }
 
 // Atomic write: tmp + rename. Mirrors `tmi.utils.atomic_write_text`.
-fn atomic_write(path: &Path, body: &str) -> Result<(), AppError> {
+// `pub(crate)` so the v1.17.1 `team_index` sibling module can reuse the same
+// tmp+rename contract.
+pub(crate) fn atomic_write(path: &Path, body: &str) -> Result<(), AppError> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).ok();
     }
@@ -181,7 +184,9 @@ pub struct TimelineSliceOut {
 
 /// Load `timeline.json` from disk. Returns `Vec<TimelineEvent>` (possibly
 /// empty) — never panics, never errors on a missing file.
-fn load_all_events(root: &Path) -> Vec<TimelineEvent> {
+///
+/// `pub(crate)` so the v1.17.1 `team_index` sibling module can reuse it.
+pub(crate) fn load_all_events(root: &Path) -> Vec<TimelineEvent> {
     let p = timeline_index_path(root);
     let Ok(raw) = std::fs::read_to_string(&p) else {
         return vec![];

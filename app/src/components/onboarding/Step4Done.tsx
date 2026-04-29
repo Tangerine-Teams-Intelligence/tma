@@ -3,7 +3,13 @@
  *
  * Confirmation. Click "进入 Tangerine →" → router push to /feed +
  * close the magic moment (parent flips welcomed=true).
+ *
+ * v1.17.1 add — `<TeamMemoryHint/>` mounts above the Enter button so
+ * the user leaves with the AI-session-bridge import line ready to paste
+ * into their project's CLAUDE.md / Cursor rules.
  */
+
+import { TeamMemoryHint } from "./TeamMemoryHint";
 
 interface Step4DoneProps {
   onEnter: () => void;
@@ -31,11 +37,12 @@ export function Step4Done({ onEnter }: Step4DoneProps) {
         Tangerine 现在监听你的 AI 工具.
         <br />第一个 capture 出现后会自动跳转 /feed.
       </p>
+      <TeamMemoryHint />
       <button
         type="button"
         data-testid="magic-step4-enter"
         onClick={onEnter}
-        className="mt-10 inline-flex items-center gap-2 rounded-md border border-[var(--ti-orange-500)]/50 bg-[var(--ti-orange-500)]/15 px-5 py-2.5 text-sm font-medium text-[var(--ti-orange-500)] transition-colors hover:bg-[var(--ti-orange-500)]/25"
+        className="mt-8 inline-flex items-center gap-2 rounded-md border border-[var(--ti-orange-500)]/50 bg-[var(--ti-orange-500)]/15 px-5 py-2.5 text-sm font-medium text-[var(--ti-orange-500)] transition-colors hover:bg-[var(--ti-orange-500)]/25"
       >
         进入 Tangerine →
       </button>

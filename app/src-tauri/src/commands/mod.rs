@@ -74,6 +74,18 @@ pub mod writeback;
 // over the .tangerine/ sidecar; no shared state.
 pub mod views;
 
+// === v1.17.1 ===
+// TEAM_INDEX.md auto-write — bridges captured atoms to NEW AI sessions.
+// Any AI tool that reads the user's project CLAUDE.md (or Cursor rules /
+// etc.) auto-loads the team's recent memory via
+// `@~/.tangerine-memory/TEAM_INDEX.md`. Composer is pure
+// (`build_team_index_markdown`); driver hits the same memory root +
+// timeline.json that views.rs already owns. The daemon heartbeat calls
+// `write_team_index_to` after each successful index-rebuild so the file
+// refreshes on every ingestion.
+pub mod team_index;
+// === end v1.17.1 ===
+
 // v1.6.0 team memory sync.
 pub mod git;
 pub mod github;
@@ -553,6 +565,15 @@ macro_rules! tmi_invoke_handler {
             $crate::commands::views::mark_user_opened,
             $crate::commands::views::read_cursor,
             $crate::commands::views::read_whats_new,
+            // === v1.17.1 ===
+            // TEAM_INDEX.md auto-write — frictionless AI session bridge.
+            // Manual surface invoked from the setup wizard's "show me the
+            // CLAUDE.md import line" card; the daemon also calls the
+            // sibling `write_team_index_to` directly after each successful
+            // index rebuild so the file stays warm without a Tauri round
+            // trip.
+            $crate::commands::team_index::write_team_index,
+            // === end v1.17.1 ===
             // v1.8 Phase 1 — AI tools detection (sidebar status panel)
             $crate::commands::ai_tools::detect_ai_tools,
             $crate::commands::ai_tools::get_ai_tool_status,
