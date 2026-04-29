@@ -15,14 +15,15 @@ export function Step4Done({ onEnter }: Step4DoneProps) {
       data-testid="magic-step4"
       role="dialog"
       aria-label="Tangerine onboarding step 4"
-      className="flex h-full w-full flex-col items-center justify-center px-6 text-center"
+      className="flex h-full w-full flex-col items-center justify-center px-4 text-center md:px-6"
     >
-      <div className="text-6xl" aria-hidden>
+      <div className="text-5xl md:text-6xl" aria-hidden>
         🎉
       </div>
       <h2
         data-testid="magic-step4-headline"
-        className="mt-6 max-w-xl text-3xl font-semibold text-stone-100"
+        // v1.16 Wave 5 — slightly smaller heading on mobile.
+        className="mt-6 max-w-xl text-2xl font-semibold text-stone-100 md:text-3xl"
       >
         设置完成
       </h2>

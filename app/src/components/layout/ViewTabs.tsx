@@ -29,7 +29,9 @@ export function ViewTabs() {
       data-testid="view-tabs"
       className="border-b border-stone-200 bg-white dark:border-stone-800 dark:bg-stone-950"
     >
-      <div className="mx-auto flex max-w-3xl items-center gap-1 px-3">
+      {/* v1.16 Wave 5 — narrower horizontal padding on mobile so all 3
+          tabs fit a 375px viewport without wrapping. */}
+      <div className="mx-auto flex max-w-3xl items-center gap-1 px-2 md:px-3">
         {TABS.map((t) => (
           <NavLink
             key={t.to}
@@ -37,7 +39,7 @@ export function ViewTabs() {
             role="tab"
             data-testid={t.testId}
             className={({ isActive }) =>
-              "relative px-3 py-2 text-[13px] font-medium transition-colors " +
+              "relative px-2 py-2 text-[13px] font-medium transition-colors md:px-3 " +
               (isActive
                 ? "text-[var(--ti-orange-700)]"
                 : "text-stone-500 hover:text-stone-800 dark:text-stone-400 dark:hover:text-stone-100")

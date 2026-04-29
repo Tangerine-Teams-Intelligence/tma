@@ -22,7 +22,8 @@ export function Step1Welcome({ onAdvance, onSkip }: Step1WelcomeProps) {
     >
       <h1
         data-testid="magic-step1-headline"
-        className="max-w-3xl text-[32px] font-semibold leading-tight text-stone-100 md:text-[40px]"
+        // v1.16 Wave 5 — 24px on mobile, 32px tablet, 40px desktop.
+        className="max-w-3xl text-[24px] font-semibold leading-tight text-stone-100 sm:text-[32px] md:text-[40px]"
       >
         Tangerine 自动记住你团队
         <br />

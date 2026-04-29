@@ -151,12 +151,14 @@ export function Step2Animation({ onAdvance, onSkip }: Step2AnimationProps) {
       data-testid="magic-step2"
       role="dialog"
       aria-label="Tangerine onboarding step 2"
-      className="flex h-full w-full flex-col items-center justify-center px-6"
+      className="flex h-full w-full flex-col items-center justify-center px-3 md:px-6"
     >
       <div
         data-testid="magic-step2-stack"
         data-visible-count={visibleCount}
-        className="flex w-full max-w-xl flex-col-reverse gap-2"
+        // v1.16 Wave 5 — full width on mobile so 5 atoms aren't squeezed
+        // into a narrow center column; max-w-xl returns at md:.
+        className="flex w-full flex-col-reverse gap-2 md:max-w-xl"
       >
         {samples.map((ev, i) => {
           const visible = i < visibleCount;

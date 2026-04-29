@@ -146,12 +146,21 @@ export function StatusBar() {
   // across the welcomed flip (React forbids conditional hook calls).
   if (!welcomed) return null;
 
+  // v1.16 Wave 5 — mobile chip compaction. The Source chip drops the
+  // vendor name list ("🟢 Cursor + CC" → "🟢 2"), Today/Online drop the
+  // word suffix ("📥 12 today" → "📥 12", "👥 3 online" → "👥 3"), @me
+  // keeps its full label because the count is the whole point. Desktop
+  // (md:) keeps every word so the chip strip reads as a sentence.
+  const sourceFull =
+    sourceCount > 0 ? sourceLabel(personalAgentsEnabled) : "⚠ No source";
+  const sourceShort = sourceCount > 0 ? `🟢 ${sourceCount}` : "⚠";
+
   return (
     <div
       data-testid="status-bar"
       role="status"
       aria-label="Tangerine status bar"
-      className="ti-no-select flex items-center gap-2 border-b border-stone-200 bg-white px-3 py-1 font-sans text-[11px] dark:border-stone-800 dark:bg-stone-950"
+      className="ti-no-select flex items-center gap-1 overflow-x-auto border-b border-stone-200 bg-white px-2 py-1 font-sans text-[11px] dark:border-stone-800 dark:bg-stone-950 md:gap-2 md:px-3"
     >
       <button
         type="button"
@@ -164,13 +173,18 @@ export function StatusBar() {
             : "No sources connected — open Settings"
         }
         className={
-          "rounded-full border px-2 py-0.5 transition-colors " +
+          "shrink-0 rounded-full border px-2 py-0.5 transition-colors " +
           (sourceCount > 0
             ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300"
             : "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300")
         }
       >
-        {sourceCount > 0 ? sourceLabel(personalAgentsEnabled) : "⚠ No source"}
+        <span className="md:hidden" data-testid="status-bar-source-short">
+          {sourceShort}
+        </span>
+        <span className="hidden md:inline" data-testid="status-bar-source-full">
+          {sourceFull}
+        </span>
       </button>
 
       <button
@@ -178,10 +192,11 @@ export function StatusBar() {
         data-testid="status-bar-today"
         onClick={() => navigate("/feed?filter=today")}
         title={`${todayCount} captured in the last 24h — open Feed`}
-        className="rounded-full border border-stone-200 bg-stone-100 px-2 py-0.5 text-stone-700 transition-colors hover:bg-stone-200 dark:border-stone-700 dark:bg-stone-800 dark:text-stone-200"
+        className="shrink-0 rounded-full border border-stone-200 bg-stone-100 px-2 py-0.5 text-stone-700 transition-colors hover:bg-stone-200 dark:border-stone-700 dark:bg-stone-800 dark:text-stone-200"
       >
         {"📥 "}
-        {todayCount} today
+        {todayCount}
+        <span className="hidden md:inline">{" today"}</span>
       </button>
 
       <button
@@ -193,10 +208,20 @@ export function StatusBar() {
             ? `${onlineCount} teammate${onlineCount > 1 ? "s" : ""} online — open People`
             : "Working solo — open People"
         }
-        className="rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-blue-700 transition-colors hover:bg-blue-100 dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-300"
+        className="shrink-0 rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-blue-700 transition-colors hover:bg-blue-100 dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-300"
       >
         {"👥 "}
-        {onlineCount > 0 ? `${onlineCount} online` : "Solo"}
+        {onlineCount > 0 ? (
+          <>
+            {onlineCount}
+            <span className="hidden md:inline">{" online"}</span>
+          </>
+        ) : (
+          <>
+            <span className="md:hidden">0</span>
+            <span className="hidden md:inline">Solo</span>
+          </>
+        )}
       </button>
 
       {forMeCount > 0 && (
@@ -205,7 +230,7 @@ export function StatusBar() {
           data-testid="status-bar-forme"
           onClick={() => navigate("/feed?filter=me")}
           title={`${forMeCount} mention${forMeCount > 1 ? "s" : ""} of you — open Feed`}
-          className="rounded-full border border-orange-200 bg-orange-50 px-2 py-0.5 text-orange-700 transition-colors hover:bg-orange-100 dark:border-orange-900/60 dark:bg-orange-950/40 dark:text-orange-300"
+          className="shrink-0 rounded-full border border-orange-200 bg-orange-50 px-2 py-0.5 text-orange-700 transition-colors hover:bg-orange-100 dark:border-orange-900/60 dark:bg-orange-950/40 dark:text-orange-300"
         >
           {"⚠ "}
           {forMeCount} @me

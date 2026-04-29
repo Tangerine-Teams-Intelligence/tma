@@ -66,7 +66,9 @@ export function PersonCard({ person, selected, onSelect }: PersonCardProps) {
         }
       }}
       className={
-        "group flex flex-col items-start gap-3 rounded-md border border-stone-200 bg-white p-4 text-left transition-shadow hover:shadow-sm dark:border-stone-800 dark:bg-stone-900 " +
+        // v1.16 Wave 5 — tighter padding on mobile so two cards fit a
+        // 375px viewport without horizontal scroll; desktop keeps p-4.
+        "group flex flex-col items-start gap-3 rounded-md border border-stone-200 bg-white p-3 text-left transition-shadow hover:shadow-sm dark:border-stone-800 dark:bg-stone-900 md:p-4 " +
         ringClass
       }
     >

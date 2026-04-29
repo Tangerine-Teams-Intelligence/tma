@@ -132,11 +132,14 @@ export default function Settings() {
 
   return (
     <div
-      className="mx-auto flex h-full max-w-4xl flex-col gap-6 p-8"
+      // v1.16 Wave 5 — tighter padding on mobile, horizontal scroll on
+      // overflow if a content section is wider than 375px (e.g. team
+      // roster grid). max-w-4xl keeps desktop centered.
+      className="mx-auto flex h-full w-full max-w-4xl flex-col gap-6 p-4 md:p-8"
       data-testid="st-0"
     >
       <header>
-        <h1 className="font-display text-3xl">
+        <h1 className="font-display text-2xl md:text-3xl">
           {t("settings.title", { defaultValue: "Settings" })}
         </h1>
         <p className="mt-1 text-sm text-[var(--ti-ink-500)]">
@@ -149,7 +152,9 @@ export default function Settings() {
       </header>
 
       <nav
-        className="flex gap-1 border-b border-[var(--ti-border-faint)]"
+        // v1.16 Wave 5 — chip-style compact horizontal scroll on mobile;
+        // desktop keeps the existing inline tab nav.
+        className="-mx-1 flex gap-1 overflow-x-auto border-b border-[var(--ti-border-faint)] px-1 md:mx-0 md:overflow-visible md:px-0"
         data-testid="st-section-nav"
       >
         {SECTIONS.map((s) => (
@@ -158,7 +163,7 @@ export default function Settings() {
             onClick={() => setSection(s.id)}
             data-testid={`st-tab-${s.id}`}
             className={
-              "border-b-2 px-3 py-2 text-sm transition-colors duration-fast " +
+              "shrink-0 border-b-2 px-3 py-2 text-sm transition-colors duration-fast " +
               (section === s.id
                 ? "border-[var(--ti-orange-500)] text-[var(--ti-orange-700)]"
                 : "border-transparent text-[var(--ti-ink-500)] hover:text-[var(--ti-ink-700)]")

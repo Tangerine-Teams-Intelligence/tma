@@ -11,6 +11,15 @@
  *   - @mention card: left border 4px ti-orange (per Wave 2 design spec)
  *   - Click → inline expand (short, ≤200 char body) OR modal (long body)
  *
+ * v1.16 Wave 5 — mobile responsive polish:
+ *   - Below the Tailwind `md` breakpoint (<768px) a tap dispatches a
+ *     bottom-sheet (AtomBottomSheet) instead of toggling inline expand.
+ *     Inline expand stays the default for desktop because power users
+ *     triage 50 atoms in a session and a sheet animation would steal
+ *     flow. The new behaviour is opt-in via `bottomSheetOnMobile` so
+ *     callers like /threads (`alwaysExpanded`) and /people (custom
+ *     onClick) keep their existing semantics.
+ *
  * R6/R7/R8 honesty: never paint a "loaded" state when source data is
  * mid-fetch. Parent passes the event already-resolved.
  */
@@ -21,6 +30,7 @@ import type { TimelineEvent } from "@/lib/views";
 import { formatRelativeTime } from "@/lib/views";
 import { vendorFor } from "./vendor";
 import { Avatar } from "./Avatar";
+import { AtomBottomSheet, isMobileViewport } from "./AtomBottomSheet";
 
 const PREVIEW_THRESHOLD_CHARS = 200;
 const SHORT_PREVIEW_MAX = 120;
@@ -37,10 +47,22 @@ export interface AtomCardProps {
   /** When true, show the full body inline regardless of length. Used by
    *  /threads mini-timeline expanded view. Default false (preview). */
   alwaysExpanded?: boolean;
+  /** When true (default) and viewport < 768px, a tap opens the
+   *  AtomBottomSheet instead of toggling inline expand. Desktop is
+   *  unaffected. Pass false to force the legacy inline-expand path on
+   *  every viewport (e.g. inside /threads expanded thread view, where
+   *  we want each atom fully readable in place). */
+  bottomSheetOnMobile?: boolean;
 }
 
-export function AtomCard({ event, onClick, alwaysExpanded = false }: AtomCardProps) {
+export function AtomCard({
+  event,
+  onClick,
+  alwaysExpanded = false,
+  bottomSheetOnMobile = true,
+}: AtomCardProps) {
   const [expanded, setExpanded] = useState(alwaysExpanded);
+  const [sheetOpen, setSheetOpen] = useState(false);
   const body = event.body ?? "";
   const isLong = body.length > PREVIEW_THRESHOLD_CHARS;
   const preview = body.length > 0
@@ -61,9 +83,17 @@ export function AtomCard({ event, onClick, alwaysExpanded = false }: AtomCardPro
       onClick(event);
       return;
     }
+    // Mobile path: dispatch the bottom sheet instead of toggling inline
+    // expand. Skipped when alwaysExpanded (the parent already shows the
+    // full body) or when the caller opted out via bottomSheetOnMobile.
+    if (bottomSheetOnMobile && !alwaysExpanded && isMobileViewport()) {
+      setSheetOpen(true);
+      return;
+    }
     if (!isLong) setExpanded((v) => !v);
   };
   return (
+    <>
     <article
       data-testid={`atom-card-${event.id}`}
       data-mention={isMentionCard ? "true" : "false"}
@@ -157,6 +187,10 @@ export function AtomCard({ event, onClick, alwaysExpanded = false }: AtomCardPro
         </div>
       </div>
     </article>
+    {sheetOpen && (
+      <AtomBottomSheet event={event} onClose={() => setSheetOpen(false)} />
+    )}
+    </>
   );
 }
 

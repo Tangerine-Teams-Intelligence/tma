@@ -195,7 +195,8 @@ function GeneralPrefs() {
     >
       <h3 className="font-display text-base">General</h3>
 
-      <div className="grid grid-cols-2 gap-3">
+      {/* v1.16 Wave 5 — Theme + Language stack vertically on mobile. */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div>
           <Label htmlFor="st-theme">Theme</Label>
           <select
@@ -365,9 +366,12 @@ function IDECaptureGrid() {
             <li
               key={row.flagKey}
               data-testid={`st-personal-agent-row-${row.flagKey}`}
-              className="rounded-md border border-[var(--ti-border-default)] bg-[var(--ti-paper-50)] px-4 py-3"
+              className="rounded-md border border-[var(--ti-border-default)] bg-[var(--ti-paper-50)] px-3 py-3 md:px-4"
             >
-              <div className="flex items-start justify-between gap-3">
+              {/* v1.16 Wave 5 — IDE row: description + controls stack
+                  vertically on mobile so the toggle / Sync now button
+                  isn't pushed off-screen on a 375px viewport. */}
+              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <span
@@ -403,7 +407,7 @@ function IDECaptureGrid() {
                     </p>
                   )}
                 </div>
-                <div className="flex flex-col items-end gap-2">
+                <div className="flex flex-row items-center gap-3 md:flex-col md:items-end md:gap-2">
                   <label className="flex cursor-pointer items-center gap-2 text-sm">
                     <input
                       type="checkbox"

@@ -123,8 +123,10 @@ export default function FeedRoute() {
       className="flex h-full flex-col bg-stone-50 dark:bg-stone-950"
     >
       <ViewTabs />
-      <main className="flex-1 overflow-y-auto px-4 py-3">
-        <div className="mx-auto max-w-3xl">
+      {/* v1.16 Wave 5 — main becomes full-width on mobile (no max-w-3xl
+          clamp); desktop keeps the centered narrow column. */}
+      <main className="flex-1 overflow-y-auto px-3 py-3 md:px-4">
+        <div className="mx-auto w-full md:max-w-3xl">
           {notes.length > 0 && <TangerineNotes notes={notes} route="/feed" />}
           {loading && (
             <div

@@ -8,6 +8,160 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
      Each version block focuses on user-visible features so this doc can
      also feed the in-app /whats-new-app route. -->
 
+## [1.16.0] — 2026-04-29 — Capture + visualize reframe (智能层 砍, 3 view modes, 30s onboarding)
+
+The reframe release. v1.15.x hit a wall: Claude Code doesn't implement
+MCP sampling, so the entire "borrow your AI tool's LLM" architecture
+was structurally broken. v1.16 砍 the smart layer entirely and reframes
+Tangerine around the two things it actually does well — **collect team
+AI workflow signals** + **organize them in the app**.
+
+### What changed (mental model)
+
+Memory ≠ files. Memory = a chronological feed of moments the team
+already created in their AI tools and chat apps. Tangerine reads those
+local logs and gives you 3 lenses:
+
+  📰 **/feed** (default landing) — single-column time-ordered atom
+     stream. Glance + triage in 0–10 seconds. Vendor color dots,
+     32px round avatars, day separators (Today / Yesterday / Mon
+     Apr 28 / Apr 24 / ISO date), @mention cards get 4px brand-orange
+     left border. Bottom-pinned filter chips: @Me · Today · per-source.
+
+  💬 **/threads** — atoms with overlapping @mention sets auto-group
+     into thread cards. Pure regex grouping; no LLM needed. Click a
+     thread → expands inline as a mini-timeline of the constituent
+     atoms.
+
+  👥 **/people** — 64px avatar grid for each teammate active in last
+     24h. Top 3 hashtags surfaced per teammate. Click a person →
+     filters the atom feed below the grid to that person.
+
+### Removed (Wave 1 — Demolition)
+
+  - mcp-server/ npm package (78MB) — entire sampling-bridge gone.
+  - Rust agi/{ambient, co_thinker, observations, llm_enrich,
+    sampling_bridge, session_borrower}.
+  - Rust commands/{agi_ambient, co_thinker, co_thinker_dispatch} +
+    setup_wizard.rs sampling logic (-2044 LOC).
+  - TS components: SetupWizard, SetupWizardBanner, WelcomeOverlay,
+    AIToolDetectionGrid (8-tool wizard grid), OnboardingChat,
+    EmptyStateCard, SoloCloudUpgradePrompt, DemoTourOverlay,
+    FirstRealAtomActivation.
+  - TS routes: /canvas, /co-thinker, /setup/connect, /ai-tools/[id].
+  - 30 telemetry events tied to LLM-borrow flow.
+  - 10 store fields for chat-onboarding state.
+  - Wave-11 5-step setup wizard + wave-18 chat onboarding (replaced
+    by 30s magic moment).
+
+Estimated 30-40 % Rust LOC + 25 % TS LOC removed.
+
+### Added (Waves 2-5)
+
+**Wave 2 — 3 view modes** (38 specs):
+
+  - app/src/routes/feed.tsx (NEW DEFAULT LANDING).
+  - app/src/routes/threads/index.tsx (rewritten, mention-set grouping).
+  - app/src/routes/people/index.tsx (rewritten, teammate grid + click-
+    to-filter).
+  - app/src/components/feed/{vendor.ts, Avatar.tsx, AtomCard.tsx,
+    DaySeparator.tsx, FilterChips.tsx} — shared visual primitives.
+  - app/src/components/layout/ViewTabs.tsx — 3-tab nav (📰 / 💬 / 👥).
+  - app/src/components/threads/ThreadCard.tsx — thread expand card.
+  - app/src/components/people/PersonCard.tsx — 64px teammate card.
+
+**Wave 3 — 30s onboarding + animated empty state** (22 specs):
+
+  - app/src/components/onboarding/MagicMoment.tsx — 4-step orchestrator
+    replacing the 5-step wizard.
+  - Step1Welcome / Step2Animation (5 sample atoms scrub-animated) /
+    Step3Sources (4 IDE checkboxes) / Step4Done (🎉 → /feed).
+  - app/src/components/onboarding/EmptyStateAnimation.tsx — 5 sample
+    cards rendered through the real AtomCard so users see "this is
+    what your captures will look like" instead of a dead empty state.
+    First card gets `animate-pulse` to telegraph live data is coming.
+
+**Wave 4 — Settings 9→3 + StatusBar** (28 specs):
+
+  - app/src/pages/settings/Settings.tsx rewritten as a 3-tab shell:
+    Connect / Privacy / Sync.
+  - sections/ConnectSection.tsx (4 IDE capture toggles + external
+    sources, 砍 wave-11 Primary AI tool picker).
+  - sections/PrivacySection.tsx (preserves D16 R6-honest data-flow
+    panel verbatim).
+  - sections/SyncSection.tsx (git remote + Solo/Team mode + personal
+    vault toggle).
+  - 8 legacy section files left as orphaned dead-code on disk —
+    physical deletion deferred to a v1.16.x cleanup pass so existing
+    direct imports (e.g. AGISettings inside suppression.test.tsx)
+    keep passing while the mounted-code shrinks.
+  - LEGACY_TAB_MAP redirects every old `?tab=...` URL to a sensible
+    3-section landing.
+
+  - app/src/components/layout/StatusBar.tsx — always-pinned 4 chips:
+    🟢 Source · 📥 Today (30s polled) · 👥 Online · ⚠ For you.
+    Mounted in AppShell above WhatsNewBanner; gated on welcomed=true
+    so new users see onboarding instead. Click each chip → routes to
+    the relevant settings/route.
+
+**Wave 5 — Mobile responsive** (15 specs):
+
+  - app/src/components/feed/AtomBottomSheet.tsx — slide-up panel that
+    replaces inline atom expand on viewports < 768px. ESC + backdrop
+    + swipe-down (>80px Δy) all close. Desktop keeps inline expand
+    because power users triage 50 atoms in a session and a sheet
+    animation would steal flow.
+  - 16 file responsive-class polish across feed / threads / people /
+    settings / onboarding / StatusBar / ViewTabs.
+  - StatusBar uses dual-`<span>` md:hidden / hidden md:inline so the
+    chip text condenses on mobile (e.g. "🟢 Cursor + CC" → "🟢 2")
+    while every existing test contract still finds the long form.
+
+### Tests
+
+  - vitest 627/629 (2 pre-existing wave21-memory-tree baseline flakes
+    per R10 CEO directive).
+  - cargo --lib **0 warnings** preserved.
+  - tsc strict: **0 errors**.
+  - Wave 1-5 added 103 new specs across 8 spec files; every Wave's
+    regression bundle stayed green at each commit.
+
+### Architecture notes (R6/R7/R8/R9 honesty preserved)
+
+  - StatusBar swallows fetch errors silently because the route's own
+    error banner already covers fetch failures loudly — status bar
+    is signal-of-signals, not a primary surface.
+  - EmptyStateAnimation samples are clearly labeled samples (no
+    fake-loading state).
+  - MagicMoment ESC always flips welcomed=true, never silently
+    stuck.
+  - setup_wizard.rs sampling Tauri commands kept as honest no-ops
+    with `tracing::info!` lines explaining the v1.16 pivot — never
+    silent OK.
+  - All R9 sample-vs-real isolation invariants preserved.
+
+### Process notes
+
+10 agents dispatched across Waves 1-5 (Opus 4.7 background). 3 hit
+account quota mid-flight on Wave 1 — main thread took over and
+finished the cleanup. Wave 2 used a quota-reset retry. Waves 3, 4, 5
+each ran 2-3 agents in parallel with strictly disjoint file ownership;
+no merge collisions across the entire reframe.
+
+### Deferred to v1.16.x and v1.17+
+
+Per Daizhe directive: v1 series is product polish only. v2 territory
+(commercial, paywalls, bundled local LLM, iFactory device source,
+cross-product wiring) is explicitly out of scope until v1 is "I'd
+recommend this to a friend" quality.
+
+  - 8 orphaned legacy settings files physical delete (v1.16.x cleanup).
+  - Capture-side `mcp_server_handshake` semantics rewrite (currently
+    no-op stub — should check log-file existence; v1.17 candidate).
+  - Mobile bottom-sheet swipe-up to dismiss + spring animation polish.
+  - Feed virtualization once captured-corpus size justifies it
+    (currently capped at 500 events at the data layer).
+
 ## [1.15.1] — 2026-04-28 — Onboarding reboot **fix-up**
 
 v1.15.0 shipped the onboarding reboot but Daizhe (and any v1.14.6 dogfood

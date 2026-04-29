@@ -125,7 +125,16 @@ export function ThreadCard({ thread, defaultExpanded = false }: ThreadCardProps)
           className="space-y-2 border-t border-stone-200 bg-stone-50 px-3 py-3 dark:border-stone-800 dark:bg-stone-950"
         >
           {thread.events.map((ev) => (
-            <AtomCard key={ev.id} event={ev} alwaysExpanded />
+            // v1.16 Wave 5 — inside an expanded thread we want every
+            // atom fully readable in place; the bottom-sheet on mobile
+            // would obscure the rest of the timeline. alwaysExpanded
+            // already disables the sheet path, but be explicit.
+            <AtomCard
+              key={ev.id}
+              event={ev}
+              alwaysExpanded
+              bottomSheetOnMobile={false}
+            />
           ))}
         </div>
       )}

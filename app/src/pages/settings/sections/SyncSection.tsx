@@ -83,7 +83,9 @@ function ModePicker() {
         teammates see the same atoms.
       </p>
       <div
-        className="mt-3 flex gap-2"
+        // v1.16 Wave 5 — Mode picker stacks on mobile so each radio gets
+        // full width; horizontal layout returns at sm:.
+        className="mt-3 flex flex-col gap-2 sm:flex-row"
         role="radiogroup"
         aria-label="Sync mode"
       >
@@ -331,7 +333,9 @@ function TeamRosterBlock({ draft, update }: Props) {
   return (
     <section data-testid="st-sync-team-roster">
       <h3 className="font-display text-base">Team roster</h3>
-      <div className="mt-2 grid grid-cols-[1fr_1fr_1fr_auto] gap-2 text-xs text-[var(--ti-ink-500)]">
+      {/* v1.16 Wave 5 — labels row hidden on mobile (use input placeholders
+          to convey the field intent); desktop keeps the 4-col header. */}
+      <div className="mt-2 hidden grid-cols-[1fr_1fr_1fr_auto] gap-2 text-xs text-[var(--ti-ink-500)] sm:grid">
         <Label>{t("settings.team.alias", { defaultValue: "Alias" })}</Label>
         <Label>
           {t("settings.team.displayName", { defaultValue: "Display name" })}
@@ -345,23 +349,16 @@ function TeamRosterBlock({ draft, update }: Props) {
         {draft.team.map((m, i) => (
           <div
             key={i}
-            className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2"
+            // v1.16 Wave 5 — roster row: 2-col grid on mobile (3 inputs
+            // span the first column over 3 rows, button column-2 row-1);
+            // reverts to single 4-col grid at sm:.
+            className="grid grid-cols-[1fr_auto] gap-2 sm:grid-cols-[1fr_1fr_1fr_auto]"
             data-testid={`team-row-${i}`}
           >
             <Input
               value={m.alias}
               onChange={(e) => setRow(i, { alias: e.target.value })}
-              placeholder="daizhe"
-            />
-            <Input
-              value={m.display_name}
-              onChange={(e) => setRow(i, { display_name: e.target.value })}
-              placeholder="Daizhe"
-            />
-            <Input
-              value={m.discord_id}
-              onChange={(e) => setRow(i, { discord_id: e.target.value })}
-              placeholder="1234567890..."
+              placeholder="alias (e.g. daizhe)"
             />
             <Button
               variant="ghost"
@@ -369,9 +366,22 @@ function TeamRosterBlock({ draft, update }: Props) {
               onClick={() => removeRow(i)}
               data-testid={`team-remove-${i}`}
               aria-label="Remove row"
+              className="sm:order-last"
             >
               <Trash2 size={16} />
             </Button>
+            <Input
+              value={m.display_name}
+              onChange={(e) => setRow(i, { display_name: e.target.value })}
+              placeholder="display name (e.g. Daizhe)"
+              className="col-span-2 sm:col-span-1"
+            />
+            <Input
+              value={m.discord_id}
+              onChange={(e) => setRow(i, { discord_id: e.target.value })}
+              placeholder="discord id (1234567890...)"
+              className="col-span-2 sm:col-span-1"
+            />
           </div>
         ))}
         <Button

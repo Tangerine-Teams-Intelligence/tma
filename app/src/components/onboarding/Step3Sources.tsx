@@ -70,7 +70,7 @@ export function Step3Sources({ onConfirm, onSkip }: Step3SourcesProps) {
       data-testid="magic-step3"
       role="dialog"
       aria-label="Tangerine onboarding step 3"
-      className="flex h-full w-full flex-col items-center justify-center px-6"
+      className="flex h-full w-full flex-col items-center justify-center px-3 md:px-6"
     >
       <div className="w-full max-w-md">
         <h2 className="text-center text-xl font-semibold text-stone-100">

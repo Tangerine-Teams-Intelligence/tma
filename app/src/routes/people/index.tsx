@@ -117,8 +117,10 @@ export default function PeopleListRoute() {
       className="flex h-full flex-col bg-stone-50 dark:bg-stone-950"
     >
       <ViewTabs />
-      <main className="flex-1 overflow-y-auto px-4 py-6">
-        <div className="mx-auto max-w-5xl">
+      {/* v1.16 Wave 5 — tighter padding on mobile so the 64px avatar grid
+          gets the full 375px viewport width. */}
+      <main className="flex-1 overflow-y-auto px-3 py-4 md:px-4 md:py-6">
+        <div className="mx-auto w-full md:max-w-5xl">
           {notes.length > 0 && <TangerineNotes notes={notes} route="/people" />}
 
           <header className="mb-6">
@@ -162,7 +164,10 @@ export default function PeopleListRoute() {
                 <section
                   data-testid="people-grid"
                   data-count={people.length}
-                  className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"
+                  // v1.16 Wave 5 — 2 columns on mobile (375px gives ~165px
+                  // per cell with the 12px gap, room for 64px avatar +
+                  // alias). Desktop keeps the 3-col / lg breakpoint.
+                  className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-3"
                 >
                   {people.map((p) => (
                     <PersonCard

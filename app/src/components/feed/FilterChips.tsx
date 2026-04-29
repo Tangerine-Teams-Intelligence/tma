@@ -50,10 +50,13 @@ export function FilterChips({ filter, onChange, availableSources }: FilterChipsP
   return (
     <div
       data-testid="feed-filter-chips"
-      className="sticky bottom-0 left-0 right-0 z-20 border-t border-stone-200 bg-white/95 px-4 py-2 backdrop-blur dark:border-stone-800 dark:bg-stone-950/95"
+      className="sticky bottom-0 left-0 right-0 z-20 border-t border-stone-200 bg-white/95 px-3 py-2 backdrop-blur dark:border-stone-800 dark:bg-stone-950/95 md:px-4"
     >
-      <div className="mx-auto flex max-w-3xl items-center gap-2">
-        <div className="flex flex-1 items-center gap-2 rounded border border-stone-300 bg-white px-2 py-1 dark:border-stone-700 dark:bg-stone-900">
+      {/* v1.16 Wave 5 — search row stays full-width; chip row breaks to
+          a second row on mobile and scrolls horizontally if chips
+          overflow the 375px viewport. Desktop keeps everything inline. */}
+      <div className="mx-auto flex w-full max-w-3xl flex-col gap-2 md:flex-row md:items-center">
+        <div className="flex items-center gap-2 rounded border border-stone-300 bg-white px-2 py-1 dark:border-stone-700 dark:bg-stone-900 md:flex-1">
           <Search size={14} className="shrink-0 text-stone-400" aria-hidden />
           <input
             ref={inputRef}
@@ -65,38 +68,45 @@ export function FilterChips({ filter, onChange, availableSources }: FilterChipsP
             className="w-full bg-transparent text-[12px] outline-none dark:text-stone-100"
           />
         </div>
-        <ChipButton
-          active={filter.onlyMe}
-          testId="feed-filter-me"
-          onClick={() => onChange({ ...filter, onlyMe: !filter.onlyMe })}
+        <div
+          data-testid="feed-filter-chip-row"
+          className="-mx-1 flex items-center gap-2 overflow-x-auto px-1 md:overflow-visible"
         >
-          @Me
-        </ChipButton>
-        <ChipButton
-          active={filter.todayOnly}
-          testId="feed-filter-today"
-          onClick={() => onChange({ ...filter, todayOnly: !filter.todayOnly })}
-        >
-          Today
-        </ChipButton>
-        {availableSources.map((src) => (
           <ChipButton
-            key={src}
-            active={filter.sources.includes(src)}
-            testId={`feed-filter-source-${src}`}
-            onClick={() => {
-              const has = filter.sources.includes(src);
-              onChange({
-                ...filter,
-                sources: has
-                  ? filter.sources.filter((s) => s !== src)
-                  : [...filter.sources, src],
-              });
-            }}
+            active={filter.onlyMe}
+            testId="feed-filter-me"
+            onClick={() => onChange({ ...filter, onlyMe: !filter.onlyMe })}
           >
-            {src}
+            @Me
           </ChipButton>
-        ))}
+          <ChipButton
+            active={filter.todayOnly}
+            testId="feed-filter-today"
+            onClick={() =>
+              onChange({ ...filter, todayOnly: !filter.todayOnly })
+            }
+          >
+            Today
+          </ChipButton>
+          {availableSources.map((src) => (
+            <ChipButton
+              key={src}
+              active={filter.sources.includes(src)}
+              testId={`feed-filter-source-${src}`}
+              onClick={() => {
+                const has = filter.sources.includes(src);
+                onChange({
+                  ...filter,
+                  sources: has
+                    ? filter.sources.filter((s) => s !== src)
+                    : [...filter.sources, src],
+                });
+              }}
+            >
+              {src}
+            </ChipButton>
+          ))}
+        </div>
       </div>
     </div>
   );

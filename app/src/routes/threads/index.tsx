@@ -85,8 +85,9 @@ export default function ThreadsListRoute() {
       className="flex h-full flex-col bg-stone-50 dark:bg-stone-950"
     >
       <ViewTabs />
-      <main className="flex-1 overflow-y-auto px-4 py-3">
-        <div className="mx-auto max-w-3xl">
+      {/* v1.16 Wave 5 — full-width on mobile, narrow centered column on desktop. */}
+      <main className="flex-1 overflow-y-auto px-3 py-3 md:px-4">
+        <div className="mx-auto w-full md:max-w-3xl">
           {notes.length > 0 && <TangerineNotes notes={notes} route="/threads" />}
 
           <header className="mt-2 flex items-center gap-3">
