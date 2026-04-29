@@ -201,12 +201,22 @@ export default function App() {
 
         <Route path="feed" element={<FeedRoute />} />
 
-        {/* Stage 1 Wave 3 — Chief of Staff views (legacy, kept reachable). */}
-        <Route path="today" element={<TodayRoute />} />
-        <Route path="this-week" element={<ThisWeekRoute />} />
-        {/* === wave 24 === — Daily notes route, default lands on today. */}
-        <Route path="daily" element={<DailyRoute />} />
-        {/* === end wave 24 === */}
+        {/* v1.16 Wave 6 dogfood — every legacy primary surface that was
+            replaced by /feed redirects there. /today (Wave-3 dashboard
+            with Search team memory + Recent decisions widgets) is dead;
+            the LLM-shaped widgets it rendered were砍 alongside the
+            smart layer. /this-week + /daily roll up into /feed's day
+            separator. /co-thinker, /canvas, /brain, /alignment all 砍.
+            Keep TodayRoute import alive only because it's referenced
+            by some test fixtures — but route is unmounted. */}
+        <Route path="today" element={<Navigate to="/feed" replace />} />
+        <Route path="this-week" element={<Navigate to="/feed" replace />} />
+        <Route path="daily" element={<Navigate to="/feed" replace />} />
+        <Route path="brain" element={<Navigate to="/feed" replace />} />
+        <Route path="co-thinker" element={<Navigate to="/feed" replace />} />
+        <Route path="canvas" element={<Navigate to="/feed" replace />} />
+        <Route path="alignment" element={<Navigate to="/feed" replace />} />
+        <Route path="inbox" element={<Navigate to="/threads" replace />} />
         <Route path="people" element={<PeopleListRoute />} />
         {/* === v2.0-beta.1 graphs ===
             Static graph routes MUST sit above the param routes; otherwise
@@ -244,11 +254,9 @@ export default function App() {
             sidebar entry now points at settings/PersonalAgents. Old links
             fall through to the / → /today catch-all. */}
 
-        {/* INBOX — real implementation; reads briefs/pending.md */}
-        <Route path="inbox" element={<InboxRoute />} />
-
-        {/* ALIGNMENT — real implementation; reads alignment.json */}
-        <Route path="alignment" element={<AlignmentRoute />} />
+        {/* v1.16 — /inbox + /alignment redirects mounted earlier above
+            (inbox → /threads since both are @mention surfaces;
+            alignment → /feed since alignment was an LLM-shaped surface). */}
 
         {/* Meeting detail / live (kept — the Discord source's per-call view). */}
         <Route path="meeting/:id" element={<MeetingDetailPage />} />

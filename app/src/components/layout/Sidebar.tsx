@@ -155,61 +155,45 @@ export function Sidebar() {
         </button>
       </div>
 
-      {/* === wave 19 === — Primary nav. Five items max. Always visible,
-          no collapse toggle, no count chips. The intent is a clean
-          Linear-style left rail where every visible item is a primary
-          surface, not a setting or a connector page. */}
+      {/* === v1.16 Wave 6 dogfood — sidebar rewritten to match the new
+          3-view-mode design. /today / /co-thinker / /canvas were all
+          砍 in Wave 1 demolition; the surviving primary surfaces are
+          /feed (Story Feed, default landing), /threads (mention auto-
+          group), /people (teammate grid), and /memory (file tree fallback
+          for power users). Inbox is collapsed into /threads since
+          @mention notifications are the same data. Linear-style clean
+          rail: 4 primary nav items + footer system controls. */}
       <nav
         className="flex-1 overflow-y-auto px-2 py-3"
         data-testid="sidebar-primary-nav"
       >
         <ViewLink
-          to="/today"
+          to="/feed"
           icon={Calendar}
-          label={t("sidebar.today")}
-          testId="sidebar-nav-today"
-          presenceRoute="/today"
+          label={t("sidebar.feed", { defaultValue: "Feed" })}
+          testId="sidebar-nav-feed"
+          presenceRoute="/feed"
         />
-        {/* === wave 1.13-A === — Inbox is the 6th sidebar nav item.
-            Sits between Today and Memory because the collab loop inbox
-            is a higher-frequency surface than the file tree (you check
-            mentions every time you open the app; you browse the tree
-            once a session). Wave 19's "5 items max" rule is intentionally
-            relaxed here — collab needs a visible inbox; relegating to a
-            dropdown buries it. CEO can revisit if too cluttered. */}
         <ViewLink
-          to="/inbox"
+          to="/threads"
           icon={InboxIcon}
-          label={t("sidebar.inbox", { defaultValue: "Inbox" })}
-          testId="sidebar-nav-inbox"
+          label={t("sidebar.threads", { defaultValue: "Threads" })}
+          testId="sidebar-nav-threads"
           badge={inboxUnread > 0 ? inboxUnread : undefined}
         />
-        {/* === end wave 1.13-A === */}
+        <ViewLink
+          to="/people"
+          icon={Brain}
+          label={t("sidebar.people", { defaultValue: "People" })}
+          testId="sidebar-nav-people"
+          presenceRoute="/people"
+        />
         <ViewLink
           to="/memory"
           icon={FolderKanban}
           label={t("sidebar.memory")}
           testId="sidebar-nav-memory"
           presenceRoute="/memory"
-        />
-        {/* /brain is a wave-19 alias to the existing /co-thinker route.
-            Both render the same component; bookmarks to /co-thinker still
-            work. Active state matches either path so the highlight
-            survives on the legacy URL too. */}
-        <ViewLink
-          to="/brain"
-          icon={Brain}
-          label={t("sidebar.brain", { defaultValue: "Brain" })}
-          testId="sidebar-nav-brain"
-          activeMatchPaths={["/brain", "/co-thinker"]}
-          presenceRoute="/brain"
-        />
-        <ViewLink
-          to="/canvas"
-          icon={Layers}
-          label={t("sidebar.canvas")}
-          testId="sidebar-nav-canvas"
-          presenceRoute="/canvas"
         />
       </nav>
 

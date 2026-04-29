@@ -907,15 +907,13 @@ export function AppShell() {
           </ErrorBoundary>
           {/* === end v1.16 Wave 4 D2 === */}
           <WhatsNewBanner />
-          {/* === v2.0-beta.3 co-thinker home strip ===
-              Sits between the system banners and the suggestion banner so
-              the AGI presence indicator is the very first content-band
-              the user sees on every route. The strip self-hides when the
-              master AGI participation switch is off; mounting it
-              unconditionally keeps the layout stable across that flip
-              (its own `null` return collapses height to 0). */}
-          <HomeStrip />
-          {/* === end v2.0-beta.3 co-thinker home strip === */}
+          {/* v1.16 Wave 6 dogfood — HomeStrip ("Team brain · last sync
+              never · not started yet — click to initialize") was a
+              co-thinker init prompt. Co-thinker is砍 in v1.16. The
+              StatusBar (just below) carries every status signal the
+              user needs ("🟢 Source · 📥 Today · 👥 Online · ⚠ For you"),
+              so the legacy header is dead weight. Component file
+              kept on disk for the LLM-status icon util it exports. */}
           {/* === wave 1.13-D === — TeammatesPill sits flush-right in the
               same row as the HomeStrip-adjacent strip. Self-hides when 0
               teammates active so a solo session looks unchanged. */}
