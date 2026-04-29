@@ -173,8 +173,8 @@ describe("Wave 21 — MemoryTree component", () => {
       </MemoryRouter>,
     );
     // pricing.md should be reachable (parent dirs match by transitive
-    // descendant); pcb-tier2.md should not exist in the tree.
-    fireEvent.click(screen.getByTestId("memory-tree-dir-team/decisions"));
+    // descendant); pcb-tier2.md should not exist in the tree. With a non-
+    // empty filter every dir auto-expands, so no click needed.
     expect(
       screen.getByTestId("memory-tree-file-team/decisions/pricing.md"),
     ).toBeInTheDocument();
@@ -216,7 +216,8 @@ describe("Wave 21 — MemoryTree component", () => {
         />
       </MemoryRouter>,
     );
-    fireEvent.click(screen.getByTestId("memory-tree-dir-team/decisions"));
+    // No click needed — selectedPath makes team/decisions an ancestor of the
+    // selected file, so it auto-expands per the isAncestorOfSelected default.
     const row = screen.getByTestId(
       "memory-tree-file-team/decisions/pricing.md",
     );

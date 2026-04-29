@@ -120,9 +120,10 @@ function TreeNode({
       nodeMatchesFilter(c, filter, vendorFilter),
     );
     return (
-      <div data-testid={`memory-tree-dir-${node.path}`} role="treeitem">
+      <div role="treeitem">
         <button
           type="button"
+          data-testid={`memory-tree-dir-${node.path}`}
           onClick={() => setOpen((v) => !v)}
           className="flex w-full items-center gap-1 rounded px-2 py-1 text-left text-stone-700 hover:bg-stone-100 dark:text-stone-300 dark:hover:bg-stone-900"
           style={{ paddingLeft: padLeft }}
