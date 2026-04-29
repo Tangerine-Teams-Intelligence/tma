@@ -33,6 +33,7 @@ import { ViewTabs } from "@/components/layout/ViewTabs";
 import { AtomCard } from "@/components/feed/AtomCard";
 import { TangerineNotes } from "@/components/TangerineNotes";
 import { PersonCard, type PersonStats } from "@/components/people/PersonCard";
+import { EmptyStateAnimation } from "@/components/onboarding/EmptyStateAnimation";
 
 const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
 const MAX_FILTERED_ATOMS = 50;
@@ -175,26 +176,37 @@ export default function PeopleListRoute() {
               )}
 
               {isSolo && (
-                <div
-                  data-testid="people-empty-solo"
-                  className="mt-8 flex flex-col items-center justify-center rounded-md border border-dashed border-stone-300 bg-white px-6 py-10 text-center dark:border-stone-700 dark:bg-stone-900"
-                >
-                  <div className="text-[14px] font-semibold text-stone-700 dark:text-stone-200">
-                    Invite a teammate to share memory
+                <>
+                  {/* v1.16 Wave 3 C2 — render the animated 5-sample
+                      preview above the solo CTA so the user sees
+                      "teammates show up like this" before the invite
+                      pitch. The legacy CTA is preserved verbatim so the
+                      Wave 2 B3 spec (which queries `people-empty-solo`
+                      + `people-empty-cta`) keeps passing. */}
+                  <div className="mt-6">
+                    <EmptyStateAnimation variant="people" />
                   </div>
-                  <p className="mt-2 max-w-md text-[12px] text-stone-500 dark:text-stone-400">
-                    Tangerine becomes useful with two or more people. Set up
-                    sync to share captured atoms with your team.
-                  </p>
-                  <button
-                    type="button"
-                    data-testid="people-empty-cta"
-                    onClick={() => navigate("/settings/sync")}
-                    className="mt-4 rounded-md bg-[var(--ti-orange-500)] px-3 py-1.5 text-[12px] font-semibold text-white hover:bg-[var(--ti-orange-700)]"
+                  <div
+                    data-testid="people-empty-solo"
+                    className="mt-8 flex flex-col items-center justify-center rounded-md border border-dashed border-stone-300 bg-white px-6 py-10 text-center dark:border-stone-700 dark:bg-stone-900"
                   >
-                    Set up team sync
-                  </button>
-                </div>
+                    <div className="text-[14px] font-semibold text-stone-700 dark:text-stone-200">
+                      Invite a teammate to share memory
+                    </div>
+                    <p className="mt-2 max-w-md text-[12px] text-stone-500 dark:text-stone-400">
+                      Tangerine becomes useful with two or more people. Set up
+                      sync to share captured atoms with your team.
+                    </p>
+                    <button
+                      type="button"
+                      data-testid="people-empty-cta"
+                      onClick={() => navigate("/settings/sync")}
+                      className="mt-4 rounded-md bg-[var(--ti-orange-500)] px-3 py-1.5 text-[12px] font-semibold text-white hover:bg-[var(--ti-orange-700)]"
+                    >
+                      Set up team sync
+                    </button>
+                  </div>
+                </>
               )}
 
               {effectiveSelected && filteredAtoms.length > 0 && (

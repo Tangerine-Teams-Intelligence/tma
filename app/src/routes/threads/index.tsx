@@ -28,6 +28,7 @@ import {
 import { ViewTabs } from "@/components/layout/ViewTabs";
 import { ThreadCard, type Thread } from "@/components/threads/ThreadCard";
 import { TangerineNotes } from "@/components/TangerineNotes";
+import { EmptyStateAnimation } from "@/components/onboarding/EmptyStateAnimation";
 
 /** Body text matches `@<word>` for at-mention detection. Mirrors the
  *  regex used in AtomCard.tsx + mention_extractor.rs. */
@@ -150,18 +151,12 @@ export default function ThreadsListRoute() {
           )}
 
           {!loading && !error && events.length === 0 && (
-            <div
-              data-testid="threads-empty-no-captures"
-              className="flex flex-col items-center justify-center py-16 text-center"
-            >
-              <div className="text-[14px] font-semibold text-stone-700 dark:text-stone-200">
-                No captures yet
-              </div>
-              <p className="mt-2 max-w-md text-[12px] text-stone-500 dark:text-stone-400">
-                Threads form when atoms in your captured timeline share an
-                @mention. Open Cursor or Claude Code and ping a teammate —
-                they'll show up here within a minute.
-              </p>
+            // v1.16 Wave 3 C2 — animated 5-sample preview replaces the
+            // text-only "No captures yet" so the page feels alive in the
+            // 5s gap before the first real capture lands. Outer wrapper
+            // keeps the legacy testid for the Wave 2 B2 empty-state spec.
+            <div data-testid="threads-empty-no-captures" className="py-4">
+              <EmptyStateAnimation variant="threads" />
             </div>
           )}
 

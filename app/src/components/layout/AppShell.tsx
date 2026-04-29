@@ -53,6 +53,14 @@ import { UpdaterCheck } from "@/components/UpdaterCheck";
 // W2/W3 will reintroduce a fresh first-run surface that does not depend
 // on the chat primer / SetupWizard scaffold.
 // === end v1.16 Wave 1 ===
+// === v1.16 Wave 3 C1 ===
+// MagicMoment — 30-second 4-step onboarding (welcome headline → sample
+// captures auto-scrub → source pickers → 🎉 confirmation). Mount-gated
+// on `welcomed === false`; flips the latch on completion / skip / ESC
+// so it never re-prompts. Sits at the top z-stack so the dim
+// backdrop covers the entire shell.
+import { MagicMoment } from "@/components/onboarding/MagicMoment";
+// === end v1.16 Wave 3 C1 ===
 // === wave 11 === — SetupWizard砍 (smart-layer onboarding gone).
 // Wave 3 — offline indicator (OBSERVABILITY_SPEC §8 edge case catalog)
 import { ConnectionBanner } from "@/components/ConnectionBanner";
@@ -215,6 +223,13 @@ export function AppShell() {
   const setPalette = useStore((s) => s.ui.setPalette);
   const localOnly = useStore((s) => s.ui.localOnly);
   const currentUser = useStore((s) => s.ui.currentUser);
+  // === v1.16 Wave 3 C1 ===
+  // First-launch latch for the 4-step magic moment. Returning users
+  // (welcomed === true) never see the modal — its mount line below is
+  // gated on this flag. Wave 1 kept the field + setter intact, so the
+  // hydration + persist paths already work for free.
+  const welcomed = useStore((s) => s.ui.welcomed);
+  // === end v1.16 Wave 3 C1 ===
   const memoryRoot = useStore((s) => s.ui.memoryRoot);
   const setMemoryRoot = useStore((s) => s.ui.setMemoryRoot);
   const samplesSeeded = useStore((s) => s.ui.samplesSeeded);
@@ -1048,6 +1063,21 @@ export function AppShell() {
         {/* === end wave 22 === */}
 
         {/* === v1.16 Wave 1 === — DemoTourOverlay砍. */}
+
+        {/* === v1.16 Wave 3 C1 ===
+            MagicMoment 4-step onboarding. Mounts only on fresh launch
+            (welcomed === false). The component owns its own internal
+            close state once it lands; the `welcomed` flag flips
+            permanently on enter / skip / ESC so a refresh mid-flow
+            never re-mounts. Wrapped in ErrorBoundary (Wave 10.1
+            lesson) so a thrown render in the modal can never blank
+            the shell. */}
+        {!welcomed && (
+          <ErrorBoundary label="MagicMoment">
+            <MagicMoment />
+          </ErrorBoundary>
+        )}
+        {/* === end v1.16 Wave 3 C1 === */}
       </div>
     </AmbientInputObserver>
     {/* === wave 1.13-D === */}

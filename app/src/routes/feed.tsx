@@ -38,6 +38,7 @@ import { AtomCard } from "@/components/feed/AtomCard";
 import { DaySeparator } from "@/components/feed/DaySeparator";
 import { FilterChips, EMPTY_FILTER, type FeedFilter } from "@/components/feed/FilterChips";
 import { TangerineNotes } from "@/components/TangerineNotes";
+import { EmptyStateAnimation } from "@/components/onboarding/EmptyStateAnimation";
 
 const TODAY_CUTOFF_MS = 24 * 60 * 60 * 1000;
 
@@ -181,19 +182,15 @@ function FeedEmptyState({ totalEvents }: { totalEvents: number }) {
   // Two distinct empty cases — pure empty memory dir vs filtered out
   // every atom. R6/R7/R8 honesty: never collapse them to one message.
   if (totalEvents === 0) {
+    // v1.16 Wave 3 C2 — promote the dead text-only empty to an animated
+    // 5-sample preview. Outer container keeps the legacy testid so the
+    // Wave 2 B1 test (which asserts `feed-empty-no-captures`) stays green.
     return (
       <div
         data-testid="feed-empty-no-captures"
-        className="flex flex-col items-center justify-center py-16 text-center"
+        className="py-8"
       >
-        <div className="text-[14px] font-semibold text-stone-700 dark:text-stone-200">
-          No captures yet
-        </div>
-        <p className="mt-2 max-w-md text-[12px] text-stone-500 dark:text-stone-400">
-          Tangerine reads your AI-tool conversation logs as you use them. Open
-          Cursor or Claude Code and your next message will appear here within
-          a minute.
-        </p>
+        <EmptyStateAnimation variant="feed" />
       </div>
     );
   }
