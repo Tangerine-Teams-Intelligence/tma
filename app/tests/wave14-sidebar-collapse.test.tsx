@@ -57,17 +57,18 @@ describe("Wave 14 sidebar — wave-19 IA contract", () => {
     vi.restoreAllMocks();
   });
 
-  it("renders the 4 primary nav links (today / brain / canvas / memory)", () => {
+  it("renders the 4 v1.16.1 primary nav links (feed / threads / people / memory)", () => {
     render(
       <MemoryRouter>
         <Sidebar />
       </MemoryRouter>,
     );
-    // Wave 19 — /brain is the new sidebar URL, /co-thinker is the
-    // legacy alias. Sidebar renders a NavLink to /brain (not
-    // /co-thinker). The route in App.tsx wires both paths to the same
-    // CoThinkerRoute component.
-    const expectedHrefs = ["/today", "/brain", "/canvas", "/memory"];
+    // v1.16.1 reshuffled the sidebar to match the new IA: /feed default
+    // landing, /threads + /people the other two v1.16 view modes, and
+    // /memory as the file-tree power-user fallback. /today /brain
+    // /canvas were 砍 in v1.16 Wave 1; the smart-layer routes had no
+    // surviving surface to link to.
+    const expectedHrefs = ["/feed", "/threads", "/people", "/memory"];
     for (const href of expectedHrefs) {
       expect(
         document.querySelector(`a[href="${href}"]`),
@@ -99,22 +100,23 @@ describe("Wave 14 sidebar — wave-19 IA contract", () => {
         <Sidebar />
       </MemoryRouter>,
     );
-    // Routes alive in App.tsx but yanked from the rail in wave 19.
-    // === wave 1.13-A === — `/inbox` is no longer in this list. The
-    // collab-loop inbox is the 6th rail item now; killed-from-sidebar
-    // means "no NavLink AT ALL", which is no longer true for /inbox.
+    // v1.16.1 killed list. /people + /threads moved INTO the rail
+    // (they're the v1.16 view modes), so they're no longer "killed".
+    // /today + /brain + /canvas stayed killed (smart-layer surfaces
+    // 砍 in v1.16 Wave 1 demolition). Inbox routes via /threads now.
     const killedHrefs = [
       "/this-week",
-      "/people",
       "/projects",
-      "/threads",
       "/alignment",
       "/reviews",
       "/marketplace",
       "/sources/discord",
       "/sinks/browser",
+      "/today",
+      "/brain",
+      "/canvas",
+      "/co-thinker",
     ];
-    // === end wave 1.13-A ===
     for (const href of killedHrefs) {
       expect(
         document.querySelector(`a[href="${href}"]`),

@@ -33,12 +33,11 @@ import {
   type TangerineNote,
 } from "@/lib/views";
 import { useStore } from "@/lib/store";
-import { ViewTabs } from "@/components/layout/ViewTabs";
 import { AtomCard } from "@/components/feed/AtomCard";
 import { DaySeparator } from "@/components/feed/DaySeparator";
 import { FilterChips, EMPTY_FILTER, type FeedFilter } from "@/components/feed/FilterChips";
 import { TangerineNotes } from "@/components/TangerineNotes";
-import { EmptyStateAnimation } from "@/components/onboarding/EmptyStateAnimation";
+import { HighlightsRow } from "@/components/feed/HighlightsRow";
 
 const TODAY_CUTOFF_MS = 24 * 60 * 60 * 1000;
 
@@ -122,9 +121,10 @@ export default function FeedRoute() {
       data-testid="feed-route"
       className="flex h-full flex-col bg-stone-50 dark:bg-stone-950"
     >
-      <ViewTabs />
-      {/* v1.16 Wave 5 — main becomes full-width on mobile (no max-w-3xl
-          clamp); desktop keeps the centered narrow column. */}
+      {/* v1.17 — ViewTabs killed (redundant with Sidebar nav).
+          Sidebar's active orange highlight is the single source of truth
+          for "which view am I on?" and removing the tab strip cuts ~36px
+          of vertical chrome that v1.16 dogfood flagged as bloat. */}
       <main className="flex-1 overflow-y-auto px-3 py-3 md:px-4">
         <div className="mx-auto w-full md:max-w-3xl">
           {notes.length > 0 && <TangerineNotes notes={notes} route="/feed" />}
@@ -150,24 +150,30 @@ export default function FeedRoute() {
             <FeedEmptyState totalEvents={events.length} />
           )}
           {!loading && !error && buckets.length > 0 && (
-            <ol
-              data-testid="feed-list"
-              data-count={filtered.length}
-              className="space-y-2"
-            >
-              {buckets.map(({ date, events: dayEvents }) => (
-                <li key={date} className="space-y-2">
-                  <DaySeparator date={date} />
-                  <ul className="space-y-2">
-                    {dayEvents.map((ev) => (
-                      <li key={ev.id}>
-                        <AtomCard event={ev} />
-                      </li>
-                    ))}
-                  </ul>
-                </li>
-              ))}
-            </ol>
+            <>
+              {/* v1.17 — Apple Photos Memories paradigm. Highlights row
+                  hides itself when no atom clears the score threshold,
+                  so on a fresh / sparse feed the surface is quiet. */}
+              <HighlightsRow events={filtered} currentUser={currentUser} />
+              <ol
+                data-testid="feed-list"
+                data-count={filtered.length}
+                className="space-y-2"
+              >
+                {buckets.map(({ date, events: dayEvents }) => (
+                  <li key={date} className="space-y-2">
+                    <DaySeparator date={date} />
+                    <ul className="space-y-2">
+                      {dayEvents.map((ev) => (
+                        <li key={ev.id}>
+                          <AtomCard event={ev} />
+                        </li>
+                      ))}
+                    </ul>
+                  </li>
+                ))}
+              </ol>
+            </>
           )}
         </div>
       </main>
@@ -184,15 +190,30 @@ function FeedEmptyState({ totalEvents }: { totalEvents: number }) {
   // Two distinct empty cases — pure empty memory dir vs filtered out
   // every atom. R6/R7/R8 honesty: never collapse them to one message.
   if (totalEvents === 0) {
-    // v1.16 Wave 3 C2 — promote the dead text-only empty to an animated
-    // 5-sample preview. Outer container keeps the legacy testid so the
-    // Wave 2 B1 test (which asserts `feed-empty-no-captures`) stays green.
+    // v1.17 — quiet "waiting for first capture" state. The Wave 3 C2
+    // 5-sample-atom preview was retired after dogfood: it made an empty
+    // feed feel like 5 fake messages, not like Tangerine listening.
+    // Apple Photos analogue: a clean dim canvas, not synthetic stand-ins.
     return (
       <div
         data-testid="feed-empty-no-captures"
-        className="py-8"
+        className="flex flex-col items-center justify-center py-20 text-center"
       >
-        <EmptyStateAnimation variant="feed" />
+        <span
+          aria-hidden
+          className="mb-4 inline-block h-2.5 w-2.5 animate-pulse rounded-full bg-[var(--ti-orange)]"
+        />
+        <div className="text-[14px] font-semibold text-stone-700 dark:text-stone-200">
+          Waiting for first capture
+        </div>
+        <p className="mt-2 max-w-xs text-[12px] leading-relaxed text-stone-500 dark:text-stone-400">
+          Tangerine is listening to your local AI workflow files. Your next
+          Claude Code or Cursor session will appear here within a few
+          seconds.
+        </p>
+        <p className="mt-3 font-mono text-[10px] text-stone-400 dark:text-stone-500">
+          checking every 30s
+        </p>
       </div>
     );
   }

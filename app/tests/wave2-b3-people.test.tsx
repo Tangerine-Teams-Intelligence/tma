@@ -253,16 +253,17 @@ describe("Wave 2 B3 — /people People grid", () => {
     expect(screen.getByTestId("atom-card-h1")).toBeInTheDocument();
   });
 
-  it("ViewTabs renders /people active underline", async () => {
+  it("v1.17 — ViewTabs is no longer rendered inside /people", async () => {
     vi.spyOn(views, "readTimelineRecent").mockResolvedValue({
       events: SAMPLE_EVENTS,
       notes: [],
     });
     renderPeople();
     await waitFor(() => {
-      expect(screen.getByTestId("view-tabs")).toBeInTheDocument();
+      expect(screen.getByTestId("people-route")).toBeInTheDocument();
     });
-    expect(screen.getByTestId("view-tabs-people-underline")).toBeInTheDocument();
+    expect(screen.queryByTestId("view-tabs")).toBeNull();
+    expect(screen.queryByTestId("view-tabs-people")).toBeNull();
   });
 
   it("active count header reports # active in last 24h", async () => {

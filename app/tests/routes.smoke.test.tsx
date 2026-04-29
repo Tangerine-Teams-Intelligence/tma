@@ -39,10 +39,9 @@ describe("Stage 1 Wave 3 routes — smoke", () => {
 
   it("/people index renders without crash", async () => {
     renderRoute("/people", <PeopleListRoute />);
-    // v1.16 Wave 2 — /people rewritten to v1.16 spec; header now shows
-    // "People · N active in last 24h" via testid view-tabs (active route
-    // landmark). Smoke test just needs the route to mount cleanly.
-    expect(await screen.findByTestId("view-tabs")).toBeInTheDocument();
+    // v1.17 — ViewTabs killed; smoke test now lands on `people-route`
+    // (the route container) instead.
+    expect(await screen.findByTestId("people-route")).toBeInTheDocument();
   });
 
   it("/people/:alias renders person detail", async () => {
@@ -90,9 +89,8 @@ describe("Stage 1 Wave 3 routes — smoke", () => {
 
   it("/threads index renders without crash", async () => {
     renderRoute("/threads", <ThreadsListRoute />);
-    // v1.16 Wave 2 — /threads rewritten to mention-set grouping; smoke
-    // test just needs the route to mount cleanly via view-tabs landmark.
-    expect(await screen.findByTestId("view-tabs")).toBeInTheDocument();
+    // v1.17 — ViewTabs killed; smoke test now lands on `threads-route`.
+    expect(await screen.findByTestId("threads-route")).toBeInTheDocument();
   });
 
   it("/threads/:topic renders thread detail", async () => {

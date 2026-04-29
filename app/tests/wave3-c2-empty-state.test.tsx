@@ -89,7 +89,7 @@ describe("Wave 3 C2 — EmptyStateAnimation component", () => {
     ).toContain("Settings");
   });
 
-  it("/feed integration: empty events triggers the animation", async () => {
+  it("v1.17 — /feed empty events renders the quiet 'Waiting' state, not the animation", async () => {
     vi.spyOn(views, "readTimelineRecent").mockResolvedValue({
       events: [],
       notes: [],
@@ -102,13 +102,16 @@ describe("Wave 3 C2 — EmptyStateAnimation component", () => {
     await waitFor(() => {
       expect(screen.getByTestId("feed-empty-no-captures")).toBeInTheDocument();
     });
-    expect(screen.getByTestId("empty-state-animation-feed")).toBeInTheDocument();
-    expect(
-      screen.getByTestId("empty-state-animation-list-feed").getAttribute("data-count"),
-    ).toBe("5");
+    // v1.17 retired the synthetic 5-atom preview — must not render.
+    expect(screen.queryByTestId("empty-state-animation-feed")).toBeNull();
+    expect(screen.queryByTestId("empty-state-animation-list-feed")).toBeNull();
+    // The replacement copy is the only signal the feed is alive.
+    expect(screen.getByTestId("feed-empty-no-captures").textContent).toContain(
+      "Waiting for first capture",
+    );
   });
 
-  it("/threads integration: 0 threads triggers the animation", async () => {
+  it("v1.17 — /threads 0 threads renders quiet 'No threads yet' state, not the animation", async () => {
     vi.spyOn(views, "readTimelineRecent").mockResolvedValue({
       events: [],
       notes: [],
@@ -121,10 +124,13 @@ describe("Wave 3 C2 — EmptyStateAnimation component", () => {
     await waitFor(() => {
       expect(screen.getByTestId("threads-empty-no-captures")).toBeInTheDocument();
     });
-    expect(screen.getByTestId("empty-state-animation-threads")).toBeInTheDocument();
+    expect(screen.queryByTestId("empty-state-animation-threads")).toBeNull();
+    expect(screen.getByTestId("threads-empty-no-captures").textContent).toContain(
+      "No threads yet",
+    );
   });
 
-  it("/people integration: solo user renders the animation + legacy CTA", async () => {
+  it("v1.17 — /people solo user renders only the legacy invite CTA, no synthetic preview", async () => {
     // Single atom from the current user → people.length === 1 → isSolo.
     vi.spyOn(views, "readTimelineRecent").mockResolvedValue({
       events: [
@@ -158,8 +164,9 @@ describe("Wave 3 C2 — EmptyStateAnimation component", () => {
     await waitFor(() => {
       expect(screen.getByTestId("people-empty-solo")).toBeInTheDocument();
     });
-    expect(screen.getByTestId("empty-state-animation-people")).toBeInTheDocument();
-    // Wave 2 B3 contract still intact — the invite CTA must coexist.
+    // v1.17 dropped the synthetic 5-teammate preview (R6 honesty —
+    // fake names broke trust). Only the real invite CTA remains.
+    expect(screen.queryByTestId("empty-state-animation-people")).toBeNull();
     expect(screen.getByTestId("people-empty-cta")).toBeInTheDocument();
   });
 });

@@ -14,7 +14,8 @@
  *   8. Long bodies (>200 chars) collapse to a "Read full" affordance.
  *   9. FilterChips: @Me, Today, source-vendor toggles all work.
  *  10. Cmd+/ focuses the search input.
- *  11. ViewTabs renders all three view links and highlights /feed.
+ *  11. v1.17 — ViewTabs killed (Sidebar nav covers Feed/Threads/People).
+ *      The route no longer mounts the in-page tab strip.
  */
 
 import { describe, expect, it, beforeEach, vi } from "vitest";
@@ -271,19 +272,16 @@ describe("Wave 2 B1 — /feed Story Feed", () => {
     expect(document.activeElement).toBe(input);
   });
 
-  it("ViewTabs renders Feed/Threads/People links", async () => {
+  it("v1.17 — ViewTabs is no longer rendered inside /feed (Sidebar owns nav)", async () => {
     vi.spyOn(views, "readTimelineRecent").mockResolvedValue({
       events: SAMPLE_EVENTS,
       notes: [],
     });
     renderFeed();
     await waitFor(() =>
-      expect(screen.getByTestId("view-tabs")).toBeInTheDocument(),
+      expect(screen.getByTestId("feed-list")).toBeInTheDocument(),
     );
-    expect(screen.getByTestId("view-tabs-feed")).toBeInTheDocument();
-    expect(screen.getByTestId("view-tabs-threads")).toBeInTheDocument();
-    expect(screen.getByTestId("view-tabs-people")).toBeInTheDocument();
-    // Feed is active in MemoryRouter @ /feed.
-    expect(screen.getByTestId("view-tabs-feed-underline")).toBeInTheDocument();
+    expect(screen.queryByTestId("view-tabs")).toBeNull();
+    expect(screen.queryByTestId("view-tabs-feed")).toBeNull();
   });
 });

@@ -8,6 +8,90 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
      Each version block focuses on user-visible features so this doc can
      also feed the in-app /whats-new-app route. -->
 
+## [1.17.0] — 2026-04-29 — Apple Photos paradigm (auto-surface Highlights, chrome diet)
+
+PDCA dogfood after v1.16.1: 邹岱哲 reported "我还是很不喜欢这个 ux 设计".
+Diagnosis: heavy chrome (4 horizontal bars stacked), nav redundancy
+(Sidebar + ViewTabs both pointing at the same routes), and a 5-sample
+"animated empty" preview that made an empty feed feel like 5 fake
+messages — undermining the R6 honesty invariant. v1.17 picks the Apple
+Photos "Memories" paradigm: timeline stays the base, but the app
+auto-surfaces what's worth a glance, and gets out of your way when
+there's nothing to show.
+
+### What changed (mental model)
+
+The /feed surface now leads with a **Highlights** row — the 3–5 atoms
+most worth a glance, picked by a pure heuristic (no LLM, stays
+compatible with the v1.16 "no smart layer" reframe):
+
+```
++10 atom @-mentions YOU            (highest signal)
++5  per other-actor @-mention      (collab signal)
++3  cross-source concept tag       (e.g. #pcb in Cursor + Slack)
++2  if kind === "decision"         (decision is dense info)
++1  if last-24h                    (recency tilt)
+```
+
+Top 5 by score (score >= 1) render as compact cards above the
+timeline. The whole row hides itself when no atom clears the
+threshold — empty rooms stay quiet, no fake activity.
+
+### Added
+
+- `app/src/components/feed/HighlightsRow.tsx` — Apple-Photos-Memories
+  auto-surface row at the top of /feed. Pure heuristic ranker, hidden
+  when no atom qualifies. 7 vitest specs lock the score weights.
+
+### Changed
+
+- /feed empty state replaced the Wave 3 C2 5-sample synthetic preview
+  with a quiet "Waiting for first capture" pulse. Fixes the R6 honesty
+  regression where new users thought the 5 fake atoms were real.
+- /threads empty state same change — quiet "No threads yet" copy with
+  the precondition stated honestly.
+- /people solo-user state dropped the synthetic 5-teammate preview;
+  only the real "Invite a teammate" CTA remains.
+- Sidebar brand link `/today` → `/feed` to match the v1.16 default
+  landing route.
+
+### Removed
+
+- `<ViewTabs />` mount inside /feed, /threads, /people. The Sidebar
+  already hosts those nav items; doubling up on a tab strip below
+  was the chrome bloat dogfood flagged. Single source of truth for
+  "which view am I on?" is now the Sidebar's active orange highlight.
+  ViewTabs.tsx file is left on disk (orphan) for potential reuse.
+
+### Tests
+
+- 7 new specs in `tests/v1_17-highlights-row.test.tsx` covering the
+  score algorithm (threshold hide, @me +10, decision +2, cross-source
+  +3, top-5 cap, score-desc + ts-desc tiebreak, onPick callback).
+- Wave 2 B1/B2/B3 ViewTabs assertions flipped to `queryByTestId().toBeNull()`.
+- Wave 3 C2 empty-state integration specs flipped to assert the new
+  quiet copy + absence of the synthetic preview testids.
+- Routes smoke test for /people + /threads now lands on `*-route` testid.
+- Wave 14 sidebar contract refreshed for the v1.16.1 IA (4 nav: feed /
+  threads / people / memory).
+
+### Known issues (deferred to v1.17.x)
+
+- `tests/wave21-memory-tree.test.tsx` has 2 pre-existing failures (file
+  click + vendor color dot) related to the MemoryTree directory
+  expand-collapse default state. Not regressed by v1.17.
+
+### Next (v1.17.1 in flight)
+
+The dogfood that triggered v1.17 also surfaced a v2-readiness blocker:
+Tangerine captures atoms but doesn't bridge them to a NEW AI session.
+Two AI sessions on the same desk still don't know what each other
+built. v1.17.1 will add a `~/.tangerine-memory/TEAM_INDEX.md`
+auto-write so every Claude Code / Cursor session in a project that
+`@import`s the file automatically lands with team memory.
+
+---
+
 ## [1.16.0] — 2026-04-29 — Capture + visualize reframe (智能层 砍, 3 view modes, 30s onboarding)
 
 The reframe release. v1.15.x hit a wall: Claude Code doesn't implement

@@ -25,10 +25,8 @@ import {
   type TimelineEvent,
   type TangerineNote,
 } from "@/lib/views";
-import { ViewTabs } from "@/components/layout/ViewTabs";
 import { ThreadCard, type Thread } from "@/components/threads/ThreadCard";
 import { TangerineNotes } from "@/components/TangerineNotes";
-import { EmptyStateAnimation } from "@/components/onboarding/EmptyStateAnimation";
 
 /** Body text matches `@<word>` for at-mention detection. Mirrors the
  *  regex used in AtomCard.tsx + mention_extractor.rs. */
@@ -84,8 +82,9 @@ export default function ThreadsListRoute() {
       data-testid="threads-route"
       className="flex h-full flex-col bg-stone-50 dark:bg-stone-950"
     >
-      <ViewTabs />
-      {/* v1.16 Wave 5 — full-width on mobile, narrow centered column on desktop. */}
+      {/* v1.17 — ViewTabs killed. Sidebar already hosts Feed/Threads/People
+          nav; doubling up on a tab strip is the chrome bloat dogfood
+          flagged. Sidebar's active state is the single source of truth. */}
       <main className="flex-1 overflow-y-auto px-3 py-3 md:px-4">
         <div className="mx-auto w-full md:max-w-3xl">
           {notes.length > 0 && <TangerineNotes notes={notes} route="/threads" />}
@@ -152,12 +151,26 @@ export default function ThreadsListRoute() {
           )}
 
           {!loading && !error && events.length === 0 && (
-            // v1.16 Wave 3 C2 — animated 5-sample preview replaces the
-            // text-only "No captures yet" so the page feels alive in the
-            // 5s gap before the first real capture lands. Outer wrapper
-            // keeps the legacy testid for the Wave 2 B2 empty-state spec.
-            <div data-testid="threads-empty-no-captures" className="py-4">
-              <EmptyStateAnimation variant="threads" />
+            // v1.17 — quiet "no threads yet" state replaces the Wave 3 C2
+            // 5-sample preview. Threads exist when @mentions exist; the
+            // text states the precondition honestly so the user knows what
+            // to do (write @teammate in any AI tool conversation).
+            <div
+              data-testid="threads-empty-no-captures"
+              className="flex flex-col items-center justify-center py-20 text-center"
+            >
+              <span
+                aria-hidden
+                className="mb-4 inline-block h-2.5 w-2.5 animate-pulse rounded-full bg-[var(--ti-orange)]"
+              />
+              <div className="text-[14px] font-semibold text-stone-700 dark:text-stone-200">
+                No threads yet
+              </div>
+              <p className="mt-2 max-w-xs text-[12px] leading-relaxed text-stone-500 dark:text-stone-400">
+                Threads form automatically when an atom @mentions someone.
+                Tag a teammate in your next AI conversation to see one
+                here.
+              </p>
             </div>
           )}
 

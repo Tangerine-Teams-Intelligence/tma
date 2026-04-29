@@ -921,11 +921,13 @@ export function AppShell() {
             <TeammatesPill />
           </div>
           {/* === end wave 1.13-D === */}
-          {localOnly && (
-            <div className="ti-no-select flex h-7 items-center justify-center border-b border-[var(--ti-orange-500)]/30 bg-[var(--ti-orange-50)] px-4 text-[11px] font-medium text-[var(--ti-orange-700)] dark:border-[var(--ti-orange-500)]/30 dark:bg-stone-900 dark:text-[var(--ti-orange-500)]">
-              Local memory only — sign in to sync your memory dir across machines.
-            </div>
-          )}
+          {/* v1.17 chrome diet — the "Local memory only" horizontal
+              banner used to take a full row at the top of every view.
+              The same information is already carried by the StatusBar
+              `👥 Solo` chip (and the SyncSection in Settings explains
+              the implications). Banner removed; users can opt back into
+              cloud sync from Settings → Sync without needing the daily
+              nag. */}
           {/* === v2.5 trial gate === */}
           {/* Paywall hint — surfaces when trial expired and no paid sub. */}
           {billingStatusVal === "past_due" && (

@@ -11,7 +11,7 @@
  *   6. Click toggle → expanded state shows AtomCard list.
  *   7. Re-click toggle → collapses back.
  *   8. Multi-mention thread title joins all mentions.
- *   9. ViewTabs rendered + /threads underline active.
+ *   9. v1.17 — ViewTabs killed (Sidebar nav covers Feed/Threads/People).
  *  10. Search filter narrows by mention substring + emits filtered-empty
  *      state when nothing matches.
  *  11. Threads sorted by latest atom ts (most-recent first).
@@ -215,21 +215,17 @@ describe("Wave 2 B2 — /threads route", () => {
     ).toBe("with @bob, @hongyu");
   });
 
-  it("ViewTabs renders + /threads underline active", async () => {
+  it("v1.17 — ViewTabs is no longer rendered inside /threads", async () => {
     vi.spyOn(views, "readTimelineRecent").mockResolvedValue({
       events: SAMPLE_EVENTS,
       notes: [],
     });
     renderThreads();
     await waitFor(() =>
-      expect(screen.getByTestId("view-tabs")).toBeInTheDocument(),
+      expect(screen.getByTestId("threads-route")).toBeInTheDocument(),
     );
-    expect(screen.getByTestId("view-tabs-feed")).toBeInTheDocument();
-    expect(screen.getByTestId("view-tabs-threads")).toBeInTheDocument();
-    expect(screen.getByTestId("view-tabs-people")).toBeInTheDocument();
-    expect(
-      screen.getByTestId("view-tabs-threads-underline"),
-    ).toBeInTheDocument();
+    expect(screen.queryByTestId("view-tabs")).toBeNull();
+    expect(screen.queryByTestId("view-tabs-threads")).toBeNull();
   });
 
   it("search filter narrows threads by @mention substring", async () => {

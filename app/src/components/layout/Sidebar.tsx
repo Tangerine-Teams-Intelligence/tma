@@ -109,9 +109,9 @@ export function Sidebar() {
           Cmd+K trigger sits to the right of the wordmark. */}
       <div className="flex items-start justify-between gap-2 border-b border-stone-200 px-3 py-3 dark:border-stone-800">
         <NavLink
-          to="/today"
+          to="/feed"
           className="flex min-w-0 flex-1 items-center gap-2"
-          aria-label="Tangerine — Today"
+          aria-label="Tangerine — Feed"
           data-testid="sidebar-brand"
         >
           <div
