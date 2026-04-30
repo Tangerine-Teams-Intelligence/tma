@@ -33,7 +33,7 @@ import { BannerHost } from "@/components/suggestions/BannerHost";
 import { ModalHost } from "@/components/suggestions/ModalHost";
 import { UpdaterCheck } from "@/components/UpdaterCheck";
 import { useStore } from "@/lib/store";
-import { markUserOpened } from "@/lib/views";
+import { markUserOpened, readTimelineRecent } from "@/lib/views";
 import { userFacingFoldersEmpty } from "@/lib/memory";
 import {
   initMemoryWithSamples,
@@ -105,11 +105,9 @@ export function AppShell() {
   const samplesSeeded = useStore((s) => s.ui.samplesSeeded);
   const setSamplesSeeded = useStore((s) => s.ui.setSamplesSeeded);
   const memoryConfigMode = useStore((s) => s.ui.memoryConfig.mode);
-  // === v1.19.1 Round 2 F — first-launch auto-replay ===
-  // The v1.18 spec had this on `/canvas` first visit; v1.19 doesn't have a
-  // /canvas route any more, so the equivalent fires on first AppShell
-  // mount. Gated on `samplesSeeded` (means data pipeline confirms at
-  // least sample data exists on disk) AND `welcomedReplayDone === false`.
+  // === v1.19.2 Round 3 Fix 2 — first-launch auto-replay ===
+  // Gated on `welcomedReplayDone === false` plus a real corpus check
+  // (readTimelineRecent returns events.length > 0). See effect below.
   const welcomedReplayDone = useStore((s) => s.ui.welcomedReplayDone);
   const setWelcomedReplayDone = useStore((s) => s.ui.setWelcomedReplayDone);
 
@@ -121,26 +119,49 @@ export function AppShell() {
     if (!welcomed) setWelcomed(true);
   }, [welcomed, setWelcomed]);
 
-  // === v1.19.1 Round 2 F — first-launch auto-replay ===
-  // v1.18 ran this on the first /canvas visit. v1.19 routes /canvas → /,
-  // so the equivalent fires here. Trigger once when:
-  //   1. welcomedReplayDone === false (one-shot latch)
-  //   2. samplesSeeded === true       (data pipeline confirms there's
-  //                                    at least sample data on disk —
-  //                                    we can't synchronously check
-  //                                    the corpus length, so this is
-  //                                    the spec's fallback proxy)
-  // After triggering, immediately flip the latch. ReplayView's
-  // onComplete handler returns the user to time view naturally.
+  // === v1.19.2 Round 3 Fix 2 — auto-replay real corpus gate ===
+  // v1.19.1 R2 F gated on `samplesSeeded`, which is a "did we copy any
+  // sample files to disk" proxy — it can lie if the corpus is empty for
+  // some other reason (path resolution race, write permissions, etc.).
+  // R3 replaces the proxy with the real check: call readTimelineRecent
+  // ourselves, observe the actual event count, and only flip to replay
+  // when there is genuinely something to play back.
+  //
+  // Trigger once when:
+  //   1. welcomedReplayDone === false (one-shot latch, persists)
+  //   2. readTimelineRecent resolves with events.length > 0
+  //
+  // The autoReplayFiredRef latch makes the effect safe against
+  // re-renders that change the dep array.
   const autoReplayFiredRef = useRef(false);
   useEffect(() => {
     if (autoReplayFiredRef.current) return;
     if (welcomedReplayDone) return;
-    if (!samplesSeeded) return;
     autoReplayFiredRef.current = true;
-    setCanvasView("replay");
-    setWelcomedReplayDone(true);
-  }, [welcomedReplayDone, samplesSeeded, setCanvasView, setWelcomedReplayDone]);
+    let cancelled = false;
+    void (async () => {
+      try {
+        const r = await readTimelineRecent(500);
+        if (cancelled) return;
+        if (r.events.length === 0) {
+          // Empty corpus — don't fake a replay. Reset the latch so the
+          // effect can re-fire on a future render once the corpus
+          // actually has events.
+          autoReplayFiredRef.current = false;
+          return;
+        }
+        setCanvasView("replay");
+        setWelcomedReplayDone(true);
+      } catch {
+        // If the corpus call fails (Tauri backend not up, jsdom mock
+        // missing), don't fake a replay; let the user see the time view.
+        autoReplayFiredRef.current = false;
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [welcomedReplayDone, setCanvasView, setWelcomedReplayDone]);
 
   // === v1.19.0 footer hint counter bump ===
   // One bump per app boot. The hint becomes invisible at >= 5.
@@ -380,32 +401,50 @@ function FooterHint({
   activeView: CanvasView;
 }) {
   if (!visible) return null;
+  // v1.19.2 Round 3 Fix 4 — responsive collapse.
+  // Below 1280px (Tailwind `xl:` breakpoint) the long row wrapped on
+  // narrow laptops; we now show only `⌘K · v…` there. The full row
+  // (T/H/P/R + ⌘K + version) shows from 1280px up. Both rows render so
+  // the version chip is always visible regardless of viewport.
   return (
     <div
       data-testid="footer-hint"
       className="pointer-events-none fixed bottom-2 left-1/2 z-30 -translate-x-1/2 select-none whitespace-nowrap font-mono text-[10px] text-stone-400 dark:text-stone-600"
     >
-      {FOOTER_HINT_LABELS.map((l, i) => {
-        const active = l.key === activeView;
-        return (
-          <span key={l.key}>
-            <span
-              data-testid={`footer-hint-label-${l.key}`}
-              data-active={active ? "true" : "false"}
-              className={
-                active
-                  ? "font-semibold text-[var(--ti-orange-500)]"
-                  : undefined
-              }
-            >
-              {l.text}
+      {/* Wide row — visible at xl: and above (1280px+) */}
+      <span
+        data-testid="footer-hint-wide"
+        className="hidden xl:inline"
+      >
+        {FOOTER_HINT_LABELS.map((l, i) => {
+          const active = l.key === activeView;
+          return (
+            <span key={l.key}>
+              <span
+                data-testid={`footer-hint-label-${l.key}`}
+                data-active={active ? "true" : "false"}
+                className={
+                  active
+                    ? "font-semibold text-[var(--ti-orange-500)]"
+                    : undefined
+                }
+              >
+                {l.text}
+              </span>
+              {i < FOOTER_HINT_LABELS.length - 1 ? " · " : ""}
             </span>
-            {i < FOOTER_HINT_LABELS.length - 1 ? " · " : ""}
-          </span>
-        );
-      })}
-      {" · "}
-      <span data-testid="footer-hint-label-spotlight">⌘K all else</span>
+          );
+        })}
+        {" · "}
+        <span data-testid="footer-hint-label-spotlight">⌘K all else</span>
+      </span>
+      {/* Narrow row — visible below xl: (under 1280px) */}
+      <span
+        data-testid="footer-hint-narrow"
+        className="inline xl:hidden"
+      >
+        <span data-testid="footer-hint-label-spotlight-narrow">⌘K</span>
+      </span>
       <span className="ml-3 opacity-60">v{__APP_VERSION__}</span>
     </div>
   );

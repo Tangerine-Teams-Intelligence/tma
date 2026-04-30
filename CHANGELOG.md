@@ -8,6 +8,44 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
      Each version block focuses on user-visible features so this doc can
      also feed the in-app /whats-new-app route. -->
 
+## [1.19.2] — 2026-04-29 — Round 3 visual dogfood + final-mile honesty polish
+
+Round 3 closed the four honesty admissions Round 2 left on the floor and applied three visual fixes from a deep source-review pass (browser tooling was unavailable; falling back to source dogfood was honest about the limitation rather than fabricated). No new surfaces; no widened scope.
+
+### Honesty / polish fixes
+
+1. **AtomBottomSheet chrome cleanup** — removed the Avatar circle and the colored vendor dot from the header. The sheet now renders pure typography: `actor · source · clock · date` (sans medium for actor; mono 11px for the source / clock / date triplet; `·` separators in stone-300). The `×` close button stays text-only. Drops `Avatar` and `vendorFor` imports. Honest fallback `?` for missing actor / source preserved. (`app/src/components/feed/AtomBottomSheet.tsx:99-160`)
+
+2. **Auto-replay real corpus gate** — Round 2 F's `samplesSeeded` proxy replaced with the real check. AppShell now calls `readTimelineRecent(500)` directly inside the auto-replay effect; only when `events.length > 0` (and `welcomedReplayDone === false`) does it flip to replay. A `useRef` latch prevents re-fire on dep updates; an empty corpus / failed call resets the latch so the effect can re-run later. The store flag `samplesSeeded` is no longer load-bearing for replay, but stays for the seed-bootstrap effect. (`app/src/components/layout/AppShell.tsx:124-167`)
+
+3. **Time-view header dynamic timeframe** — Round 2 C's hardcoded `"past 7 days"` replaced with a computed span from the oldest event in the result set: `today · N atoms` / `past N days · M atoms` (1-13d) / `past K weeks · M atoms` (14-30d, K=ceil(days/7) capped at 4) / `past 30+ days · M atoms`. When `events.length === cap`, count gets `+` suffix (e.g. `500+ atoms`) so the user sees we hit the cap. Malformed `oldest.ts` falls back to `recent · N atoms` rather than fabricating a number. New helper `buildTimeViewHeaderLabel` exported for direct testing. (`app/src/routes/feed.tsx:148-155, 502-560`)
+
+4. **Footer hint responsive** — below 1280px (Tailwind `xl:`) the long T/H/P/R + ⌘K row collapses to `⌘K` only; above 1280px the full row renders. Implemented as two sibling spans (`hidden xl:inline` + `inline xl:hidden`); the version chip stays in both modes. Stops the hint from wrapping mid-word on narrow laptops without dragging in a full responsive sweep. (`app/src/components/layout/AppShell.tsx:381-433`)
+
+### Visual fixes (from source review — no browser tooling available)
+
+5. **V1: Time-row focus ring** — added `focus-visible:border-[var(--ti-orange-500)] focus-visible:bg-stone-100 focus-visible:outline-none` plus `transition-colors duration-100` to time-density rows. Tab navigation now matches the orange-accent design language instead of falling through to the browser default focus ring. (`app/src/routes/feed.tsx:188-195`)
+
+6. **V7: AtomBottomSheet drag handle hidden on desktop** — the swipe-down drag handle now has `md:hidden` so it only renders on mobile (<768px) where the swipe gesture actually exists. Desktop users (who tap a row → sheet) no longer see chrome that suggests an unsupported gesture. (`app/src/components/feed/AtomBottomSheet.tsx:106-114`)
+
+7. **V6: Spotlight modal fade-in entrance** — added `animate-fade-in` (200ms ease-out, 8px translateY → 0) to the spotlight panel so the modal feels like a real overlay rather than a div that snapped into place. The animation is already in the tailwind config. (`app/src/components/spotlight/Spotlight.tsx:218`)
+
+### Tests
+
+- `app/tests/v1_19-single-canvas.test.tsx` updated for the corpus-gate semantics. Round 2 F's three specs replaced with Round 3 Fix 2 variants: `fires when corpus has events` / `does NOT fire when welcomedReplayDone=true` / `does NOT fire when corpus is empty`. Round 2 C's three specs expanded to seven: `today` / `past N days` / `past N weeks` / `past 30+ days` / singular `1 atom` / hidden in empty state / `+` suffix at cap / `recent` fallback for malformed ts. Two new specs added under Round 3 Fix 4 for the responsive footer hint. Updated import to pull in `buildTimeViewHeaderLabel` from `routes/feed`.
+
+### Phase 1 verification — honest record
+
+- Browser dogfood was attempted and failed: Chrome MCP not connected, Edge granted at "read" tier blocks navigation, Claude Preview MCP denied. Fell back to deep source review per the Round 3 brief's explicit fallback. Visual issues identified by close-reading rendered components rather than viewing actual pixels.
+
+### Constraints honoured
+
+- v1.18.2 R6 fixes intact.
+- v1.19 Round 1 + Round 2 contracts preserved (single-canvas + Cmd+K-everything; no banners; no StatusBar; no FilterChips).
+- All previous v1_19 specs still pass; new specs added; no specs deleted (Round 2 F + C variants replaced).
+- Scope did not expand beyond the 4 honesty fixes + 3 visual fixes the brief allowed.
+- No installer; no tag; no release. Daizhe dogfoods Round 3 and decides if Round 4 is needed.
+
 ## [1.19.1] — 2026-04-30 — Round 2 friction sweep (empty-state honesty / view indicator / typography)
 
 Daizhe dogfooded v1.19.0 Round 1, identified 8 concrete friction points, and dispatched this Round 2 fix-list. No redesign — polish on Round 1's bones.

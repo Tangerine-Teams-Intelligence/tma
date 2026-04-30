@@ -12,20 +12,24 @@
  *   - Panel slides up from bottom, max-height 75vh, scrolls inside
  *   - Close affordances: tap outside, ESC, swipe down (touchstart →
  *     touchend Δy > 80px), the explicit X button at the top right
- *   - Renders the atom body in full (no truncation) plus the same vendor
- *     dot / actor / time row the AtomCard exposes inline
+ *   - Renders the atom body in full (no truncation) plus a pure-typography
+ *     header line: actor · source · clock · date
  *   - z-50 so it lives above the sticky FilterChips bar
  *
  * Keep simple: no reach for portals / framer-motion / react-aria. The
  * AppShell already z-stacks overlays at z-40 (backdrop) / z-50 (modal),
  * so this sheet plugs into the same stacking order without surprises.
+ *
+ * v1.19.2 Round 3 Fix 1 — chrome cleanup: removed the Avatar circle and
+ * the colored vendor dot. The header is now pure typography:
+ *   `daizhe · cursor · 14:32 · 2026-04-29`
+ * Sans for the actor (medium weight); mono for the source / clock / date
+ * triplet. Separator `·` rendered in stone-300. The close `×` (already
+ * text-only) stays in the top-right.
  */
 
 import { useEffect, useRef } from "react";
 import type { TimelineEvent } from "@/lib/views";
-import { formatRelativeTime } from "@/lib/views";
-import { vendorFor } from "./vendor";
-import { Avatar } from "./Avatar";
 
 export interface AtomBottomSheetProps {
   /** The atom to render. When null, the sheet is closed (returns null). */
@@ -55,9 +59,11 @@ export function AtomBottomSheet({ event, onClose }: AtomBottomSheetProps) {
 
   if (!event) return null;
 
-  const vendor = vendorFor(event.source);
-  const time = formatRelativeTime(event.ts);
   const body = event.body ?? event.kind ?? "(no body)";
+  const headerActor = event.actor && event.actor.length > 0 ? event.actor : "?";
+  const headerSource = event.source && event.source.length > 0 ? event.source : "?";
+  const headerClock = formatHeaderClock(event.ts);
+  const headerDate = formatHeaderDate(event.ts);
 
   function onTouchStart(e: React.TouchEvent) {
     touchStartY.current = e.touches[0]?.clientY ?? null;
@@ -93,34 +99,65 @@ export function AtomBottomSheet({ event, onClose }: AtomBottomSheetProps) {
         className="relative max-h-[75vh] w-full overflow-y-auto rounded-t-2xl border-t border-stone-200 bg-white px-4 pb-6 pt-3 shadow-2xl dark:border-stone-800 dark:bg-stone-900"
       >
         {/* Drag handle — visual affordance for swipe-down close. Pure
-            decoration; the close gesture is the real handler above. */}
+            decoration; the close gesture is the real handler above.
+            v1.19.2 Round 3 visual fix V7 — hide on desktop (≥md / 768px)
+            since there's no swipe gesture there; mobile keeps the
+            affordance. */}
         <div
           aria-hidden
-          className="mx-auto mb-3 h-1 w-10 rounded-full bg-stone-300 dark:bg-stone-700"
+          data-testid="atom-bottom-sheet-drag-handle"
+          className="mx-auto mb-3 h-1 w-10 rounded-full bg-stone-300 dark:bg-stone-700 md:hidden"
         />
         <header className="flex items-start gap-3">
-          <Avatar alias={event.actor || "?"} size={32} />
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2 text-[12px]">
-              <span className="font-semibold text-stone-900 dark:text-stone-100">
-                {event.actor || "?"}
+          <div
+            data-testid="atom-bottom-sheet-header"
+            className="min-w-0 flex-1"
+          >
+            <div className="flex flex-wrap items-baseline gap-2">
+              <span
+                data-testid="atom-bottom-sheet-actor"
+                className="font-sans text-[14px] font-medium text-stone-900 dark:text-stone-100"
+              >
+                {headerActor}
               </span>
               <span
                 aria-hidden
-                style={{ backgroundColor: vendor.color }}
-                className="inline-block h-2 w-2 shrink-0 rounded-full"
-              />
-              <span className="text-stone-500 dark:text-stone-400">
-                {vendor.display}
+                className="font-mono text-[11px] text-stone-300 dark:text-stone-700"
+              >
+                ·
               </span>
-              <span className="text-stone-400 dark:text-stone-500">·</span>
+              <span
+                data-testid="atom-bottom-sheet-source"
+                className="font-mono text-[11px] text-stone-500 dark:text-stone-400"
+              >
+                {headerSource}
+              </span>
+              <span
+                aria-hidden
+                className="font-mono text-[11px] text-stone-300 dark:text-stone-700"
+              >
+                ·
+              </span>
               <time
                 dateTime={event.ts}
                 title={event.ts}
+                data-testid="atom-bottom-sheet-clock"
                 className="font-mono text-[11px] text-stone-500 dark:text-stone-400"
               >
-                {time}
+                {headerClock}
               </time>
+              <span
+                aria-hidden
+                className="font-mono text-[11px] text-stone-300 dark:text-stone-700"
+              >
+                ·
+              </span>
+              <span
+                data-testid="atom-bottom-sheet-date"
+                className="font-mono text-[11px] text-stone-500 dark:text-stone-400"
+              >
+                {headerDate}
+              </span>
             </div>
           </div>
           <button
@@ -154,6 +191,38 @@ export function AtomBottomSheet({ event, onClose }: AtomBottomSheetProps) {
       </section>
     </div>
   );
+}
+
+/**
+ * v1.19.2 Round 3 Fix 1 — header clock formatter.
+ *
+ * Returns `HH:MM` from an ISO timestamp; returns `??:??` when the input
+ * is null / unparseable. Mirrors the pattern used by feed.tsx so the
+ * bottom-sheet header reads as "14:32" without seconds / TZ noise.
+ */
+function formatHeaderClock(iso: string | null | undefined): string {
+  if (!iso) return "??:??";
+  const m = iso.match(/T(\d{2}):(\d{2})/);
+  if (m) return `${m[1]}:${m[2]}`;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "??:??";
+  return d.toISOString().slice(11, 16);
+}
+
+/**
+ * v1.19.2 Round 3 Fix 1 — header date formatter.
+ *
+ * Returns `YYYY-MM-DD` from an ISO timestamp. Falls back to `????-??-??`
+ * when the input is null / unparseable, matching the clock helper's
+ * honesty pattern.
+ */
+function formatHeaderDate(iso: string | null | undefined): string {
+  if (!iso) return "????-??-??";
+  const m = iso.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (m) return m[1];
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "????-??-??";
+  return d.toISOString().slice(0, 10);
 }
 
 /**

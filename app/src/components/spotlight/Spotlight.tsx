@@ -215,7 +215,10 @@ export function Spotlight() {
           />
           <section
             data-testid="spotlight-panel"
-            className="relative z-10 w-full max-w-[640px] overflow-hidden rounded-xl border border-stone-200 bg-white shadow-2xl dark:border-stone-800 dark:bg-stone-900"
+            // v1.19.2 Round 3 visual fix V6 — `animate-fade-in` (200ms,
+            // upward translateY 8px → 0) so the modal feels like a real
+            // overlay rather than a div that snapped into place.
+            className="relative z-10 w-full max-w-[640px] animate-fade-in overflow-hidden rounded-xl border border-stone-200 bg-white shadow-2xl dark:border-stone-800 dark:bg-stone-900"
           >
             <header className="flex items-center gap-3 border-b border-stone-200 px-4 py-3 dark:border-stone-800">
               <Search

@@ -148,7 +148,10 @@ function TimeDensityList({
   onOpenAtom: (e: TimelineEvent) => void;
 }) {
   const grouped = useMemo(() => groupByDay(events), [events]);
-  const atomCountLabel = events.length === 1 ? "1 atom" : `${events.length} atoms`;
+  const headerLabel = useMemo(
+    () => buildTimeViewHeaderLabel(events, 500),
+    [events],
+  );
 
   return (
     <div
@@ -161,7 +164,7 @@ function TimeDensityList({
         data-testid="time-view-header"
         className="mb-6 font-mono text-[11px] text-stone-500"
       >
-        past 7 days · {atomCountLabel}
+        {headerLabel}
       </div>
       {grouped.map(({ dateLabel, dayEvents, isToday }, idx) => (
         <section
@@ -190,7 +193,7 @@ function TimeDensityList({
                   data-testid="time-row"
                   data-event-id={ev.id}
                   onClick={() => onOpenAtom(ev)}
-                  className="grid w-full cursor-pointer grid-cols-[7ch_8ch_8ch_1fr] items-baseline gap-3 rounded-sm border-l border-transparent px-2 py-1 text-left hover:border-[var(--ti-orange-500)] hover:bg-stone-100 dark:hover:bg-stone-900"
+                  className="grid w-full cursor-pointer grid-cols-[7ch_8ch_8ch_1fr] items-baseline gap-3 rounded-sm border-l border-transparent px-2 py-1 text-left transition-colors duration-100 hover:border-[var(--ti-orange-500)] hover:bg-stone-100 focus-visible:border-[var(--ti-orange-500)] focus-visible:bg-stone-100 focus-visible:outline-none dark:hover:bg-stone-900 dark:focus-visible:bg-stone-900"
                 >
                   <span className="font-mono text-[11px] text-stone-500 dark:text-stone-500">
                     {formatClock(ev.ts)}
@@ -486,6 +489,69 @@ function firstNonEmptyLine(ev: TimelineEvent): string {
     if (t.length > 0) return t;
   }
   return "(no body)";
+}
+
+/**
+ * v1.19.2 Round 3 Fix 3 — dynamic time-view header label.
+ *
+ * v1.19.1 R2 hardcoded "past 7 days · N atoms". The label lies in two
+ * directions: a corpus that only goes back 1 day still says "past 7
+ * days" (overstates depth); a corpus crammed into the last 12h says the
+ * same (understates density). R3 computes the actual span from the
+ * oldest event in the result set.
+ *
+ *   • events.length === 0   → ""             (caller hides via empty state)
+ *   • days === 0            → "today · N atoms"
+ *   • 1 ≤ days ≤ 13         → "past N days · M atoms"
+ *   • 14 ≤ days ≤ 30        → "past K weeks · M atoms"   (K = ceil(days/7), capped at 4)
+ *   • days > 30             → "past 30+ days · M atoms"
+ *
+ * The atom count uses singular `1 atom` / plural `N atoms`. If the
+ * caller hit the `cap` (events.length === cap), the count is suffixed
+ * with `+` so the user sees "we got more than this and stopped".
+ *
+ * Honesty: if the oldest event's `ts` is malformed / unparseable, fall
+ * back to "recent · N atoms" rather than fabricate a number.
+ *
+ * Exported so vitest can hit it without rendering the component.
+ */
+export function buildTimeViewHeaderLabel(
+  events: TimelineEvent[],
+  cap: number,
+  now: number = Date.now(),
+): string {
+  if (events.length === 0) return "";
+  const countNum = events.length;
+  const countSuffix = countNum >= cap ? "+" : "";
+  const atomCountLabel =
+    countNum === 1 ? "1 atom" : `${countNum}${countSuffix} atoms`;
+  // Find the oldest event by parsing every ts (events arrive newest
+  // first per readTimelineRecent's contract, but we don't trust it
+  // structurally — pick the actual min).
+  let oldestMs: number | null = null;
+  for (const ev of events) {
+    if (!ev.ts) continue;
+    const t = Date.parse(ev.ts);
+    if (Number.isNaN(t)) continue;
+    if (oldestMs === null || t < oldestMs) oldestMs = t;
+  }
+  if (oldestMs === null) {
+    return `recent · ${atomCountLabel}`;
+  }
+  const days = Math.floor((now - oldestMs) / (24 * 60 * 60 * 1000));
+  if (days <= 0) return `today · ${atomCountLabel}`;
+  if (days <= 13) {
+    return days === 1
+      ? `past 1 day · ${atomCountLabel}`
+      : `past ${days} days · ${atomCountLabel}`;
+  }
+  if (days <= 30) {
+    const weeks = Math.min(4, Math.ceil(days / 7));
+    return weeks === 1
+      ? `past 1 week · ${atomCountLabel}`
+      : `past ${weeks} weeks · ${atomCountLabel}`;
+  }
+  return `past 30+ days · ${atomCountLabel}`;
 }
 
 function formatClock(iso: string | null | undefined): string {

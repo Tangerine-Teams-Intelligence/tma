@@ -41,7 +41,7 @@ import {
 } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
-import FeedRoute from "../src/routes/feed";
+import FeedRoute, { buildTimeViewHeaderLabel } from "../src/routes/feed";
 import { Spotlight, buildResults } from "../src/components/spotlight/Spotlight";
 import { AppShell } from "../src/components/layout/AppShell";
 import { useStore } from "../src/lib/store";
@@ -603,7 +603,54 @@ describe("v1.19.1 Round 2 B — Footer hint active view indicator", () => {
   });
 });
 
-describe("v1.19.1 Round 2 C — Time view atom-count header", () => {
+describe("v1.19.2 Round 3 Fix 4 — Footer hint responsive", () => {
+  function renderShell() {
+    return render(
+      <MemoryRouter initialEntries={["/"]}>
+        <AppShell />
+      </MemoryRouter>,
+    );
+  }
+
+  it("renders both wide (xl:inline) and narrow (xl:hidden) variants", async () => {
+    vi.spyOn(views, "readTimelineRecent").mockResolvedValue({
+      events: [],
+      notes: [],
+    });
+    useStore.setState((s) => ({ ui: { ...s.ui, shortcutHintShown: 0 } }));
+    renderShell();
+    await waitFor(() =>
+      expect(screen.getByTestId("footer-hint")).toBeInTheDocument(),
+    );
+    const wide = screen.getByTestId("footer-hint-wide");
+    const narrow = screen.getByTestId("footer-hint-narrow");
+    expect(wide).toBeInTheDocument();
+    expect(narrow).toBeInTheDocument();
+    // Wide row carries the T/H/P/R + ⌘K all-else copy; only renders at xl+.
+    expect(wide.className).toContain("hidden");
+    expect(wide.className).toContain("xl:inline");
+    // Narrow row collapses to ⌘K only at < xl viewports.
+    expect(narrow.className).toContain("inline");
+    expect(narrow.className).toContain("xl:hidden");
+  });
+
+  it("version chip remains visible in both layouts", async () => {
+    vi.spyOn(views, "readTimelineRecent").mockResolvedValue({
+      events: [],
+      notes: [],
+    });
+    useStore.setState((s) => ({ ui: { ...s.ui, shortcutHintShown: 0 } }));
+    renderShell();
+    await waitFor(() =>
+      expect(screen.getByTestId("footer-hint")).toBeInTheDocument(),
+    );
+    const footer = screen.getByTestId("footer-hint");
+    // The version chip is outside both responsive variants and always renders.
+    expect(footer.textContent).toMatch(/v\d/);
+  });
+});
+
+describe("v1.19.2 Round 3 Fix 3 — Time-view header dynamic timeframe", () => {
   function renderRoute() {
     return render(
       <MemoryRouter initialEntries={["/"]}>
@@ -612,9 +659,15 @@ describe("v1.19.1 Round 2 C — Time view atom-count header", () => {
     );
   }
 
-  it("renders 'past 7 days · N atoms' for many atoms", async () => {
+  it("renders 'today · N atoms' when oldest event is today", async () => {
+    const todayIso = new Date().toISOString();
+    const todayEvents: TimelineEvent[] = [
+      makeEvent({ id: "t1", ts: todayIso }),
+      makeEvent({ id: "t2", ts: todayIso }),
+      makeEvent({ id: "t3", ts: todayIso }),
+    ];
     vi.spyOn(views, "readTimelineRecent").mockResolvedValue({
-      events: SAMPLE_EVENTS,
+      events: todayEvents,
       notes: [],
     });
     renderRoute();
@@ -622,8 +675,67 @@ describe("v1.19.1 Round 2 C — Time view atom-count header", () => {
       expect(screen.getByTestId("time-density-list")).toBeInTheDocument();
     });
     const header = screen.getByTestId("time-view-header");
-    expect(header.textContent).toContain("past 7 days");
+    expect(header.textContent).toContain("today");
     expect(header.textContent).toContain("3 atoms");
+  });
+
+  it("renders 'past N days' when oldest event is mid-range (1-13d)", async () => {
+    const now = Date.now();
+    const fiveDaysAgo = new Date(now - 5 * 24 * 60 * 60 * 1000).toISOString();
+    const todayIso = new Date(now).toISOString();
+    const events: TimelineEvent[] = [
+      makeEvent({ id: "old", ts: fiveDaysAgo }),
+      makeEvent({ id: "now", ts: todayIso }),
+    ];
+    vi.spyOn(views, "readTimelineRecent").mockResolvedValue({
+      events,
+      notes: [],
+    });
+    renderRoute();
+    await waitFor(() => {
+      expect(screen.getByTestId("time-density-list")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("time-view-header").textContent).toContain(
+      "past 5 days",
+    );
+  });
+
+  it("renders 'past N weeks' when oldest event is 14-30d back", async () => {
+    const now = Date.now();
+    const twentyDaysAgo = new Date(
+      now - 20 * 24 * 60 * 60 * 1000,
+    ).toISOString();
+    const events: TimelineEvent[] = [
+      makeEvent({ id: "old", ts: twentyDaysAgo }),
+    ];
+    vi.spyOn(views, "readTimelineRecent").mockResolvedValue({
+      events,
+      notes: [],
+    });
+    renderRoute();
+    await waitFor(() => {
+      expect(screen.getByTestId("time-density-list")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("time-view-header").textContent).toContain(
+      "weeks",
+    );
+  });
+
+  it("renders 'past 30+ days' when oldest event is older than 30d", async () => {
+    const now = Date.now();
+    const longAgo = new Date(now - 60 * 24 * 60 * 60 * 1000).toISOString();
+    const events: TimelineEvent[] = [makeEvent({ id: "old", ts: longAgo })];
+    vi.spyOn(views, "readTimelineRecent").mockResolvedValue({
+      events,
+      notes: [],
+    });
+    renderRoute();
+    await waitFor(() => {
+      expect(screen.getByTestId("time-density-list")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("time-view-header").textContent).toContain(
+      "past 30+ days",
+    );
   });
 
   it("renders singular '1 atom' when exactly one event", async () => {
@@ -654,6 +766,24 @@ describe("v1.19.1 Round 2 C — Time view atom-count header", () => {
       expect(screen.getByTestId("empty-state")).toBeInTheDocument();
     });
     expect(screen.queryByTestId("time-view-header")).not.toBeInTheDocument();
+  });
+
+  it("appends '+' to count when events.length === cap (500)", () => {
+    const todayIso = new Date().toISOString();
+    const events: TimelineEvent[] = Array.from({ length: 500 }, (_, i) =>
+      makeEvent({ id: `cap-${i}`, ts: todayIso }),
+    );
+    const label = buildTimeViewHeaderLabel(events, 500);
+    expect(label).toContain("500+ atoms");
+  });
+
+  it("falls back to 'recent · N atoms' when oldest ts is malformed", () => {
+    const events: TimelineEvent[] = [
+      makeEvent({ id: "bad", ts: "not-a-date" }),
+    ];
+    const label = buildTimeViewHeaderLabel(events, 500);
+    expect(label).toContain("recent");
+    expect(label).toContain("1 atom");
   });
 });
 
@@ -701,7 +831,7 @@ describe("v1.19.1 Round 2 E — Spotlight closes on selection", () => {
   });
 });
 
-describe("v1.19.1 Round 2 F — First-launch auto-replay", () => {
+describe("v1.19.2 Round 3 Fix 2 — First-launch auto-replay (real corpus gate)", () => {
   function renderShell() {
     return render(
       <MemoryRouter initialEntries={["/"]}>
@@ -710,16 +840,15 @@ describe("v1.19.1 Round 2 F — First-launch auto-replay", () => {
     );
   }
 
-  it("fires once when samplesSeeded=true && welcomedReplayDone=false", async () => {
+  it("fires once when welcomedReplayDone=false AND corpus has events", async () => {
     vi.spyOn(views, "readTimelineRecent").mockResolvedValue({
-      events: [],
+      events: SAMPLE_EVENTS,
       notes: [],
     });
     useStore.setState((s) => ({
       ui: {
         ...s.ui,
         canvasView: "time",
-        samplesSeeded: true,
         welcomedReplayDone: false,
       },
     }));
@@ -733,16 +862,15 @@ describe("v1.19.1 Round 2 F — First-launch auto-replay", () => {
     expect(useStore.getState().ui.welcomedReplayDone).toBe(true);
   });
 
-  it("does NOT fire when welcomedReplayDone=true", async () => {
+  it("does NOT fire when welcomedReplayDone=true (one-shot latch)", async () => {
     vi.spyOn(views, "readTimelineRecent").mockResolvedValue({
-      events: [],
+      events: SAMPLE_EVENTS,
       notes: [],
     });
     useStore.setState((s) => ({
       ui: {
         ...s.ui,
         canvasView: "time",
-        samplesSeeded: true,
         welcomedReplayDone: true,
       },
     }));
@@ -754,7 +882,7 @@ describe("v1.19.1 Round 2 F — First-launch auto-replay", () => {
     expect(useStore.getState().ui.canvasView).toBe("time");
   });
 
-  it("does NOT fire when samplesSeeded=false", async () => {
+  it("does NOT fire when corpus is empty (real-corpus gate)", async () => {
     vi.spyOn(views, "readTimelineRecent").mockResolvedValue({
       events: [],
       notes: [],
@@ -763,7 +891,6 @@ describe("v1.19.1 Round 2 F — First-launch auto-replay", () => {
       ui: {
         ...s.ui,
         canvasView: "time",
-        samplesSeeded: false,
         welcomedReplayDone: false,
       },
     }));
@@ -771,7 +898,13 @@ describe("v1.19.1 Round 2 F — First-launch auto-replay", () => {
     await waitFor(() =>
       expect(screen.getByTestId("app-shell-root")).toBeInTheDocument(),
     );
-    expect(useStore.getState().ui.canvasView).toBe("time");
+    // Even though welcomedReplayDone=false, empty corpus must not flip
+    // to replay.
+    await waitFor(() => {
+      // Settle async corpus call.
+      expect(useStore.getState().ui.canvasView).toBe("time");
+    });
+    expect(useStore.getState().ui.welcomedReplayDone).toBe(false);
   });
 });
 
