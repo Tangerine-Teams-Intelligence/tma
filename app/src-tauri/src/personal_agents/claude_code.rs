@@ -89,36 +89,48 @@ pub fn capture(dest_root: &Path) -> PersonalAgentCaptureResult {
 }
 
 /// Walk every project directory under `~/.claude/projects/` and collect
-/// `*.jsonl` files. Two-level depth: project dirs at level 1, session
-/// files at level 2 (Claude Code may also drop a session jsonl directly
-/// at level 1 — we collect both).
+/// every `*.jsonl` file at any depth.
+///
+/// === v1.18.1 R6 fix === Earlier versions only walked 2 levels (project
+/// dirs at level 1, session files at level 2). That missed the
+/// `<project>/<session-uuid>/subagents/agent-*.jsonl` layout where each
+/// subagent transcript lives 3 levels deep — on Daizhe's machine that
+/// was 1959 of 2022 jsonls (≈ 97%), and the Settings panel happily
+/// reported "captured 63 / Confirmed" while the bulk of the corpus was
+/// invisible. We now recurse with no depth cap. The `MAX_DEPTH` guard
+/// is conservatively wide (16) — enough for any plausible Claude Code
+/// nesting, narrow enough that a symlink loop can't burn forever.
 fn list_session_files(root: &Path) -> Vec<PathBuf> {
-    let entries = match fs::read_dir(root) {
-        Ok(e) => e,
-        Err(_) => return Vec::new(),
-    };
+    const MAX_DEPTH: usize = 16;
     let mut out: Vec<PathBuf> = Vec::new();
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.is_file() && has_jsonl_ext(&path) {
-            out.push(path);
-            continue;
-        }
-        if path.is_dir() {
-            // One level deep — Claude Code writes session JSONLs as direct
-            // children of each project dir.
-            if let Ok(children) = fs::read_dir(&path) {
-                for child in children.flatten() {
-                    let cp = child.path();
-                    if cp.is_file() && has_jsonl_ext(&cp) {
-                        out.push(cp);
-                    }
-                }
-            }
-        }
-    }
+    walk_jsonl(root, 0, MAX_DEPTH, &mut out);
     out.sort();
     out
+}
+
+fn walk_jsonl(dir: &Path, depth: usize, max_depth: usize, out: &mut Vec<PathBuf>) {
+    if depth > max_depth {
+        return;
+    }
+    let entries = match fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let file_type = match entry.file_type() {
+            Ok(t) => t,
+            Err(_) => continue,
+        };
+        if file_type.is_file() && has_jsonl_ext(&path) {
+            out.push(path);
+        } else if file_type.is_dir() {
+            walk_jsonl(&path, depth + 1, max_depth, out);
+        }
+        // file_type.is_symlink() is intentionally ignored — Claude Code
+        // never writes symlinks inside ~/.claude/projects/, and following
+        // them risks loops the depth cap can't reliably break.
+    }
 }
 
 fn has_jsonl_ext(p: &Path) -> bool {
@@ -480,6 +492,43 @@ mod tests {
     fn rejects_session_with_no_messages() {
         let raw = "{\"type\":\"queue-operation\",\"sessionId\":\"x\"}\n";
         assert!(parse_jsonl(raw, "fallback").is_err());
+    }
+
+    #[test]
+    fn list_session_files_walks_arbitrary_depth() {
+        // === v1.18.1 R6 fix === Earlier walker stopped at level 2.
+        // Claude Code subagent transcripts live at
+        // <project>/<session-uuid>/subagents/agent-*.jsonl — 3 levels
+        // deep — and were the missing 97% on Daizhe's machine. Lock
+        // the recursive contract so a future "tighten the walker"
+        // change can't silently bring the bug back.
+        let tmp = std::env::temp_dir().join(format!(
+            "tii_pa_cc_walk_{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        // Build:
+        //   <root>/top.jsonl                                 (depth 1, kept)
+        //   <root>/proj/middle.jsonl                          (depth 2, kept)
+        //   <root>/proj/<session-uuid>/subagents/deep.jsonl   (depth 4, kept)
+        //   <root>/proj/notes.txt                             (wrong ext, skipped)
+        let proj = tmp.join("proj");
+        let sub = proj.join("session-uuid").join("subagents");
+        fs::create_dir_all(&sub).unwrap();
+        fs::write(tmp.join("top.jsonl"), b"x").unwrap();
+        fs::write(proj.join("middle.jsonl"), b"x").unwrap();
+        fs::write(proj.join("notes.txt"), b"x").unwrap();
+        fs::write(sub.join("deep.jsonl"), b"x").unwrap();
+        let found = list_session_files(&tmp);
+        let names: Vec<String> = found
+            .iter()
+            .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        assert!(names.contains(&"top.jsonl".to_string()), "missing top.jsonl: {names:?}");
+        assert!(names.contains(&"middle.jsonl".to_string()), "missing middle.jsonl: {names:?}");
+        assert!(names.contains(&"deep.jsonl".to_string()), "missing deep.jsonl (this is the v1.18.1 R6 regression test): {names:?}");
+        assert!(!names.contains(&"notes.txt".to_string()), "non-jsonl leaked through: {names:?}");
+        assert_eq!(found.len(), 3, "expected exactly 3 jsonl files, got {names:?}");
+        let _ = fs::remove_dir_all(&tmp);
     }
 
     #[test]

@@ -8,6 +8,49 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
      Each version block focuses on user-visible features so this doc can
      also feed the in-app /whats-new-app route. -->
 
+## [1.18.1] — 2026-04-29 — R6 honesty fix: Claude Code adapter walks arbitrary depth
+
+Daizhe spotted the Settings → Connect panel showing `Claude Code · Confirmed
+· captured 63 · Last sync wrote 0, skipped 63` and asked "这个是真实的吗".
+**No.** Audit on his machine found:
+
+- 2022 actual `*.jsonl` files in `~/.claude/projects/`
+- 63 at level-1 depth (`<project>/<session>.jsonl`)
+- **1959 at level-2+ depth** (`<project>/<session-uuid>/subagents/agent-*.jsonl`)
+
+The walker only recursed 2 levels — invisible to it was 97% of the corpus,
+including every subagent transcript Daizhe's loop has been generating
+this week. The Settings panel happily reported "Confirmed" while most
+Claude Code activity was never read, never atom-ified, never indexed.
+
+### Fix
+
+`commands::personal_agents::claude_code::list_session_files` rewritten
+to recurse to arbitrary depth (capped at 16 to defeat symlink loops).
+Symlinks intentionally skipped — Claude Code never writes them and
+following them risks loops the depth cap can't break reliably.
+
+### Test
+
+`list_session_files_walks_arbitrary_depth` added to
+`personal_agents::claude_code::tests`. Builds:
+```
+<root>/top.jsonl                                 (depth 1)
+<root>/proj/middle.jsonl                          (depth 2)
+<root>/proj/<session>/subagents/deep.jsonl        (depth 4)
+<root>/proj/notes.txt                             (wrong ext)
+```
+Asserts the walker finds exactly the 3 jsonls and skips the .txt.
+This is the regression test that pins the v1.18.1 contract: a future
+"tighten the walker" change can't silently bring the bug back.
+
+### Constraints honoured
+
+- R6/R7/R8/R9: this fix exists *because* of R6 — UI was reporting
+  "Confirmed" while silently skipping the bulk of the source. Now the
+  count is real.
+- No new daemon, no new MCP server, no scope drift — pure walker fix.
+
 ## [1.18.0] — 2026-04-29 — 2D canvas surface: heat-map, atom layer, Replay timelapse
 
 CEO's spec, verbatim: "一个 surface, 两个 zoom level + 一个 timelapse." v1.17.x
