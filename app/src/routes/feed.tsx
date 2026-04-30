@@ -43,6 +43,8 @@ const TODAY_CUTOFF_MS = 24 * 60 * 60 * 1000;
 
 export default function FeedRoute() {
   const currentUser = useStore((s) => s.ui.currentUser);
+  const memoryRoot = useStore((s) => s.ui.memoryRoot);
+  const personalAgentsEnabled = useStore((s) => s.ui.personalAgentsEnabled);
   const [events, setEvents] = useState<TimelineEvent[]>([]);
   const [notes, setNotes] = useState<TangerineNote[]>([]);
   const [loading, setLoading] = useState(true);
@@ -147,7 +149,11 @@ export default function FeedRoute() {
             </div>
           )}
           {!loading && !error && filtered.length === 0 && (
-            <FeedEmptyState totalEvents={events.length} />
+            <FeedEmptyState
+              totalEvents={events.length}
+              memoryRoot={memoryRoot}
+              personalAgentsEnabled={personalAgentsEnabled}
+            />
           )}
           {!loading && !error && buckets.length > 0 && (
             <>
@@ -186,34 +192,84 @@ export default function FeedRoute() {
   );
 }
 
-function FeedEmptyState({ totalEvents }: { totalEvents: number }) {
+interface FeedEmptyStateProps {
+  totalEvents: number;
+  memoryRoot?: string;
+  personalAgentsEnabled?: Record<string, boolean>;
+}
+
+function FeedEmptyState({
+  totalEvents,
+  memoryRoot,
+  personalAgentsEnabled,
+}: FeedEmptyStateProps) {
   // Two distinct empty cases — pure empty memory dir vs filtered out
   // every atom. R6/R7/R8 honesty: never collapse them to one message.
   if (totalEvents === 0) {
-    // v1.17 — quiet "waiting for first capture" state. The Wave 3 C2
-    // 5-sample-atom preview was retired after dogfood: it made an empty
-    // feed feel like 5 fake messages, not like Tangerine listening.
-    // Apple Photos analogue: a clean dim canvas, not synthetic stand-ins.
+    // v1.17.5 — empty state was pure-pulse + 2-line copy. Daizhe ("ux太差了")
+    // flagged it as dead. New shape: diagnostic 3-row card that names
+    // (1) what Tangerine is listening to, (2) where it's reading from,
+    // (3) what triggers the first atom. R6 honesty preserved — no fake
+    // atoms, no synthetic counters. Just an explicit "here's the
+    // contract, this is what you'll see when it fires" so the user can
+    // tell on sight whether the daemon is wired right.
+    const sources = activeSourceLabels(personalAgentsEnabled ?? {});
+    const root = displayMemoryRoot(memoryRoot);
     return (
       <div
         data-testid="feed-empty-no-captures"
-        className="flex flex-col items-center justify-center py-20 text-center"
+        className="mx-auto flex max-w-md flex-col items-stretch gap-4 py-16 text-left"
       >
-        <span
-          aria-hidden
-          className="mb-4 inline-block h-2.5 w-2.5 animate-pulse rounded-full bg-[var(--ti-orange)]"
-        />
-        <div className="text-[14px] font-semibold text-stone-700 dark:text-stone-200">
-          Waiting for first capture
+        <div className="flex items-center gap-2">
+          <span
+            aria-hidden
+            className="inline-block h-2 w-2 animate-pulse rounded-full bg-[var(--ti-orange-500)]"
+          />
+          <span className="font-mono text-[10px] uppercase tracking-wider text-stone-500 dark:text-stone-400">
+            listening · checking every 30s
+          </span>
         </div>
-        <p className="mt-2 max-w-xs text-[12px] leading-relaxed text-stone-500 dark:text-stone-400">
-          Tangerine is listening to your local AI workflow files. Your next
-          Claude Code or Cursor session will appear here within a few
-          seconds.
-        </p>
-        <p className="mt-3 font-mono text-[10px] text-stone-400 dark:text-stone-500">
-          checking every 30s
-        </p>
+        <h2 className="text-[18px] font-semibold leading-tight text-stone-800 dark:text-stone-100">
+          No captures yet.
+          <br />
+          Open Cursor or Claude Code to write the first one.
+        </h2>
+        <dl className="mt-1 space-y-2 rounded-md border border-stone-200 bg-white p-3 text-[12px] dark:border-stone-800 dark:bg-stone-900">
+          <div className="flex items-baseline gap-2">
+            <dt className="w-24 shrink-0 font-mono text-[10px] uppercase tracking-wider text-stone-400">
+              watching
+            </dt>
+            <dd
+              data-testid="feed-empty-sources"
+              className="min-w-0 flex-1 break-words text-stone-700 dark:text-stone-200"
+            >
+              {sources.length > 0 ? sources.join(" · ") : (
+                <span className="text-amber-600 dark:text-amber-400">
+                  no source connected — open Settings
+                </span>
+              )}
+            </dd>
+          </div>
+          <div className="flex items-baseline gap-2">
+            <dt className="w-24 shrink-0 font-mono text-[10px] uppercase tracking-wider text-stone-400">
+              memory dir
+            </dt>
+            <dd
+              data-testid="feed-empty-memory-root"
+              className="min-w-0 flex-1 break-all font-mono text-[11px] text-stone-600 dark:text-stone-300"
+            >
+              {root}
+            </dd>
+          </div>
+          <div className="flex items-baseline gap-2">
+            <dt className="w-24 shrink-0 font-mono text-[10px] uppercase tracking-wider text-stone-400">
+              first atom
+            </dt>
+            <dd className="min-w-0 flex-1 text-stone-600 dark:text-stone-300">
+              your next AI message lands here within a few seconds
+            </dd>
+          </div>
+        </dl>
       </div>
     );
   }
@@ -230,4 +286,36 @@ function FeedEmptyState({ totalEvents }: { totalEvents: number }) {
       </p>
     </div>
   );
+}
+
+const SOURCE_DISPLAY: Record<string, string> = {
+  claude_code: "Claude Code",
+  cursor: "Cursor",
+  codex: "Codex",
+  windsurf: "Windsurf",
+  devin: "Devin",
+  replit: "Replit",
+  apple_intelligence: "Apple Intelligence",
+  ms_copilot: "Copilot",
+};
+
+function activeSourceLabels(map: Record<string, boolean>): string[] {
+  return Object.entries(map)
+    .filter(([, on]) => on)
+    .map(([k]) => SOURCE_DISPLAY[k] ?? k);
+}
+
+function displayMemoryRoot(root: string | undefined): string {
+  if (!root) return "~/.tangerine-memory/";
+  // Trim long absolute paths to a leading "~" form when we recognize the
+  // home anchor. Keeps the empty-state card from line-wrapping on
+  // C:/Users/<long>/Desktop/... paths.
+  const norm = root.replace(/\\/g, "/");
+  const m = norm.match(/^[A-Za-z]:\/Users\/[^/]+\/(.+)$/);
+  if (m) return `~/${m[1]}`;
+  if (norm.startsWith("/Users/")) {
+    const parts = norm.split("/");
+    if (parts.length >= 4) return `~/${parts.slice(3).join("/")}`;
+  }
+  return norm;
 }

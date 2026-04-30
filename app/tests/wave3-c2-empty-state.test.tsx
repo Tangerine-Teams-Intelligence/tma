@@ -89,7 +89,7 @@ describe("Wave 3 C2 — EmptyStateAnimation component", () => {
     ).toContain("Settings");
   });
 
-  it("v1.17 — /feed empty events renders the quiet 'Waiting' state, not the animation", async () => {
+  it("v1.17 — /feed empty events renders the diagnostic empty state, not the animation", async () => {
     vi.spyOn(views, "readTimelineRecent").mockResolvedValue({
       events: [],
       notes: [],
@@ -105,10 +105,14 @@ describe("Wave 3 C2 — EmptyStateAnimation component", () => {
     // v1.17 retired the synthetic 5-atom preview — must not render.
     expect(screen.queryByTestId("empty-state-animation-feed")).toBeNull();
     expect(screen.queryByTestId("empty-state-animation-list-feed")).toBeNull();
-    // The replacement copy is the only signal the feed is alive.
-    expect(screen.getByTestId("feed-empty-no-captures").textContent).toContain(
-      "Waiting for first capture",
-    );
+    // v1.17.5 — empty state is now a 3-row diagnostic card. Assert the
+    // headline + the diagnostic rows (sources + memory dir) so future
+    // changes to the copy still keep the contract: the user must see
+    // (1) what's listening and (2) where it's reading from.
+    const card = screen.getByTestId("feed-empty-no-captures");
+    expect(card.textContent).toContain("No captures yet");
+    expect(screen.getByTestId("feed-empty-sources")).toBeInTheDocument();
+    expect(screen.getByTestId("feed-empty-memory-root")).toBeInTheDocument();
   });
 
   it("v1.17 — /threads 0 threads renders quiet 'No threads yet' state, not the animation", async () => {

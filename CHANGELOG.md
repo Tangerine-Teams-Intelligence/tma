@@ -8,6 +8,42 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
      Each version block focuses on user-visible features so this doc can
      also feed the in-app /whats-new-app route. -->
 
+## [1.17.5] — 2026-04-29 — UX polish: faster onboarding + diagnostic empty /feed
+
+CEO sat down with the v1.17.4 installer and said "ux太差了". Three friction
+points addressed:
+
+### Onboarding — Step 2 wait trimmed from 7.5s → 2.5s
+
+The 4-step MagicMoment's sample-atom auto-scrub was 1500ms × 5 atoms = 7.5s
+of forced waiting before the user could click "继续". On a fresh install
+this read as the slowest part of the flow with no explanatory value (the
+samples are decorative). Dropped to 500ms × 5 = 2.5s. Tests use fake
+timers so the timing change is free of regression.
+
+### Onboarding — Step 4 chrome diet
+
+Step 4 used to be: huge 🎉 emoji + "设置完成" headline + 4-section
+TeamMemoryHint card (uppercase header / 2-line explainer / code block /
+copy button row) + Enter button. Read consultant-flavor on first sight.
+Trimmed to: "监听已开始." + 1-line subtitle + condensed inline
+TeamMemoryHint (single-row "paste this → [import line] [copy]") + Enter.
+
+### /feed empty state — diagnostic instead of dead
+
+The v1.17.0 empty state was a tiny pulsing dot + "Waiting for first
+capture" + 2-line copy + "checking every 30s" mono. Dogfood feedback:
+felt dead, gave the user no way to tell whether the daemon was actually
+wired right. Replaced with a 3-row diagnostic card that names:
+1. **watching** — which sources are connected (Cursor / Claude Code /
+   etc., or amber "no source connected" callout)
+2. **memory dir** — where Tangerine reads from on disk (e.g.
+   `~/Desktop/.tangerine-memory/`)
+3. **first atom** — what triggers the first capture
+
+R6 honesty preserved — no fake atoms, no synthetic counters. Just the
+contract, in plain rows.
+
 ## [1.17.4] — 2026-04-29 — Code-split JS bundle + Windows installer ship
 
 First v1.17 build that actually ships an installer on disk. Unblocks the

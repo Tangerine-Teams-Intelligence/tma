@@ -42,37 +42,37 @@ export function TeamMemoryHint() {
   return (
     <div
       data-testid="team-memory-hint"
-      className="mx-auto mt-8 w-full max-w-md rounded-md border border-stone-700 bg-stone-900/60 p-4 text-left"
+      // v1.17.5 — condensed from 4-section wall (uppercase header + 2-line
+      // explainer + code block + button row) to a single inline row:
+      // "paste this into CLAUDE.md → [import line] [copy]". Same testIds.
+      className="mx-auto mt-6 flex w-full max-w-md flex-col items-stretch gap-2 rounded-md border border-stone-700 bg-stone-900/60 px-3 py-2.5 text-left"
     >
-      <p className="text-xs uppercase tracking-wider text-stone-400">
-        Bridge to your AI sessions
+      <p className="text-[11px] leading-snug text-stone-400">
+        Paste into your <code className="text-stone-300">CLAUDE.md</code> /
+        Cursor rules so AI sessions inherit team memory:
       </p>
-      <p className="mt-2 text-sm text-stone-200">
-        Paste this into your project&apos;s <code>CLAUDE.md</code> (or Cursor
-        rules) so any new AI session inherits your team&apos;s recent memory:
-      </p>
-      <div
-        data-testid="team-memory-hint-line"
-        className="mt-3 break-all rounded bg-black/40 px-3 py-2 font-mono text-[11px] text-stone-300"
-      >
-        {IMPORT_LINE}
-      </div>
-      <div className="mt-3 flex items-center gap-3">
+      <div className="flex items-center gap-2">
+        <code
+          data-testid="team-memory-hint-line"
+          className="min-w-0 flex-1 truncate rounded bg-black/40 px-2 py-1 font-mono text-[11px] text-stone-300"
+        >
+          {IMPORT_LINE}
+        </code>
         <button
           type="button"
           data-testid="team-memory-hint-copy"
           onClick={copy}
-          className="inline-flex items-center gap-2 rounded-md border border-stone-600 bg-stone-800/80 px-3 py-1.5 text-xs text-stone-200 hover:bg-stone-700"
+          className="inline-flex shrink-0 items-center gap-1.5 rounded border border-stone-600 bg-stone-800/80 px-2 py-1 text-[11px] text-stone-200 hover:bg-stone-700"
         >
-          {copied ? <Check size={12} /> : <Copy size={12} />}
+          {copied ? <Check size={11} /> : <Copy size={11} />}
           {copied ? "Copied" : "Copy import line"}
         </button>
-        {err && (
-          <span data-testid="team-memory-hint-err" className="text-[11px] text-rose-400">
-            {err}
-          </span>
-        )}
       </div>
+      {err && (
+        <span data-testid="team-memory-hint-err" className="text-[10px] text-rose-400">
+          {err}
+        </span>
+      )}
     </div>
   );
 }

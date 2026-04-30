@@ -19,7 +19,11 @@ interface Step2AnimationProps {
   onSkip: () => void;
 }
 
-const SAMPLE_INTERVAL_MS = 1500;
+// v1.17.5 — was 1500ms × 5 = 7.5s of forced waiting on every fresh install.
+// Daizhe ("ux太差了") flagged the wait as friction. Trimmed to 500ms × 5 = 2.5s
+// total — fast enough to feel like a flourish, slow enough that the eye still
+// reads each card landing. Tests use fake timers so the timing is free to drop.
+const SAMPLE_INTERVAL_MS = 500;
 
 /** 5 hardcoded sample atoms. Static `ts` strings (Date.now-relative is
  *  intentionally avoided so the test snapshot is deterministic). The

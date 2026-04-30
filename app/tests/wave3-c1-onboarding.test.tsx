@@ -96,9 +96,9 @@ describe("Wave 3 C1 — MagicMoment", () => {
     const headline = screen.getByTestId("magic-step1-headline");
     expect(headline.textContent).toContain("Tangerine 自动记住你团队");
     expect(headline.textContent).toContain("跟 AI 说的所有对话");
-    // ↓ prompt
-    expect(screen.getByText(/按.*看示例/)).toBeInTheDocument();
-    expect(screen.getByText(/press ↓ to continue/i)).toBeInTheDocument();
+    // v1.17.5 — the "按 ↓ 看示例" intermediate hint (Chinese copy) was
+    // dropped. The English ↓ prompt is kept as the primary advance hint.
+    expect(screen.getByText(/press to continue/i)).toBeInTheDocument();
   });
 
   it("ArrowDown advances Step 1 → Step 2", () => {
