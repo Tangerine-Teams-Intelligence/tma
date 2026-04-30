@@ -8,6 +8,45 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
      Each version block focuses on user-visible features so this doc can
      also feed the in-app /whats-new-app route. -->
 
+## [1.17.3] — 2026-04-29 — Perf baseline + Cargo.toml version sync
+
+No behavior change. Records the v2-readiness criterion 5 baseline
+(0 cargo warnings + tsc strict + vitest baseline) and re-syncs
+`app/src-tauri/Cargo.toml` to the ecosystem version. The Rust
+`tangerine-meeting` crate had been pinned at 1.9.0 since the v1.9 era;
+all sibling manifests (`app/package.json`, `app/src-tauri/tauri.conf.json`,
+`pyproject.toml`) are now at 1.17.x and the Cargo.toml drift was an
+audit trip-hazard.
+
+### Baseline measurements (Windows 11, NVMe)
+
+- `cargo build --release` (cold cache): 4 min 58 s, **0 warnings, 0 errors**
+- `tsc --noEmit` (strict): 12.66 s, exit 0
+- `vite build`: 13.93 s, exit 0
+  - `dist/index.html`: 1.02 kB (0.57 kB gzip)
+  - `dist/assets/index-*.css`: 107.47 kB (15.79 kB gzip)
+  - `dist/assets/index-*.js`: 1213.07 kB (**355.77 kB gzip**)
+  - `dist/assets/event-*.js`: 1.31 kB (0.64 kB gzip)
+- vitest: 627/629 pass (2 wave21-memory-tree pre-existing failures
+  fixed in v1.17.2)
+
+### Known v1.18 candidates (logged, not fixed in this commit)
+
+- 1213 kB raw JS bundle exceeds the 500 kB Vite chunk-size warning
+  threshold. `app/src/lib/telemetry.ts` is hit by both static and
+  dynamic imports — pick one or `manualChunks` it. ~30 % gzip headroom
+  available if we code-split the route bundles.
+- App version embedded in `app/src-tauri/Cargo.toml` should be wired to
+  `app/package.json` via a build script so future bumps don't drift
+  again.
+
+## [1.17.2] — 2026-04-29 — Fix wave21-memory-tree test failures (default-expand top-level dirs)
+
+Cleaned up the 2 known-failing tests flagged in v1.17.0 CHANGELOG.
+Pre-existing default-expand contract was load-bearing for the click +
+vendor-dot specs — locked it via test refactor. No functional change to
+`MemoryTree` itself.
+
 ## [1.17.1] — 2026-04-29 — TEAM_INDEX.md auto-write (frictionless AI session bridge)
 
 The v2-readiness pain CEO surfaced this session: Tangerine captures
