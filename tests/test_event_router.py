@@ -377,11 +377,33 @@ def test_rebuild_10k_events_under_2s(tmp_path: Path) -> None:
 # Sidecar layout
 
 
-def test_sidecar_dir_is_sibling_of_memory_root(tmp_path: Path) -> None:
+def test_sidecar_dir_default_is_inside_memory_root(tmp_path: Path) -> None:
+    """v1.20.1 — sidecar unified on ``<memory_root>/.tangerine`` to match
+    the Rust daemon. Prior versions put it at ``memory_root.parent/.tangerine``
+    which left the Python writer and Rust reader pointing at different paths
+    on disk.
+    """
     memory = tmp_path / "memory"
     sd = sidecar_dir(memory)
-    assert sd == tmp_path / ".tangerine"
+    assert sd == memory / ".tangerine"
     assert sd.exists()
+
+
+def test_sidecar_dir_honours_legacy_path_for_existing_installs(
+    tmp_path: Path,
+) -> None:
+    """Backward compat: if the legacy ``<parent>/.tangerine`` already
+    exists with content (an upgraded user from <=v1.20.0), keep using
+    it so cursors / briefs / alignment files written before the upgrade
+    aren't orphaned.
+    """
+    memory = tmp_path / "memory"
+    memory.mkdir(parents=True)
+    legacy = tmp_path / ".tangerine"
+    legacy.mkdir()
+    (legacy / "cursors").mkdir()
+    sd = sidecar_dir(memory)
+    assert sd == legacy
 
 
 def test_timeline_dir_under_memory_root(tmp_path: Path) -> None:
@@ -662,3 +684,154 @@ def test_write_sidecar_docs_seeds_world_model(tmp_path: Path) -> None:
     memory = tmp_path / "memory"
     write_sidecar_docs(memory)
     assert world_model_path(memory).exists()
+
+
+# ----------------------------------------------------------------------
+# v1.20.1 regression: rebuild_index walks personal-agent atoms
+#
+# Before v1.20.1, `rebuild_index` only walked sentinel-fenced blocks in
+# `timeline/<YYYY-MM-DD>.md`. Personal-agent atoms (written one .md per
+# conversation under `personal/<user>/threads/<source>/<id>.md`) and
+# top-level `decisions/*.md` / `meetings/*.md` files were never picked
+# up, so `read_timeline_recent` returned `[]` even when atoms existed
+# on disk.  This is the regression test for the fix that closes the
+# pipeline.
+
+
+def test_rebuild_index_picks_up_personal_agent_atoms(tmp_path: Path) -> None:
+    memory = tmp_path / "memory"
+    threads_dir = memory / "personal" / "me" / "threads" / "claude-code"
+    threads_dir.mkdir(parents=True)
+    atom_path = threads_dir / "abc-123.md"
+    atom_path.write_text(
+        "---\n"
+        "source: claude-code\n"
+        "conversation_id: abc-123\n"
+        "started_at: 2026-04-29T21:17:33.146Z\n"
+        "ended_at: 2026-04-30T05:25:59.661Z\n"
+        "message_count: 91\n"
+        "source_mtime_nanos: 1777526759962999000\n"
+        "topic: refactor the timeline rebuild path\n"
+        "---\n"
+        "\n"
+        "# refactor the timeline rebuild path\n"
+        "\n"
+        "**User**: ...body...\n",
+        encoding="utf-8",
+    )
+    idx = rebuild_index(memory)
+    events = idx["events"]
+    assert isinstance(events, list)
+    assert len(events) == 1
+    rec = events[0]
+    assert rec["source"] == "claude-code"
+    assert rec["kind"] == "thread"
+    # YAML auto-parses ISO 8601 ts into datetime; we round-trip via
+    # isoformat so the on-disk shape may add microsecond zeros and a
+    # `+00:00` tz suffix for `Z`. The date prefix is what /feed sorts on.
+    assert str(rec["ts"]).startswith("2026-04-30T05:25:59")
+    assert rec["body"] == "refactor the timeline rebuild path"
+    # Index has been written to disk under the unified sidecar layout.
+    sidecar_index = timeline_index_path(memory)
+    assert sidecar_index.exists()
+    on_disk = json.loads(sidecar_index.read_text(encoding="utf-8"))
+    assert len(on_disk["events"]) == 1
+
+
+def test_rebuild_index_combines_timeline_and_personal_atoms(tmp_path: Path) -> None:
+    memory = tmp_path / "memory"
+    # Personal-agent atom.
+    threads_dir = memory / "personal" / "me" / "threads" / "claude-code"
+    threads_dir.mkdir(parents=True)
+    (threads_dir / "session-x.md").write_text(
+        "---\nsource: claude-code\nstarted_at: 2026-04-28T10:00:00Z\n"
+        "ended_at: 2026-04-28T11:00:00Z\nmessage_count: 5\n"
+        "source_mtime_nanos: 1\n---\n\n# Session X\n",
+        encoding="utf-8",
+    )
+    # Sentinel-fenced timeline block (the existing format).
+    ev = _make_event(
+        id="evt-2026-04-29-deadbeef99",
+        ts="2026-04-29T09:30:00+08:00",
+    )
+    res = emit(memory, [ev])
+    assert res.events
+    # Force a rebuild — should pick up both shapes.
+    idx = rebuild_index(memory)
+    events = idx["events"]
+    assert len(events) == 2
+    sources = {e["source"] for e in events}
+    assert sources == {"claude-code", "github"}
+
+
+def test_rebuild_index_dedupes_when_both_shapes_collide(tmp_path: Path) -> None:
+    """Sentinel block wins when its id matches a standalone-atom record."""
+    memory = tmp_path / "memory"
+    ev = _make_event(
+        id="evt-2026-04-26-abcd012345",
+        ts="2026-04-26T09:30:00+08:00",
+    )
+    emit(memory, [ev])
+    # Now write a standalone atom whose synthetic id might collide.
+    threads_dir = memory / "personal" / "me" / "threads" / "claude-code"
+    threads_dir.mkdir(parents=True)
+    (threads_dir / "evt-2026-04-26-abcd012345.md").write_text(
+        "---\nsource: claude-code\nts: 2026-04-26T09:30:00+08:00\n"
+        "kind: thread\n---\n\n# topic\n",
+        encoding="utf-8",
+    )
+    idx = rebuild_index(memory)
+    events = idx["events"]
+    # Only the canonical sentinel block survives — no duplicate.
+    ids = [e["id"] for e in events]
+    assert len(ids) == len(set(ids)), "rebuild produced duplicate ids"
+
+
+def test_rebuild_index_skips_unparseable_atoms(tmp_path: Path) -> None:
+    memory = tmp_path / "memory"
+    threads_dir = memory / "personal" / "me" / "threads" / "claude-code"
+    threads_dir.mkdir(parents=True)
+    # No frontmatter at all.
+    (threads_dir / "no-fm.md").write_text("just a markdown file\n", encoding="utf-8")
+    # Frontmatter but no resolvable timestamp.
+    (threads_dir / "no-ts.md").write_text(
+        "---\nsource: claude-code\n---\n\nbody\n", encoding="utf-8"
+    )
+    # One valid atom — survives.
+    (threads_dir / "ok.md").write_text(
+        "---\nsource: claude-code\nstarted_at: 2026-04-28T10:00:00Z\n"
+        "ended_at: 2026-04-28T11:00:00Z\nmessage_count: 1\n"
+        "source_mtime_nanos: 1\n---\n\n# Ok\n",
+        encoding="utf-8",
+    )
+    idx = rebuild_index(memory)
+    events = idx["events"]
+    assert len(events) == 1
+    assert str(events[0].get("file", "")).endswith("ok.md")
+
+
+def test_rebuild_index_writes_timeline_json_to_unified_sidecar(
+    tmp_path: Path,
+) -> None:
+    """The Rust daemon reads ``<memory_root>/.tangerine/timeline.json``.
+    v1.20.1 unifies the Python writer on the same path. This test guards
+    the regression Daizhe hit on his actual machine — atoms on disk but
+    timeline.json missing because Python was writing to memory.parent.
+    """
+    memory = tmp_path / ".tangerine-memory"
+    memory.mkdir()
+    threads_dir = memory / "personal" / "me" / "threads" / "claude-code"
+    threads_dir.mkdir(parents=True)
+    (threads_dir / "session.md").write_text(
+        "---\nsource: claude-code\nended_at: 2026-04-30T00:00:00Z\n"
+        "started_at: 2026-04-29T00:00:00Z\nmessage_count: 1\n"
+        "source_mtime_nanos: 1\ntopic: hello\n---\n\n# hello\n",
+        encoding="utf-8",
+    )
+    rebuild_index(memory)
+    # Must land at the unified path the Rust reader expects.
+    expected = memory / ".tangerine" / "timeline.json"
+    assert expected.exists()
+    raw = json.loads(expected.read_text(encoding="utf-8"))
+    assert len(raw["events"]) == 1
+    assert raw["events"][0]["source"] == "claude-code"

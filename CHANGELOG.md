@@ -8,6 +8,44 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
      Each version block focuses on user-visible features so this doc can
      also feed the in-app /whats-new-app route. -->
 
+## [1.20.1] — 2026-04-30 — Fix timeline.json index pipeline
+
+CEO inspected his disk: 71 atom `.md` files exist under `~/.tangerine-memory/`,
+but `~/.tangerine-memory/.tangerine/timeline.json` was missing. Cascade failure:
+`/feed`, Spotlight, heatmap, replay, TEAM_INDEX all read from the index → all
+showed empty even though data was on disk. v1.20.0's audit was source-walk
+only, so it missed this — the React side handles `[]` honestly (R6 empty state),
+masking the pipeline lie.
+
+### Bugs fixed
+
+- **Sidecar path mismatch (Python writer ≠ Rust reader)** — `src/tmi/event_router.py:229`. Python's `sidecar_dir(memory_root)` returned `memory_root.parent / ".tangerine"`, a leftover from the pre-v1.7 layout where `memory_root` meant `<repo>/memory/`. With the flat `~/.tangerine-memory/` convention now returned by `config.memory_root_path`, every Python write went to `~/.tangerine` while every Rust read went to `~/.tangerine-memory/.tangerine/`. The two never met on disk. v1.20.1 unifies on `<memory_root>/.tangerine/` (matches `app/src-tauri/src/commands/views.rs::sidecar_dir`). Backward compat: legacy installs that already populated `<parent>/.tangerine` keep using it so cursors / briefs / alignment files aren't orphaned.
+
+- **`rebuild_index` blind to personal-agent atoms** — `src/tmi/event_router.py:763`. The walker only scanned `timeline/<YYYY-MM-DD>.md` for sentinel-fenced blocks. Personal-agent capture (Cursor / Claude Code / Codex / Windsurf) writes one YAML-frontmatter `.md` per conversation under `personal/<user>/threads/<source>/<id>.md` — these go straight to disk without flowing through the sentinel writer. They've been invisible to the index since v3.0 shipped. v1.20.1 adds `_walk_standalone_atoms()` which globs `personal/*/threads/*/*.md`, `meetings/*.md`, `decisions/*.md`, parses the frontmatter, and emits index records with stable ids derived from `(source, kind, file_stem, ts)`. Sentinel-block events still win on id collisions (richer representation). On the CEO's actual disk this took the index from 0 events to 62 events.
+
+### Tests added
+
+- `tests/test_event_router.py` (5 new) — pinned the regression:
+  - `test_rebuild_index_picks_up_personal_agent_atoms` — single claude-code atom on disk → 1 event in index, body + ts + source preserved.
+  - `test_rebuild_index_combines_timeline_and_personal_atoms` — sentinel block + standalone atom → both end up in the index.
+  - `test_rebuild_index_dedupes_when_both_shapes_collide` — sentinel id wins.
+  - `test_rebuild_index_skips_unparseable_atoms` — bad frontmatter / missing ts skip cleanly without aborting the walk.
+  - `test_rebuild_index_writes_timeline_json_to_unified_sidecar` — guards Daizhe's actual symptom: timeline.json must land at `<memory_root>/.tangerine/`, not `<parent>/.tangerine/`.
+- `tests/test_event_router.py::test_sidecar_dir_default_is_inside_memory_root` — replaces the stale `test_sidecar_dir_is_sibling_of_memory_root` which encoded the broken legacy path.
+- `tests/test_event_router.py::test_sidecar_dir_honours_legacy_path_for_existing_installs` — backward-compat path preserved.
+
+### Honest preserved
+
+R6 honesty intact: a failed rebuild still surfaces via `do_heartbeat`'s `index_rebuild` error capture (daemon ring buffer). The fix doesn't paper over errors with a fake `[]` — it ensures the rebuild actually finds the data that's there.
+
+### Verification on real disk
+
+Ran `python -m tmi.daemon_cli index-rebuild --memory-root ~/.tangerine-memory` against the CEO's actual machine. Output: `{"op":"index-rebuild","events":62,"ts":"…"}`. `timeline.json` landed at `~/.tangerine-memory/.tangerine/timeline.json` (32 KB). Next daemon heartbeat will refresh `TEAM_INDEX.md` with the correct atom count.
+
+### v1.20.0 audit fixes preserved
+
+Unchanged: TopNav home/signout, ToastHost, Sidebar canvas-view buttons, OAuth stub-disable, Spotlight `:replay`/`:about` toasts. This is bug-only — no features added.
+
 ## [1.20.0] — 2026-04-30 — Comprehensive functional audit
 
 CEO Daizhe pointed out that the v1.19.3 audit was reading source code, not walking through user flows. This release does the walk: every interactive surface verified end-to-end, every honesty / dead-link / lie-to-the-user bug fixed in a single commit. Quote: *"你犯了这个错误说明这个app还会有很多其他功能性使用性错误，你他妈去改好所有东西"*.

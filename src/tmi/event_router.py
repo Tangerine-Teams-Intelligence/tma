@@ -227,9 +227,33 @@ def _now_iso() -> str:
 # Sidecar paths
 
 def sidecar_dir(memory_root: Path) -> Path:
-    p = memory_root.parent / ".tangerine"
-    p.mkdir(parents=True, exist_ok=True)
-    return p
+    """Sidecar dir for the timeline index, cursors, briefs, etc.
+
+    v1.20.1 — unified on ``<memory_root>/.tangerine/`` to match the Rust
+    daemon (``app/src-tauri/src/commands/views.rs::sidecar_dir``). Prior
+    versions used ``memory_root.parent / .tangerine`` which assumed the
+    pre-v1.7 layout where ``memory_root`` was ``<repo>/memory/``. The
+    flat-layout convention (``~/.tangerine-memory/``) returned by
+    ``config.memory_root_path`` doesn't have that parent — every Python
+    write went to ``~/.tangerine`` while every Rust read went to
+    ``~/.tangerine-memory/.tangerine`` and they never agreed on disk.
+
+    Backward compat: if ``<memory_root>/.tangerine`` doesn't exist but
+    ``<memory_root.parent>/.tangerine`` does (legacy install), prefer the
+    legacy path so a user's existing cursors/briefs aren't orphaned. New
+    installs always use the unified path.
+    """
+    unified = memory_root / ".tangerine"
+    legacy = memory_root.parent / ".tangerine"
+    # Prefer unified when it already exists (canonical going forward).
+    if unified.exists():
+        return unified
+    # Honour the legacy path only if it has real content (we don't want
+    # a stray directory created by a different tool to win silently).
+    if legacy.exists() and any(legacy.iterdir()):
+        return legacy
+    unified.mkdir(parents=True, exist_ok=True)
+    return unified
 
 
 SIDECAR_README = """# .tangerine/
@@ -737,13 +761,28 @@ def _upsert_index_entry(index: dict[str, object], rec: dict[str, object]) -> Non
 
 
 def rebuild_index(memory_root: Path) -> dict[str, object]:
-    """Walk ``timeline/*.md`` and rebuild the index from scratch. Used by the
+    """Walk every atom on disk and rebuild the index from scratch. Used by the
     daemon heartbeat. Stable order — events sorted by (ts, id) ascending.
+
+    Two atom shapes feed the index:
+
+    1. Sentinel-fenced blocks in ``timeline/<YYYY-MM-DD>.md`` — written by the
+       core router via ``emit()`` / ``process()``. One block = one event.
+    2. v1.20.1 — standalone YAML-frontmatter atoms written by the
+       personal-agent capture loop (``app/src-tauri/src/personal_agents/``)
+       and the meetings/decisions ingest. One ``.md`` file = one event.
+       These never flow through the sentinel writer, so before v1.20.1
+       they were invisible to ``read_timeline_recent`` even though they
+       sat on disk. This walker now picks them up so /feed, Spotlight,
+       heatmap, replay, TEAM_INDEX all reflect what's actually captured.
 
     Preserves any existing ``vector_store`` block (Stage 2 hook §6) so a
     rebuild doesn't reset Stage 2 search backend config.
     """
     events: list[dict[str, object]] = []
+    seen_ids: set[str] = set()
+
+    # Path 1 — timeline/*.md sentinel blocks.
     tdir = timeline_dir(memory_root)
     for day_file in sorted(tdir.glob("*.md")):
         if not day_file.is_file():
@@ -769,6 +808,18 @@ def rebuild_index(memory_root: Path) -> dict[str, object]:
             )
             if rec is not None:
                 events.append(rec)
+                seen_ids.add(ev_id)
+
+    # Path 2 — standalone YAML-frontmatter atoms (v1.20.1).
+    # Sentinel-fenced blocks always win when ids collide so the richer
+    # representation (refs, lifecycle, body) is preserved.
+    for rec in _walk_standalone_atoms(memory_root):
+        ev_id = str(rec.get("id", ""))
+        if not ev_id or ev_id in seen_ids:
+            continue
+        events.append(rec)
+        seen_ids.add(ev_id)
+
     events.sort(key=lambda r: (str(r.get("ts", "")), str(r.get("id", ""))))
     prior = load_index(memory_root)
     vector_store = prior.get("vector_store") if isinstance(prior, dict) else None
@@ -780,6 +831,203 @@ def rebuild_index(memory_root: Path) -> dict[str, object]:
     }
     save_index(memory_root, index)
     return index
+
+
+# v1.20.1 — standalone atom walker.
+#
+# Personal-agent capture (`app/src-tauri/src/personal_agents/*`) writes one
+# `.md` per conversation under `personal/<user>/threads/<source>/<id>.md`.
+# Meetings/decisions captured by the AI extractor live at top-level
+# `meetings/*.md` and `decisions/*.md`. None of these go through the
+# sentinel-fenced timeline writer, so the original v1.7 walker missed them.
+#
+# Each atom carries a YAML frontmatter block with at least `source`. We
+# coerce it into the same flat record shape the sentinel parser produces
+# so the React feed doesn't need to special-case the two paths.
+
+# Directories under memory_root that contain standalone-atom .md files
+# the timeline walker would otherwise miss.
+#
+# IMPORTANT: meetings/*.md and decisions/*.md are NOT in this list. Those
+# are written by `extractor.write_decisions()` / the meeting pipeline,
+# which then calls `process()` to fan them into sentinel-fenced timeline
+# blocks. The blocks are the canonical index entry — walking the
+# standalone files would double-count every decision/meeting (smoke
+# e2e idempotency suite caught this). Personal-agent atoms are different:
+# they bypass `process()` entirely (the Rust capture path writes the .md
+# and never calls the Python event router), so they're invisible to the
+# index without this walker.
+_STANDALONE_ATOM_GLOBS = (
+    # Personal-agent threads — `personal/<user>/threads/<source>/<id>.md`
+    "personal/*/threads/*/*.md",
+)
+
+
+def _walk_standalone_atoms(memory_root: Path) -> list[dict[str, object]]:
+    """Walk every standalone-atom directory under ``memory_root`` and emit
+    one index record per file. Best-effort — a single bad file never
+    aborts the walk.
+    """
+    out: list[dict[str, object]] = []
+    for pattern in _STANDALONE_ATOM_GLOBS:
+        for path in sorted(memory_root.glob(pattern)):
+            if not path.is_file():
+                continue
+            try:
+                rec = _atom_file_to_index_record(memory_root, path)
+            except (OSError, ValueError, yaml.YAMLError):
+                # Bad YAML / unreadable — skip this atom rather than
+                # killing the whole rebuild. The next heartbeat retries.
+                continue
+            if rec is not None:
+                out.append(rec)
+    return out
+
+
+def _atom_file_to_index_record(
+    memory_root: Path, path: Path
+) -> dict[str, object] | None:
+    """Parse a YAML-frontmatter atom into the timeline index record shape.
+
+    Returns None when the file isn't a recognisable atom (no frontmatter,
+    no resolvable timestamp, etc.). The walker uses None to mean "skip
+    this file".
+    """
+    text = path.read_text(encoding="utf-8")
+    front = _extract_frontmatter(text)
+    if front is None:
+        return None
+
+    # Resolve the canonical timestamp. Personal-agent atoms have
+    # `ended_at`/`started_at`; meeting/decision atoms have `date`.
+    raw_ts = (
+        front.get("ts")
+        or front.get("ended_at")
+        or front.get("started_at")
+        or front.get("date")
+    )
+    ts = _coerce_ts(raw_ts)
+    if not ts:
+        return None
+    # Normalise bare YYYY-MM-DD to a midnight tz-aware ts so the sort is
+    # deterministic and the React date-slicer behaves.
+    if _ID_DATE_RE.match(ts):
+        ts = f"{ts}T00:00:00+08:00"
+
+    source = str(front.get("source") or "unknown")
+    actor = str(front.get("actor") or front.get("author") or "me")
+    kind = _kind_for_atom_path(path, front)
+
+    # Stable id — deterministic on (source, kind, file_stem, ts) so a
+    # rebuild after re-walking the same atom produces a byte-identical
+    # record (idempotency contract). file_stem is the conversation uuid
+    # for personal-agent atoms and the slug for meetings/decisions.
+    source_id = path.stem
+    ev_id = make_event_id(source, kind, source_id, ts)
+
+    record: dict[str, object] = {
+        "id": ev_id,
+        "ts": ts,
+        "source": source,
+        "actor": actor,
+        "actors": [actor],
+        "kind": kind,
+        "status": str(front.get("status") or "active"),
+        "file": _relative(path),
+        "line": 1,
+        "sample": bool(front.get("sample", False)),
+    }
+
+    # Topic/title becomes the body preview so the feed has something to
+    # render. Cap at 200 chars to mirror the sentinel parser.
+    body_seed = (
+        front.get("topic")
+        or front.get("title")
+        or front.get("headline")
+    )
+    if isinstance(body_seed, str) and body_seed.strip():
+        record["body"] = body_seed.strip()[:200]
+
+    # Permissive ref pickup — atoms may carry refs as a nested map.
+    raw_refs = front.get("refs")
+    if isinstance(raw_refs, dict):
+        refs: dict[str, object] = {}
+        for key in ("people", "projects", "threads", "decisions"):
+            v = raw_refs.get(key)
+            if isinstance(v, list):
+                refs[key] = [str(x) for x in v if x]
+        meeting = raw_refs.get("meeting")
+        if isinstance(meeting, str) and meeting:
+            refs["meeting"] = meeting
+        if refs:
+            record["refs"] = refs
+
+    return record
+
+
+def _coerce_ts(raw: object) -> str | None:
+    """Coerce a YAML-parsed timestamp into the RFC 3339-ish string the
+    rest of the pipeline expects.
+
+    PyYAML auto-converts ISO 8601 timestamps into ``datetime.datetime`` and
+    bare ``YYYY-MM-DD`` strings into ``datetime.date``. Both shapes appear
+    in real personal-agent atoms (``started_at``/``ended_at``) and in
+    meeting/decision atoms (``date:``). We turn either back into a string
+    so the index sort + React date slicer behave.
+    """
+    if isinstance(raw, str):
+        return raw.strip() or None
+    if isinstance(raw, datetime):
+        # ``datetime`` is also a subclass of ``date``; isoformat preserves
+        # microseconds + tz info when present.
+        return raw.isoformat()
+    # ``datetime.date`` (without time component).
+    try:
+        from datetime import date as _date
+
+        if isinstance(raw, _date):
+            return raw.isoformat()
+    except ImportError:  # pragma: no cover — stdlib always present
+        return None
+    return None
+
+
+def _extract_frontmatter(text: str) -> dict[str, object] | None:
+    """Return the parsed YAML frontmatter dict, or None if the file
+    doesn't start with a ``---`` block.
+    """
+    if not text.startswith("---"):
+        return None
+    # Find the closing fence.
+    end = text.find("\n---", 3)
+    if end == -1:
+        return None
+    raw = text[3:end].strip("\n")
+    try:
+        parsed = yaml.safe_load(raw)
+    except yaml.YAMLError:
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    return parsed
+
+
+def _kind_for_atom_path(path: Path, front: dict[str, object]) -> str:
+    """Pick a sensible event kind for a standalone atom. Front matter
+    wins; otherwise infer from the path so /feed has something readable
+    in the kind column.
+    """
+    explicit = front.get("kind")
+    if isinstance(explicit, str) and explicit.strip():
+        return explicit.strip()
+    parts = {p.lower() for p in path.parts}
+    if "threads" in parts:
+        return "thread"
+    if "meetings" in parts:
+        return "meeting_chunk"
+    if "decisions" in parts:
+        return "decision"
+    return "comment"
 
 
 def _parse_block_to_index_record(
