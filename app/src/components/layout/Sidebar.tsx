@@ -46,6 +46,9 @@ import {
   // === wave 1.13-A === — Inbox is the 6th sidebar nav item.
   Inbox as InboxIcon,
   // === end wave 1.13-A ===
+  // === v1.18.0 === — Canvas (heat-map + atom + Replay) surface.
+  Map as MapIcon,
+  // === end v1.18.0 ===
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { signOut } from "@/lib/auth";
@@ -188,6 +191,17 @@ export function Sidebar() {
           testId="sidebar-nav-people"
           presenceRoute="/people"
         />
+        {/* === v1.18.0 === — Canvas: 2D zoom-based heat-map + atom view
+            + Replay timelapse. Sits between /people and /memory per
+            the spec ("一个 surface, 两个 zoom level + 一个 timelapse"). */}
+        <ViewLink
+          to="/canvas"
+          icon={MapIcon}
+          label={t("sidebar.canvas", { defaultValue: "Canvas" })}
+          testId="sidebar-nav-canvas"
+          presenceRoute="/canvas"
+        />
+        {/* === end v1.18.0 === */}
         <ViewLink
           to="/memory"
           icon={FolderKanban}

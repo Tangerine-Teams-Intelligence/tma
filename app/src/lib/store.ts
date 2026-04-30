@@ -205,6 +205,13 @@ interface UiSlice {
    *  AppShell mount after an upgrade. `null` until first visit. */
   lastSeenAppVersion: string | null;
   // === end v1.14.6 round-7 ===
+  // === v1.18.0 ===
+  /** v1.18 — first-week auto-replay latch on /canvas. Default `false`;
+   *  the canvas route auto-plays the timelapse once on first visit, then
+   *  flips this to true so subsequent visits don't auto-play. The user
+   *  can always press the Replay button manually. */
+  welcomedReplayDone: boolean;
+  // === end v1.18.0 ===
   /** v1.8 Phase 1 — id of the user's "primary" AI tool (the one with the ⭐
    *  in the sidebar). `null` until first launch's auto-pick runs. The pick
    *  itself happens in components/ai-tools/AIToolsSection.tsx after
@@ -550,6 +557,12 @@ interface UiSlice {
   // === v1.14.6 round-7 ===
   setLastSeenAppVersion: (v: string | null) => void;
   // === end v1.14.6 round-7 ===
+  // === v1.18.0 ===
+  /** v1.18 — flip the canvas first-week auto-replay latch. The route
+   *  calls this after the welcome timelapse finishes. Tests also call
+   *  it to reset between cases. */
+  setWelcomedReplayDone: (v: boolean) => void;
+  // === end v1.18.0 ===
   setPrimaryAITool: (id: string | null) => void;
   /** v1.9.0-beta.1 — extended pushToast.
    *
@@ -828,6 +841,11 @@ export const useStore = create<Store>()(
         // === v1.14.6 round-7 ===
         lastSeenAppVersion: null,
         // === end v1.14.6 round-7 ===
+        // === v1.18.0 ===
+        // First-week auto-replay latch. False on a fresh install so the
+        // user lands on /canvas and the welcome timelapse plays once.
+        welcomedReplayDone: false,
+        // === end v1.18.0 ===
         primaryAITool: null,
         agiParticipation: true,
         agiVolume: "quiet",
@@ -1084,6 +1102,10 @@ export const useStore = create<Store>()(
         setLastSeenAppVersion: (v) =>
           set((s) => ({ ui: { ...s.ui, lastSeenAppVersion: v } })),
         // === end v1.14.6 round-7 ===
+        // === v1.18.0 ===
+        setWelcomedReplayDone: (v) =>
+          set((s) => ({ ui: { ...s.ui, welcomedReplayDone: v } })),
+        // === end v1.18.0 ===
         setPrimaryAITool: (id) =>
           set((s) => ({ ui: { ...s.ui, primaryAITool: id } })),
         // ---- v1.8 Phase 4 ambient input layer ----
@@ -1517,6 +1539,9 @@ export const useStore = create<Store>()(
             // === wave 23 === — /memory route view mode pick (tree/graph/list).
             memoryViewMode: s.ui.memoryViewMode,
             // === end wave 23 ===
+            // === v1.18.0 === — canvas first-week auto-replay latch.
+            welcomedReplayDone: s.ui.welcomedReplayDone,
+            // === end v1.18.0 ===
             // === wave 22 ===
             // Persist tour + coachmark + try-this dismiss memory so a
             // returning user who finished the tour never sees it again.
@@ -1584,6 +1609,9 @@ export const useStore = create<Store>()(
                 // === wave 23 ===
                 memoryViewMode?: "tree" | "graph" | "list";
                 // === end wave 23 ===
+                // === v1.18.0 ===
+                welcomedReplayDone?: boolean;
+                // === end v1.18.0 ===
               };
               skills?: { meetingConfig?: MeetingConfig };
             }
@@ -1798,6 +1826,13 @@ export const useStore = create<Store>()(
               (p?.ui as { tryThisDismissed?: string[] } | undefined)
                 ?.tryThisDismissed ?? current.ui.tryThisDismissed,
             // === end wave 22 ===
+            // === v1.18.0 === — canvas first-week auto-replay latch.
+            // Pre-v1.18 persisted state lacks this field; default to
+            // false so existing users still see the welcome timelapse
+            // once when they discover /canvas.
+            welcomedReplayDone:
+              p?.ui?.welcomedReplayDone ?? current.ui.welcomedReplayDone,
+            // === end v1.18.0 ===
           },
           skills: {
             ...current.skills,

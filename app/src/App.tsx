@@ -30,6 +30,12 @@ import ThisWeekRoute from "@/routes/this-week";
 // Replaces /today as the v1.16 entry point. /today still works (legacy
 // muscle memory) until v1.17 drops it.
 import FeedRoute from "@/routes/feed";
+// === v1.18.0 === — Canvas surface: heat-map / atom layer / Replay
+// timelapse. Sits next to /feed in the IA ("Apple Photos zoom levels",
+// per the founder spec). NOT a v1.16 demolition victim — a brand new
+// second tab. /canvas is no longer a redirect to /feed.
+import CanvasRoute from "@/routes/canvas";
+// === end v1.18.0 ===
 // === wave 24 ===
 import DailyRoute from "@/routes/daily";
 // === end wave 24 ===
@@ -214,7 +220,11 @@ export default function App() {
         <Route path="daily" element={<Navigate to="/feed" replace />} />
         <Route path="brain" element={<Navigate to="/feed" replace />} />
         <Route path="co-thinker" element={<Navigate to="/feed" replace />} />
-        <Route path="canvas" element={<Navigate to="/feed" replace />} />
+        {/* === v1.18.0 === — /canvas is the new second-tab surface.
+            Was a v1.16 redirect → /feed; the redirect was a砍 victim
+            of the smart-layer demolition. v1.18 reclaims the route as
+            the heat-map + atom + Replay surface the spec asked for. */}
+        <Route path="canvas" element={<CanvasRoute />} />
         <Route path="alignment" element={<Navigate to="/feed" replace />} />
         <Route path="inbox" element={<Navigate to="/threads" replace />} />
         <Route path="people" element={<PeopleListRoute />} />

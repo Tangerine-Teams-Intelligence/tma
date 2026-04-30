@@ -8,6 +8,122 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
      Each version block focuses on user-visible features so this doc can
      also feed the in-app /whats-new-app route. -->
 
+## [1.18.0] — 2026-04-29 — 2D canvas surface: heat-map, atom layer, Replay timelapse
+
+CEO's spec, verbatim: "一个 surface, 两个 zoom level + 一个 timelapse." v1.17.x
+was incremental polish on /feed. v1.18.0 is a brand new second tab —
+**/canvas** — the Apple-Photos-Memories paradigm applied to a team's AI
+captures. /feed stays the default landing surface (glance use case);
+/canvas is the second tab (the visual zoom-and-replay use case).
+
+### Layer 1 — Zoom-out heat-map (the default view)
+
+Every (day × actor) cell is a colored rectangle, density-coded
+neutral-stone → orange-200 → orange-500 → orange-800. Reads exactly
+like the GitHub contribution graph but team-wide: one glance answers
+"did anything happen this week, and who?". Empty cells are
+transparent slots so a quiet Saturday looks quiet, not invisible.
+Vertical 7-day guides keep the calendar rhythm legible. Tooltips on
+each cell quote the actor + day + atom count for accessibility tools.
+
+### Layer 2 — Zoom-in atom canvas (scroll wheel)
+
+Wheel up = zoom in toward the mouse pointer. Past scale ~1.5 the
+heat-map crossfades into individual atom dots, each anchored at its
+parent cell's centroid plus a deterministic per-thread jitter so
+same-thread atoms cluster visibly. @mention edges (1px translucent
+orange polylines) connect atoms whose mention sets overlap; weight
+scales with intersection size. Past scale ~3.0 dots upgrade to small
+vendor-colored cards showing actor + first body line + clock. The
+mention regex matches the existing /threads contract — same
+`/@([a-z0-9][a-z0-9_.-]*)/gi`, computed once on data load (O(n²) on
+events, fine through 5k atoms; we'll move to an inverted index if a
+real corpus pushes past that).
+
+### Layer 3 — Replay timelapse (top-right button)
+
+Click Replay → 5-second playthrough of the last 30 days. Atoms
+light up in `ts` order; mention edges draw themselves as both
+endpoints become visible. Pause / Resume / Replay-from-start all
+work via the same button. The progress fill across the bottom of
+the chip doubles as a visual scrub.
+
+### First-week auto-replay
+
+`ui.welcomedReplayDone` boots `false` on a fresh install. The first
+time the user lands on /canvas, the timelapse auto-plays once, then
+the latch flips to `true`. Subsequent visits never auto-play — the
+user is in control. Latch persists across launches (zustand persist
+slice + merge fallback), so a re-install also re-shows the welcome
+once.
+
+### IA placement
+
+Sidebar order: **Feed → Threads → People → Canvas → Memory**. Canvas
+slots between People and Memory using the lucide `Map` icon. /feed
+is still the default landing route; /canvas is a second-tab
+discovery surface, not a replacement. The wave-14 sidebar test was
+updated to assert /canvas DOES mount in the rail (was on the killed
+list during v1.16 demolition; reclaimed for v1.18).
+
+### Architecture notes
+
+Pure SVG + `transform` pan/zoom — no canvas/WebGL. 60fps on a 1k
+atom corpus, easy a11y, easy testability. If a real install pushes
+past 10k atoms we'll swap the renderer to <canvas>; for now SVG
+ships. Pan = drag, zoom = wheel (mouse-pointer-anchored), trackpad
+pinch arrives as wheel events with ctrlKey set so the same handler
+covers both. The crossfade thresholds (1.0 → 2.0 atoms full, 3.0
+cards) are exported constants so future tweaks are pinned in tests.
+
+### Empty / loading / error honesty
+
+`canvas-loading` / `canvas-empty` / `canvas-error` are explicit
+testids. Empty corpus shows an honest "No atoms captured yet"
+overlay with the same listening-pulse motif as /feed empty state.
+Failed read renders the rose error banner with retry. Never paint
+silent zero.
+
+### Tests added (28 new specs across 3 files)
+
+- `tests/v1_18-canvas-route.test.tsx` (9 specs) — route mount,
+  loading/empty/error states, canvas surface mounts when atoms
+  exist, corpus count chip, no-redirect-to-feed contract,
+  first-week latch behaviour
+- `tests/v1_18-heatmap-layer.test.tsx` (8 specs) — bucketing math
+  (dayAxis / peopleAxis / bucketHeatmap / densityBand / mentionsOf /
+  computeMentionEdges), per-cell density attribute, full grid
+  rendering for sparse data
+- `tests/v1_18-replay-controller.test.tsx` (10 specs) — events
+  reveal in ts order, total duration ≈ 5s, pause/resume preserves
+  progress, reset clears everything, toggle state machine, empty
+  corpus safe, crossfade ramp linear in band
+
+Plus `tests/wave14-sidebar-collapse.test.tsx` updated: /canvas
+removed from killed-href list, positive assertion that /canvas DOES
+mount added.
+
+### Files
+
+New surface:
+- `app/src/routes/canvas.tsx`
+- `app/src/components/canvas/CanvasView.tsx`
+- `app/src/components/canvas/HeatmapLayer.tsx`
+- `app/src/components/canvas/AtomLayer.tsx`
+- `app/src/components/canvas/ReplayController.tsx`
+- `app/src/components/canvas/ReplayButton.tsx`
+- `app/src/components/canvas/bucketing.ts` (shared pure helpers)
+
+Edits:
+- `app/src/App.tsx` — `/canvas` is now `<CanvasRoute/>` (was a v1.16
+  redirect → /feed)
+- `app/src/components/layout/Sidebar.tsx` — Canvas nav item between
+  People and Memory
+- `app/src/lib/store.ts` — `ui.welcomedReplayDone` + setter +
+  persist + merge fallback
+
+Total tests: 668 → 695 (27 new + wave14 still passes).
+
 ## [1.17.5] — 2026-04-29 — UX polish: faster onboarding + diagnostic empty /feed
 
 CEO sat down with the v1.17.4 installer and said "ux太差了". Three friction

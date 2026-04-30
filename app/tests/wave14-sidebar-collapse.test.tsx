@@ -102,8 +102,11 @@ describe("Wave 14 sidebar — wave-19 IA contract", () => {
     );
     // v1.16.1 killed list. /people + /threads moved INTO the rail
     // (they're the v1.16 view modes), so they're no longer "killed".
-    // /today + /brain + /canvas stayed killed (smart-layer surfaces
-    // 砍 in v1.16 Wave 1 demolition). Inbox routes via /threads now.
+    // === v1.18.0 === — /canvas reclaimed as the new heat-map + atom +
+    // Replay surface (the founder's "one canvas, two zoom levels"
+    // ask). It was on the killed list during v1.16 demolition; now
+    // it's a real second-tab nav item, so it's been removed below.
+    // /today + /brain stayed killed (smart-layer surfaces still砍).
     const killedHrefs = [
       "/this-week",
       "/projects",
@@ -114,7 +117,6 @@ describe("Wave 14 sidebar — wave-19 IA contract", () => {
       "/sinks/browser",
       "/today",
       "/brain",
-      "/canvas",
       "/co-thinker",
     ];
     for (const href of killedHrefs) {
@@ -123,6 +125,11 @@ describe("Wave 14 sidebar — wave-19 IA contract", () => {
         `expected sidebar to NOT link directly to ${href} (Cmd+K / Settings only)`,
       ).toBeNull();
     }
+    // === v1.18.0 === — explicit positive assertion that /canvas DOES
+    // mount in the rail. Pinned so a future "hide canvas behind a
+    // setting" change can't silently kill the founder's spec.
+    expect(document.querySelector('a[href="/canvas"]')).not.toBeNull();
+    // === end v1.18.0 ===
   });
 });
 // === end wave 19 ===
