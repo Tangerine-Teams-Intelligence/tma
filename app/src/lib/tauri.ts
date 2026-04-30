@@ -865,12 +865,25 @@ export async function applyReviewDecisions(
   decisions: { approved: number[]; rejected: number[]; edited: Record<number, string> }
 ): Promise<void> {
   try {
-    const { logEvent } = await import("./telemetry");
-    await logEvent("review_decisions_submitted", {
-      meeting_id: meetingId,
-      approved_count: decisions.approved.length,
-      rejected_count: decisions.rejected.length,
-      edited_count: Object.keys(decisions.edited).length,
+    // v1.17.4 — Inline the telemetry envelope here instead of dynamically
+    // importing `./telemetry`. telemetry.ts already statically imports this
+    // file (`telemetryLog`), so a dynamic import back into telemetry creates
+    // a runtime cycle that Vite refuses to code-split (see the vite reporter
+    // "dynamically imported by ... but also statically imported by ..."
+    // warning). Inlining drops the cycle and unblocks chunking. We omit the
+    // user-tag resolution telemetry.ts does (the store lookup is the other
+    // direction of the same cycle) and stamp "me" — this matches the
+    // fallback telemetry.ts itself uses whenever the store is mid-hydration.
+    await telemetryLog({
+      event: "review_decisions_submitted",
+      ts: new Date().toISOString(),
+      user: "me",
+      payload: {
+        meeting_id: meetingId,
+        approved_count: decisions.approved.length,
+        rejected_count: decisions.rejected.length,
+        edited_count: Object.keys(decisions.edited).length,
+      },
     });
   } catch {
     // Telemetry failure must never block the apply pipeline.

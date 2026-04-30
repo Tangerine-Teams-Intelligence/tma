@@ -47,6 +47,27 @@ export default defineConfig(async () => ({
     sourcemap: !!process.env.TAURI_DEBUG,
     outDir: "dist",
     emptyOutDir: true,
+    // v1.17.4 — Code-split heavy vendor deps so the main `index-*.js` chunk
+    // stays under Vite's 500 kB warn threshold. The pre-split bundle was
+    // 1213 kB raw / 356 kB gzip; splitting the vendor groups below cuts the
+    // entry chunk roughly in half and lets the browser cache vendors
+    // independently of app churn.
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          "react-vendor": ["react", "react-dom", "react-router-dom"],
+          "i18n-vendor": ["i18next", "react-i18next"],
+          "ui-vendor": [
+            "lucide-react",
+            "class-variance-authority",
+            "clsx",
+            "tailwind-merge",
+          ],
+          "markdown-vendor": ["react-markdown"],
+          "flow-vendor": ["reactflow"],
+        },
+      },
+    },
   },
   test: {
     globals: true,

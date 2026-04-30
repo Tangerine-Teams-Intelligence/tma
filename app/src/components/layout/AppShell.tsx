@@ -815,7 +815,6 @@ export function AppShell() {
     void (async () => {
       try {
         const { listen } = await import("@tauri-apps/api/event");
-        const { logEvent } = await import("@/lib/telemetry");
         if (cancelled) return;
         unWb = await listen<unknown>("writeback:event", (e) => {
           // Best-effort; an unknown payload shape mustn't break logging.

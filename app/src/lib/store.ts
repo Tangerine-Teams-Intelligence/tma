@@ -26,6 +26,13 @@ import {
 } from "./ambient";
 import type { BannerProps } from "@/components/suggestions/Banner";
 import type { ModalProps } from "@/components/suggestions/Modal";
+// v1.17.4 — Inline static import for the modal-budget telemetry call below
+// (was a dynamic import of "./telemetry"). The dynamic import created a
+// cycle with telemetry.ts (which imports useStore from this file), and Vite
+// refused to code-split telemetry until that cycle was broken. tauri.ts only
+// type-imports this module, so a static import of `telemetryLog` is safe at
+// runtime — no eager cycle.
+import { telemetryLog } from "./tauri";
 
 // ---------- shared types ----------
 
@@ -1273,17 +1280,20 @@ export const useStore = create<Store>()(
           set((s) => {
             if (s.ui.modalsShownThisSession >= 3) {
               // Fire-and-forget — telemetry must never block the render
-              // path. Lazy-import logEvent so the store stays decoupled
-              // from the telemetry module's tauri dependency at hydrate
-              // time (vitest jsdom has no tauri bridge).
-              void (async () => {
-                try {
-                  const { logEvent } = await import("./telemetry");
-                  void logEvent("modal_budget_exceeded", { dropped: m.id });
-                } catch {
-                  // No telemetry available — silent drop is correct.
-                }
-              })();
+              // path. v1.17.4 — was a dynamic import of "./telemetry" to
+              // dodge a circular dep (telemetry.ts re-imports useStore
+              // from here). Now we call telemetryLog directly: it's
+              // already a no-op outside Tauri (vitest jsdom returns void
+              // from the mock branch), so the original "vitest has no
+              // tauri bridge" concern is satisfied without the cycle.
+              void telemetryLog({
+                event: "modal_budget_exceeded",
+                ts: new Date().toISOString(),
+                user: s.ui.currentUser || "me",
+                payload: { dropped: m.id },
+              }).catch(() => {
+                // Soft-fail. Telemetry must never break the UI.
+              });
               return s;
             }
             const filtered = s.ui.modalQueue.filter((x) => x.id !== m.id);

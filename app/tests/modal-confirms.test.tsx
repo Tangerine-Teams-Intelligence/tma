@@ -14,7 +14,13 @@
 
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { waitFor } from "@testing-library/react";
-import * as telemetry from "../src/lib/telemetry";
+// v1.17.4 — Switched from spying on `telemetry.logEvent` to spying on
+// `tauri.telemetryLog` because the store no longer goes through the
+// `logEvent` wrapper (the dynamic import was breaking Vite's code-split;
+// see vite.config.ts manualChunks + telemetry static-only refactor). The
+// payload shape is the envelope `{ event, ts, user, payload }` directly,
+// not the wrapper's `(name, payload)` tuple.
+import * as tauri from "../src/lib/tauri";
 import { useStore } from "../src/lib/store";
 
 describe("Action 2: writeback first-time confirm latch", () => {
@@ -96,7 +102,7 @@ describe("Modal budget enforcement (≤3 per session)", () => {
   });
 
   it("modal budget exceeded after 3 → 4th drops + logs", async () => {
-    const logSpy = vi.spyOn(telemetry, "logEvent").mockResolvedValue();
+    const logSpy = vi.spyOn(tauri, "telemetryLog").mockResolvedValue();
     const ui = useStore.getState().ui;
 
     // First three modals enqueue + bump the counter.
@@ -125,11 +131,14 @@ describe("Modal budget enforcement (≤3 per session)", () => {
     expect(useStore.getState().ui.modalsShownThisSession).toBe(3);
     expect(useStore.getState().ui.modalQueue).toHaveLength(3);
 
-    // Telemetry fires fire-and-forget via dynamic import → wait a tick.
+    // Telemetry fires fire-and-forget — wait a tick. The envelope shape
+    // matches the Rust `TelemetryEvent` struct in src-tauri/src/agi/telemetry.rs.
     await waitFor(() => {
       expect(logSpy).toHaveBeenCalledWith(
-        "modal_budget_exceeded",
-        expect.objectContaining({ dropped: "m4" }),
+        expect.objectContaining({
+          event: "modal_budget_exceeded",
+          payload: expect.objectContaining({ dropped: "m4" }),
+        }),
       );
     });
   });
