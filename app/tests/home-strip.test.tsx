@@ -251,15 +251,17 @@ describe("Onboarding skip when memory dir non-empty", () => {
       .spyOn(memory, "userFacingFoldersEmpty")
       .mockResolvedValue(false);
 
-    // Mount inside a Routes config so navigate("/today") actually
-    // unmounts the OnboardingTeamRoute and renders the /today landing.
+    // Mount inside a Routes config so navigate("/") actually
+    // unmounts the OnboardingTeamRoute and renders the / landing.
     // Without this the navigate() call is a no-op and the picker DOM
     // stays around even though the effect did fire.
+    // v1.19.3: prod nav target moved from /today (legacy redirect) to
+    // / (canonical single canvas).
     render(
       <MemoryRouter initialEntries={["/onboarding-team"]}>
         <Routes>
           <Route path="/onboarding-team" element={<OnboardingTeamRoute />} />
-          <Route path="/today" element={<div>today landing</div>} />
+          <Route path="/" element={<div>today landing</div>} />
         </Routes>
       </MemoryRouter>,
     );

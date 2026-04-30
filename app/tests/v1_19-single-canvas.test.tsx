@@ -908,6 +908,146 @@ describe("v1.19.2 Round 3 Fix 2 — First-launch auto-replay (real corpus gate)"
   });
 });
 
+// ===================== v1.19.3 fix-all audit =====================
+
+describe("v1.19.3 — Cmd/Ctrl+B toggles sidebar visibility", () => {
+  function renderShell() {
+    return render(
+      <MemoryRouter initialEntries={["/"]}>
+        <AppShell />
+      </MemoryRouter>,
+    );
+  }
+
+  it("Cmd+B flips sidebarVisible from false → true", async () => {
+    vi.spyOn(views, "readTimelineRecent").mockResolvedValue({
+      events: [],
+      notes: [],
+    });
+    useStore.setState((s) => ({ ui: { ...s.ui, sidebarVisible: false } }));
+    renderShell();
+    await waitFor(() =>
+      expect(screen.getByTestId("app-shell-root")).toBeInTheDocument(),
+    );
+    expect(useStore.getState().ui.sidebarVisible).toBe(false);
+    act(() => {
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "b", metaKey: true }),
+      );
+    });
+    expect(useStore.getState().ui.sidebarVisible).toBe(true);
+  });
+
+  it("Cmd+B flips sidebarVisible from true → false", async () => {
+    vi.spyOn(views, "readTimelineRecent").mockResolvedValue({
+      events: [],
+      notes: [],
+    });
+    useStore.setState((s) => ({ ui: { ...s.ui, sidebarVisible: true } }));
+    renderShell();
+    await waitFor(() =>
+      expect(screen.getByTestId("app-shell-root")).toBeInTheDocument(),
+    );
+    expect(useStore.getState().ui.sidebarVisible).toBe(true);
+    act(() => {
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "b", ctrlKey: true }),
+      );
+    });
+    expect(useStore.getState().ui.sidebarVisible).toBe(false);
+  });
+});
+
+describe("v1.19.3 — AppShell hydrates personalAgentsEnabled from Rust", () => {
+  function renderShell() {
+    return render(
+      <MemoryRouter initialEntries={["/"]}>
+        <AppShell />
+      </MemoryRouter>,
+    );
+  }
+
+  it("mirrors Rust persisted settings into the React store on mount", async () => {
+    vi.spyOn(views, "readTimelineRecent").mockResolvedValue({
+      events: [],
+      notes: [],
+    });
+    // Mock Rust to return claude_code: true while React store starts all
+    // false (the v1.18 → v1.19 install scenario Daizhe just hit).
+    const tauri = await import("../src/lib/tauri");
+    vi.spyOn(tauri, "personalAgentsGetSettings").mockResolvedValue({
+      cursor: false,
+      claude_code: true,
+      codex: false,
+      windsurf: false,
+      devin: false,
+      replit: false,
+      apple_intelligence: false,
+      ms_copilot: false,
+      last_sync_at: null,
+    });
+    useStore.setState((s) => ({
+      ui: {
+        ...s.ui,
+        personalAgentsEnabled: {
+          cursor: false,
+          claude_code: false,
+          codex: false,
+          windsurf: false,
+          devin: false,
+          replit: false,
+          apple_intelligence: false,
+          ms_copilot: false,
+        },
+      },
+    }));
+    renderShell();
+    await waitFor(() =>
+      expect(screen.getByTestId("app-shell-root")).toBeInTheDocument(),
+    );
+    await waitFor(() => {
+      expect(useStore.getState().ui.personalAgentsEnabled.claude_code).toBe(
+        true,
+      );
+    });
+  });
+
+  it("does NOT crash when personalAgentsGetSettings rejects (Tauri-down)", async () => {
+    vi.spyOn(views, "readTimelineRecent").mockResolvedValue({
+      events: [],
+      notes: [],
+    });
+    const tauri = await import("../src/lib/tauri");
+    vi.spyOn(tauri, "personalAgentsGetSettings").mockRejectedValue(
+      new Error("tauri bridge missing"),
+    );
+    useStore.setState((s) => ({
+      ui: {
+        ...s.ui,
+        personalAgentsEnabled: {
+          cursor: false,
+          claude_code: false,
+          codex: false,
+          windsurf: false,
+          devin: false,
+          replit: false,
+          apple_intelligence: false,
+          ms_copilot: false,
+        },
+      },
+    }));
+    renderShell();
+    await waitFor(() =>
+      expect(screen.getByTestId("app-shell-root")).toBeInTheDocument(),
+    );
+    // Store remains all-false under failure mode (honest: don't fake a
+    // claim about Rust state we couldn't read).
+    expect(useStore.getState().ui.personalAgentsEnabled.claude_code).toBe(
+      false,
+    );
+  });
+});
+
 describe("v1.19.1 Round 2 H — Today gets the orange accent", () => {
   function renderRoute() {
     return render(

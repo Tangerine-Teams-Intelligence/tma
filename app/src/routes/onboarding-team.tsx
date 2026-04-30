@@ -93,7 +93,10 @@ export default function OnboardingTeamRoute() {
       // Case 1 — returning user with a recorded mode.
       if (memoryConfigMode !== undefined) {
         if (cancel) return;
-        navigate("/today", { replace: true });
+        // v1.19.3 — / is the canonical landing route. /today still
+        // redirects to / via App.tsx, but bouncing through a legacy
+        // route is clumsy. Same fix as auth.tsx.
+        navigate("/", { replace: true });
         return;
       }
       // Case 2 — disk has content. Solo-default + skip.
@@ -106,7 +109,7 @@ export default function OnboardingTeamRoute() {
         if (cancel) return;
         if (!empty) {
           setMemoryConfig({ mode: "solo" });
-          navigate("/today", { replace: true });
+          navigate("/", { replace: true });
         }
       } catch {
         // Tauri bridge missing (browser dev / vitest) → fall through to

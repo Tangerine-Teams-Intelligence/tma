@@ -5,8 +5,8 @@
  * tool. v1.19's redesign:
  *   1. AppShell renders the route Outlet + Spotlight + footer hint. That's it.
  *   2. Sidebar hidden by default (gated on `ui.sidebarVisible`). Round-1
- *      default = false. Cmd+B will eventually toggle. The Sidebar component
- *      stays on disk for power users.
+ *      default = false. Cmd+B toggles (wired in v1.19.3). The Sidebar
+ *      component stays on disk for power users.
  *   3. No banner stack. No StatusBar. No MagicMoment. No WhatsNewBanner.
  *      The components stay on disk; they're just unmounted in Round 1.
  *   4. Cmd+K → Spotlight (the new everything-overlay). T/H/P/R single keys
@@ -38,6 +38,7 @@ import { userFacingFoldersEmpty } from "@/lib/memory";
 import {
   initMemoryWithSamples,
   resolveMemoryRoot,
+  personalAgentsGetSettings,
 } from "@/lib/tauri";
 import { logEvent } from "@/lib/telemetry";
 import { pushSuggestion } from "@/lib/suggestion-bus";
@@ -110,6 +111,20 @@ export function AppShell() {
   // (readTimelineRecent returns events.length > 0). See effect below.
   const welcomedReplayDone = useStore((s) => s.ui.welcomedReplayDone);
   const setWelcomedReplayDone = useStore((s) => s.ui.setWelcomedReplayDone);
+  // === v1.19.3 R6 fix — sync personalAgentsEnabled from Rust on mount ===
+  // Without this hydration, the feed empty state branched on a default-
+  // all-false `personalAgentsEnabled` even when the Rust side had
+  // `claude_code = true` persisted. Daizhe installed v1.19.2 over v1.18
+  // (which had Claude Code Connected) and saw "No sources connected"
+  // — the UI was lying, not the Rust state. Now AppShell mirrors the
+  // Rust persisted settings into the React store on first mount, so
+  // every surface that reads `personalAgentsEnabled` (feed empty state,
+  // Spotlight :sources, etc.) sees reality. Settings page still reads
+  // `personal_agents_get_settings` independently — both call sites
+  // converge on the same Rust source of truth.
+  const setPersonalAgentsEnabled = useStore(
+    (s) => s.ui.setPersonalAgentsEnabled,
+  );
 
   // === v1.19.0 onboarding obliteration ===
   // Permanently flip welcomed=true on first AppShell mount. The
@@ -118,6 +133,35 @@ export function AppShell() {
   useEffect(() => {
     if (!welcomed) setWelcomed(true);
   }, [welcomed, setWelcomed]);
+
+  // === v1.19.3 R6 fix — hydrate personalAgentsEnabled from Rust ===
+  useEffect(() => {
+    let cancel = false;
+    void (async () => {
+      try {
+        const s = await personalAgentsGetSettings();
+        if (cancel) return;
+        setPersonalAgentsEnabled({
+          cursor: !!s.cursor,
+          claude_code: !!s.claude_code,
+          codex: !!s.codex,
+          windsurf: !!s.windsurf,
+          devin: !!s.devin,
+          replit: !!s.replit,
+          apple_intelligence: !!s.apple_intelligence,
+          ms_copilot: !!s.ms_copilot,
+        });
+      } catch {
+        // Tauri call failed (browser dev / vitest / Rust panic). Leave
+        // the React store at its default-all-false. The empty state
+        // will say "No sources connected" — honest under the failure
+        // mode (we genuinely don't know).
+      }
+    })();
+    return () => {
+      cancel = true;
+    };
+  }, [setPersonalAgentsEnabled]);
 
   // === v1.19.2 Round 3 Fix 2 — auto-replay real corpus gate ===
   // v1.19.1 R2 F gated on `samplesSeeded`, which is a "did we copy any
@@ -212,6 +256,10 @@ export function AppShell() {
   // === v1.19 Cmd+K + single-key view switchers ===
   // - Cmd/Ctrl+K toggles Spotlight.
   // - Cmd/Ctrl+, jumps to Settings (preserved muscle memory).
+  // - Cmd/Ctrl+B toggles the sidebar (v1.19.3 — Round 1 specced this
+  //   shortcut but never wired the keybind; the store action existed
+  //   alone. Now flipping is reachable without opening Spotlight or
+  //   Settings).
   // - T/H/P/R cycle canvasView when no input is focused AND Spotlight
   //   is closed.
   useEffect(() => {
@@ -235,6 +283,12 @@ export function AppShell() {
           window.history.pushState({}, "", "/settings");
           window.dispatchEvent(new PopStateEvent("popstate"));
         }
+        return;
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "b") {
+        e.preventDefault();
+        const cur = useStore.getState().ui.sidebarVisible;
+        useStore.getState().ui.setSidebarVisible(!cur);
         return;
       }
       // Single-key view switchers — gated.
