@@ -8,6 +8,22 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
      Each version block focuses on user-visible features so this doc can
      also feed the in-app /whats-new-app route. -->
 
+## [1.19.4] — 2026-04-30 — Emergency nav fix: TopNav + clickable Open Settings
+
+CEO Daizhe installed v1.19.3 and got stuck. Quote: *"一打开就还是这个页面，都回不去登陆页面没有按钮，你在设计什么 app 啊"*. Diagnosis: v1.19.0 killed the sidebar by default and trusted Cmd+K + footer hint as the only nav. Footer hint hides itself after 5 boots. Result: a user who doesn't memorize Cmd+K had zero way to reach Settings, sign-out, or any other route. R6 honesty was preserved (the empty state told the truth) but the surface offered no escape hatch.
+
+This release is a hot-fix for the dead-end. Real IA rethink (sidebar restoration in a thin / minimal / Obsidian-style left-rail) is **v1.20 scope** — this is a bandage so Daizhe can finish dogfooding v1.19 without being trapped.
+
+### Fixes
+
+- `app/src/components/layout/AppShell.tsx` — new `<TopNav>` always-visible top-right minibar with 3 controls: `⌘K` chip opens Spotlight; ⚙ → `/settings`; ⏻ → `/auth`. Position `fixed top-3 right-4`, mono chip + 2 SVG icon buttons (no lucide), 80%-opacity backdrop-blur so the bar never blocks underlying content. Present on every route + every state — sidebar visibility, footer-hint counter, and Cmd+K familiarity no longer matter for the escape hatch.
+- `app/src/routes/feed.tsx::EmptyState` (no-sources branch) — body copy: "No sources connected. Connect Cursor / Claude Code / Slack to start capturing your AI workflow." Followed by an actual orange "Open Settings" button (`useNavigate("/settings")`), then a small mono "or press ⌘K and type :sources" secondary line. Button = SPA routing, no full reload.
+
+### What this DOESN'T fix (v1.20 scope)
+
+- Sidebar restoration as the proper nav paradigm. v1.19's "Single-canvas + Cmd+K-everything" thesis over-corrected from v1.18's chrome-heavy 5-tab sidebar. Obsidian does NOT hide its sidebar by default — its premium feel comes from typography + restraint, not "kill all chrome". v1.20 will rethink the IA properly.
+- Auth flow itself: GitHub OAuth requires Supabase env vars Daizhe hasn't set. "Skip to local" remains the working path; documented as borderline.
+
 ## [1.19.2] — 2026-04-29 — Round 3 visual dogfood + final-mile honesty polish
 
 Round 3 closed the four honesty admissions Round 2 left on the floor and applied three visual fixes from a deep source-review pass (browser tooling was unavailable; falling back to source dogfood was honest about the limitation rather than fabricated). No new surfaces; no widened scope.

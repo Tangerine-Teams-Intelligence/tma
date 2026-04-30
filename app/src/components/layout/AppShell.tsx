@@ -24,7 +24,7 @@
  */
 
 import { useEffect, useRef } from "react";
-import { Outlet, useLocation } from "react-router-dom";
+import { Outlet, useLocation, NavLink } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { Spotlight } from "@/components/spotlight/Spotlight";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -406,6 +406,11 @@ export function AppShell() {
         <div className="flex min-w-0 flex-1 flex-col">
           <BannerHost />
           <main className="relative flex-1 overflow-auto bg-stone-50 dark:bg-stone-950">
+            {/* === v1.19.4 emergency nav fix === always-visible top-right
+                navbar so users have a reliable escape hatch when sidebar
+                is hidden + footer hint has decayed. v1.19.0–.3 left users
+                stranded if they didn't memorize ⌘K. */}
+            <TopNav onOpenSpotlight={() => setSpotlightOpen(true)} />
             <Outlet />
             <FooterHint
               visible={shortcutHintShown < 5}
@@ -420,6 +425,83 @@ export function AppShell() {
         </ErrorBoundary>
       </div>
     </AmbientInputObserver>
+  );
+}
+
+/**
+ * v1.19.4 emergency nav fix — always-visible top-right minibar.
+ * Three icon-buttons: Spotlight (⌘K), Settings (gear), Sign-out.
+ * Pinned `position: fixed top-right` so every route + every state
+ * shows it — no matter the sidebar's hidden state, the footer hint
+ * counter, or the user's familiarity with keyboard shortcuts.
+ *
+ * Why a TopNav instead of restoring the v1.18 sidebar:
+ *   • Sidebar restoration is a v1.20 IA decision (real rethink, not
+ *     hot-fix scope).
+ *   • The pain Daizhe hit was "no exit" — solved by 3 always-visible
+ *     buttons. Sidebar's full nav (4 view tabs) stays second-class.
+ *   • TopNav is mono-icon, no labels, ~120px wide — minimal chrome.
+ */
+function TopNav({ onOpenSpotlight }: { onOpenSpotlight: () => void }) {
+  return (
+    <nav
+      data-testid="top-nav"
+      className="pointer-events-none fixed right-4 top-3 z-30 flex select-none items-center gap-1"
+      aria-label="Quick navigation"
+    >
+      <button
+        type="button"
+        data-testid="top-nav-spotlight"
+        onClick={onOpenSpotlight}
+        title="Open Spotlight (⌘K)"
+        className="pointer-events-auto rounded-md border border-stone-200 bg-white/80 px-2 py-1 font-mono text-[11px] text-stone-600 shadow-sm backdrop-blur transition-colors hover:bg-stone-100 dark:border-stone-800 dark:bg-stone-900/80 dark:text-stone-400 dark:hover:bg-stone-800"
+      >
+        ⌘K
+      </button>
+      <NavLink
+        data-testid="top-nav-settings"
+        to="/settings"
+        title="Settings (⌘,)"
+        className="pointer-events-auto rounded-md border border-stone-200 bg-white/80 p-1.5 text-stone-600 shadow-sm backdrop-blur transition-colors hover:bg-stone-100 dark:border-stone-800 dark:bg-stone-900/80 dark:text-stone-400 dark:hover:bg-stone-800"
+      >
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden
+        >
+          <circle cx="12" cy="12" r="3" />
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+        </svg>
+      </NavLink>
+      <NavLink
+        data-testid="top-nav-signout"
+        to="/auth"
+        title="Sign out / switch account"
+        className="pointer-events-auto rounded-md border border-stone-200 bg-white/80 p-1.5 text-stone-600 shadow-sm backdrop-blur transition-colors hover:bg-stone-100 dark:border-stone-800 dark:bg-stone-900/80 dark:text-stone-400 dark:hover:bg-stone-800"
+      >
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden
+        >
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+          <polyline points="16 17 21 12 16 7" />
+          <line x1="21" y1="12" x2="9" y2="12" />
+        </svg>
+      </NavLink>
+    </nav>
   );
 }
 

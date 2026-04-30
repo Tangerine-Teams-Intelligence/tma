@@ -32,6 +32,7 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   readTimelineRecent,
   type TimelineEvent,
@@ -389,6 +390,7 @@ function ReplayView({
  * same R6 amber treatment v1.18.2 added when the path was unknown.
  */
 function EmptyState() {
+  const navigate = useNavigate();
   const personalAgentsEnabled = useStore(
     (s) => s.ui.personalAgentsEnabled,
   );
@@ -407,18 +409,22 @@ function EmptyState() {
       <div
         data-testid="empty-state"
         data-empty-mode="no-sources"
-        className="flex h-full items-center justify-center px-8"
+        className="flex h-full flex-col items-center justify-center px-8 gap-6"
       >
         <p className="max-w-md text-center text-[14px] text-stone-500 dark:text-stone-400">
-          No sources connected. Press{" "}
-          <span className="font-mono text-stone-700 dark:text-stone-300">
-            ⌘K
-          </span>{" "}
-          and type{" "}
-          <span className="font-mono text-stone-700 dark:text-stone-300">
-            :sources
-          </span>
-          , or open Settings to connect Cursor / Claude Code / Slack.
+          No sources connected. Connect Cursor / Claude Code / Slack to start
+          capturing your AI workflow.
+        </p>
+        <button
+          type="button"
+          data-testid="empty-state-connect-cta"
+          onClick={() => navigate("/settings")}
+          className="rounded-md border border-[var(--ti-orange-500)] bg-[var(--ti-orange-500)] px-4 py-2 text-[13px] font-medium text-white transition-colors hover:bg-[var(--ti-orange-700)]"
+        >
+          Open Settings
+        </button>
+        <p className="text-center font-mono text-[10px] text-stone-400">
+          or press ⌘K and type :sources
         </p>
       </div>
     );
