@@ -8,6 +8,59 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
      Each version block focuses on user-visible features so this doc can
      also feed the in-app /whats-new-app route. -->
 
+## [1.17.4] — 2026-04-29 — Code-split JS bundle + Windows installer ship
+
+First v1.17 build that actually ships an installer on disk. Unblocks the
+v2-readiness "≥1 week daily-use" criterion (CEO needs an installer to
+install the app) and chips away at cold-start perf via vendor splitting.
+
+### Code-split
+
+`app/src/lib/telemetry.ts` had been mixed static + dynamic across 3
+caller files — Vite refused to chunk it. Made it static-only:
+
+- `AppShell.tsx`: dynamic `import("@/lib/telemetry")` was dead code
+  (the file already had the static import on line 128). Removed.
+- `tauri.ts::applyReviewDecisions`: dynamic-imported `logEvent` from
+  `./telemetry` to fire `review_decisions_submitted`. The wrapper just
+  loops back to `telemetryLog` (which lives in tauri.ts itself), so
+  inlined the envelope construction. User stamped as `"me"` — same
+  fallback `telemetry.ts` uses when the store is mid-hydration.
+- `store.ts::pushModal` (modal-budget guard): dynamic-imported
+  `logEvent` because telemetry.ts re-imports `useStore` from this file.
+  Switched to a static import of `telemetryLog` from `tauri.ts`
+  directly — `tauri.ts` only type-imports `store.ts`, so no runtime
+  cycle. Inlined the envelope.
+
+Added `build.rollupOptions.output.manualChunks` in `vite.config.ts`:
+`react-vendor` (react + react-dom + react-router-dom), `i18n-vendor`
+(i18next + react-i18next), `ui-vendor` (lucide-react + cva + clsx +
+tailwind-merge), `markdown-vendor` (react-markdown), `flow-vendor`
+(reactflow). Tauri vendor was dropped — actual `@tauri-apps/*` usage
+is dynamic-import strings (UpdaterCheck.tsx) so Rollup can't resolve
+the static-chunk entries.
+
+### Bundle (before / after)
+
+| Chunk | v1.17.3 | v1.17.4 |
+|---|---|---|
+| `index-*.js` (main) | 1213.07 kB / 355.77 kB gz | **806.92 kB / 227.98 kB gz** |
+| `react-vendor-*.js` | — | 35.52 kB / 12.50 kB gz |
+| `i18n-vendor-*.js` | — | 52.45 kB / 16.37 kB gz |
+| `ui-vendor-*.js` | — | 54.16 kB / 14.05 kB gz |
+| `markdown-vendor-*.js` | — | 118.12 kB / 36.41 kB gz |
+| `flow-vendor-*.js` | — | 146.82 kB / 48.01 kB gz |
+
+Main chunk: -33% raw, -36% gzip. All vendor chunks under 500 kB
+warn threshold. Total tests: 641/641 pass (was 640/641 — modal-confirms
+test updated to spy on `tauri.telemetryLog` envelope shape).
+
+### Windows installer
+
+Bumped `app/package.json`, `app/src-tauri/tauri.conf.json`,
+`app/src-tauri/Cargo.toml`, and `pyproject.toml` to `1.17.4`.
+Built via `npm run tauri:build` — see release notes for SHA256 + size.
+
 ## [1.17.3] — 2026-04-29 — Perf baseline + Cargo.toml version sync
 
 No behavior change. Records the v2-readiness criterion 5 baseline
