@@ -5,17 +5,12 @@ import AuthRoute from "@/routes/auth";
 import MemoryRoute from "@/routes/memory";
 import SourceDetailRoute from "@/routes/source-detail";
 import SinkDetailRoute from "@/routes/sink-detail";
-import InboxRoute from "@/routes/inbox";
-import AlignmentRoute from "@/routes/alignment";
 import DiscordSourceRoute from "@/routes/sources/discord";
-// v1.8 Phase 2-C — Notion / Loom / Zoom real-wire setup pages.
 import NotionSourceRoute from "@/routes/sources/notion";
 import LoomSourceRoute from "@/routes/sources/loom";
 import ZoomSourceRoute from "@/routes/sources/zoom";
-// v1.8 Phase 2-D — Email + Voice notes (new sources, ingest only).
 import EmailSourceRoute from "@/routes/sources/email";
 import VoiceNotesSourceRoute from "@/routes/sources/voice-notes";
-// v3.0 §2 — Layer 6 external world capture (RSS / podcast / YouTube / article).
 import ExternalSourceRoute from "@/routes/sources/external";
 import OnboardingTeamRoute from "@/routes/onboarding-team";
 import JoinTeamRoute from "@/routes/join-team";
@@ -23,27 +18,16 @@ import MeetingDetailPage from "@/pages/meetings/detail";
 import LivePage from "@/pages/live";
 import ReviewPage from "@/pages/review";
 import SettingsPage from "@/pages/settings";
-// Stage 1 Wave 3 — Chief of Staff views.
-import TodayRoute from "@/routes/today";
-import ThisWeekRoute from "@/routes/this-week";
-// === v1.16 Wave 2 === — Story Feed, the new default landing surface.
-// Replaces /today as the v1.16 entry point. /today still works (legacy
-// muscle memory) until v1.17 drops it.
+// === v1.19.0 Round 1 === — FeedRoute is the single canvas surface.
+// All legacy routes (today / this-week / daily / canvas / people / threads /
+// inbox / alignment / brain / co-thinker / memory) redirect to /, with the
+// internal view selector (T/H/P/R) cycling between time / heatmap / people
+// / replay. The legacy route components stay on disk; they're just not
+// wired into the route table any more.
 import FeedRoute from "@/routes/feed";
-// === v1.18.0 === — Canvas surface: heat-map / atom layer / Replay
-// timelapse. Sits next to /feed in the IA ("Apple Photos zoom levels",
-// per the founder spec). NOT a v1.16 demolition victim — a brand new
-// second tab. /canvas is no longer a redirect to /feed.
-import CanvasRoute from "@/routes/canvas";
-// === end v1.18.0 ===
-// === wave 24 ===
-import DailyRoute from "@/routes/daily";
-// === end wave 24 ===
-import PeopleListRoute from "@/routes/people";
 import PersonDetailRoute from "@/routes/people/detail";
 import ProjectsListRoute from "@/routes/projects";
 import ProjectDetailRoute from "@/routes/projects/detail";
-import ThreadsListRoute from "@/routes/threads";
 import ThreadDetailRoute from "@/routes/threads/detail";
 // === v1.16 Wave 1 === — AI Tools setup page + /setup/connect onboarding
 // step砍. Personal AI capture is now configured inline from
@@ -161,114 +145,69 @@ export default function App() {
 
   return (
     <Routes>
-      {/* Auth screen still reachable when signed in, but redirects to /today. */}
-      <Route path="/auth" element={<Navigate to="/today" replace />} />
+      {/* Auth screen still reachable when signed in, but redirects to /. */}
+      <Route path="/auth" element={<Navigate to="/" replace />} />
 
-      {/* Legacy routes → redirect into the new shell. /memory is still
-          reachable for the file tree, but the default landing is now
-          /today (Stage 1 Wave 3). */}
-      <Route path="/dashboard" element={<Navigate to="/today" replace />} />
-      <Route path="/skills" element={<Navigate to="/today" replace />} />
+      {/* === v1.19.0 Round 1 === — All legacy routes funnel into the
+          single canvas surface. The single canvas (mounted at /) is
+          the time-density list; H/P/R single-keys cycle the view
+          internally. Heatmap / People / Replay no longer have their
+          own URLs. */}
+      <Route path="/dashboard" element={<Navigate to="/" replace />} />
+      <Route path="/skills" element={<Navigate to="/" replace />} />
       <Route path="/skills/meeting" element={<Navigate to="/sources/discord" replace />} />
-      {/* === v1.16 Wave 1 === — /setup/connect 砍. /setup keeps the
-          fall-through redirect for any old bookmark. */}
-      <Route path="/setup/*" element={<Navigate to="/today" replace />} />
-      <Route path="/setup" element={<Navigate to="/today" replace />} />
-      <Route path="/home" element={<Navigate to="/today" replace />} />
-      {/* Old "Meeting tool" surface — Meeting was the Discord source. */}
+      <Route path="/setup/*" element={<Navigate to="/" replace />} />
+      <Route path="/setup" element={<Navigate to="/" replace />} />
+      <Route path="/home" element={<Navigate to="/" replace />} />
       <Route path="/meeting" element={<Navigate to="/sources/discord" replace />} />
       <Route path="/meeting/setup" element={<DiscordSourceRoute />} />
 
-      {/* v1.6.0 — full-page routes (no sidebar). */}
+      {/* Full-page routes (no sidebar / no shell). */}
       <Route path="/onboarding-team" element={<OnboardingTeamRoute />} />
       <Route path="/join" element={<JoinTeamRoute />} />
-
-      {/* Discord source setup is a full-page form — no sidebar chrome. */}
       <Route path="/sources/discord/setup" element={<DiscordSourceRoute />} />
-
-      {/* v1.8 Phase 2-C — Notion / Loom / Zoom setup pages (full-page forms). */}
       <Route path="/sources/notion/setup" element={<NotionSourceRoute />} />
       <Route path="/sources/loom/setup" element={<LoomSourceRoute />} />
       <Route path="/sources/zoom/setup" element={<ZoomSourceRoute />} />
-
-      {/* v1.8 Phase 2-D — Email + Voice notes setup pages (full-page). */}
       <Route path="/sources/email/setup" element={<EmailSourceRoute />} />
       <Route path="/sources/voice-notes/setup" element={<VoiceNotesSourceRoute />} />
-
-      {/* v3.0 §2 — External world (RSS / podcast / YouTube / article) setup. */}
       <Route path="/sources/external" element={<ExternalSourceRoute />} />
 
-      {/* Everything else lives inside the always-on sidebar shell. */}
       <Route element={<AppShell />}>
-        {/* v1.16 Wave 2 — /feed is the new default landing. /today
-            remains reachable for muscle memory but the index now lands
-            on Feed. */}
-        <Route index element={<Navigate to="/feed" replace />} />
+        {/* v1.19.0 — / is the single canvas surface. */}
+        <Route index element={<FeedRoute />} />
 
-        <Route path="feed" element={<FeedRoute />} />
+        {/* All v1.16-v1.18 primary surfaces redirect to /. The single-key
+            shortcuts T/H/P/R inside AppShell handle view switching. */}
+        <Route path="feed" element={<Navigate to="/" replace />} />
+        <Route path="today" element={<Navigate to="/" replace />} />
+        <Route path="this-week" element={<Navigate to="/" replace />} />
+        <Route path="daily" element={<Navigate to="/" replace />} />
+        <Route path="brain" element={<Navigate to="/" replace />} />
+        <Route path="co-thinker" element={<Navigate to="/" replace />} />
+        <Route path="canvas" element={<Navigate to="/" replace />} />
+        <Route path="alignment" element={<Navigate to="/" replace />} />
+        <Route path="inbox" element={<Navigate to="/" replace />} />
+        <Route path="people" element={<Navigate to="/" replace />} />
+        <Route path="threads" element={<Navigate to="/" replace />} />
+        <Route path="memory" element={<Navigate to="/" replace />} />
 
-        {/* v1.16 Wave 6 dogfood — every legacy primary surface that was
-            replaced by /feed redirects there. /today (Wave-3 dashboard
-            with Search team memory + Recent decisions widgets) is dead;
-            the LLM-shaped widgets it rendered were砍 alongside the
-            smart layer. /this-week + /daily roll up into /feed's day
-            separator. /co-thinker, /canvas, /brain, /alignment all 砍.
-            Keep TodayRoute import alive only because it's referenced
-            by some test fixtures — but route is unmounted. */}
-        <Route path="today" element={<Navigate to="/feed" replace />} />
-        <Route path="this-week" element={<Navigate to="/feed" replace />} />
-        <Route path="daily" element={<Navigate to="/feed" replace />} />
-        <Route path="brain" element={<Navigate to="/feed" replace />} />
-        <Route path="co-thinker" element={<Navigate to="/feed" replace />} />
-        {/* === v1.18.0 === — /canvas is the new second-tab surface.
-            Was a v1.16 redirect → /feed; the redirect was a砍 victim
-            of the smart-layer demolition. v1.18 reclaims the route as
-            the heat-map + atom + Replay surface the spec asked for. */}
-        <Route path="canvas" element={<CanvasRoute />} />
-        <Route path="alignment" element={<Navigate to="/feed" replace />} />
-        <Route path="inbox" element={<Navigate to="/threads" replace />} />
-        <Route path="people" element={<PeopleListRoute />} />
-        {/* === v2.0-beta.1 graphs ===
-            Static graph routes MUST sit above the param routes; otherwise
-            `:alias` / `:slug` swallow them. */}
+        {/* Power-user / detail surfaces still reachable by direct URL —
+            v1.19 doesn't ship UI links to them, but Cmd+K + bookmarks
+            keep working. The graph routes are kept for the same reason. */}
         <Route path="people/social" element={<SocialGraphRoute />} />
         <Route path="projects/topology" element={<ProjectTopologyRoute />} />
         <Route path="decisions/lineage" element={<DecisionLineageRoute />} />
-        {/* === end v2.0-beta.1 graphs === */}
         <Route path="people/:alias" element={<PersonDetailRoute />} />
         <Route path="projects" element={<ProjectsListRoute />} />
         <Route path="projects/:slug" element={<ProjectDetailRoute />} />
-        <Route path="threads" element={<ThreadsListRoute />} />
         <Route path="threads/:topic" element={<ThreadDetailRoute />} />
-
-        {/* === v1.16 Wave 1 === — Canvas + Co-thinker (+ /brain alias)
-            routes 砍. Old bookmarks fall through to the / catch-all
-            `Navigate to /today`. Wave 2 may reuse /brain for a Memory
-            tree; until then no route owns those URLs. */}
-
-        {/* === v2.5 reviews route === */}
         <Route path="reviews" element={<ReviewsRoute />} />
-        {/* === end v2.5 reviews route === */}
-
-        {/* MEMORY — file tree + viewer (still reachable, no longer default) */}
-        <Route path="memory" element={<MemoryRoute />} />
         <Route path="memory/*" element={<MemoryRoute />} />
-
-        {/* SOURCES */}
         <Route path="sources/:id" element={<SourceDetailRoute />} />
-
-        {/* SINKS */}
         <Route path="sinks/:id" element={<SinkDetailRoute />} />
 
-        {/* === v1.16 Wave 1 === — AI Tools per-tool setup route砍. The
-            sidebar entry now points at settings/PersonalAgents. Old links
-            fall through to the / → /today catch-all. */}
-
-        {/* v1.16 — /inbox + /alignment redirects mounted earlier above
-            (inbox → /threads since both are @mention surfaces;
-            alignment → /feed since alignment was an LLM-shaped surface). */}
-
-        {/* Meeting detail / live (kept — the Discord source's per-call view). */}
+        {/* Meeting detail / live (per-call Discord views — preserved). */}
         <Route path="meeting/:id" element={<MeetingDetailPage />} />
         <Route path="meeting/:id/live" element={<LivePage />} />
         <Route path="meeting/:id/review" element={<ReviewPage />} />
@@ -280,22 +219,13 @@ export default function App() {
         <Route path="live" element={<LivePage />} />
 
         <Route path="settings" element={<SettingsPage />} />
-
-        {/* === v2.5 billing route === */}
         <Route path="billing" element={<BillingRoute />} />
-        {/* === end v2.5 billing route === */}
-
-        {/* === v3.5 marketplace === */}
         <Route path="marketplace" element={<MarketplaceRoute />} />
         <Route path="marketplace/:id" element={<MarketplaceDetailRoute />} />
-        {/* === end v3.5 marketplace === */}
-
-        {/* === v1.14.6 round-7 === — in-app version changelog. */}
         <Route path="whats-new-app" element={<WhatsNewAppRoute />} />
-        {/* === end v1.14.6 round-7 === */}
       </Route>
 
-      <Route path="*" element={<Navigate to="/today" replace />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }

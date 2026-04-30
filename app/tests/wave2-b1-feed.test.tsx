@@ -1,21 +1,12 @@
 /**
  * v1.16 Wave 2 Agent B1 — /feed Story Feed tests.
  *
- * Spec coverage:
- *   1. Renders the loading state on first paint, then the feed list
- *      after readTimelineRecent resolves.
- *   2. Renders an error banner when readTimelineRecent throws.
- *   3. Renders the no-captures empty state when source returns 0 events.
- *   4. Renders the filtered-out empty state when filter chips strip
- *      every atom.
- *   5. Day separators bucket atoms by date.
- *   6. AtomCard renders vendor color dot + author + relative time.
- *   7. @mention atoms get the orange left-border (data-mention="true").
- *   8. Long bodies (>200 chars) collapse to a "Read full" affordance.
- *   9. FilterChips: @Me, Today, source-vendor toggles all work.
- *  10. Cmd+/ focuses the search input.
- *  11. v1.17 — ViewTabs killed (Sidebar nav covers Feed/Threads/People).
- *      The route no longer mounts the in-page tab strip.
+ * v1.19.0 Round 1 — SKIPPED. The whole feed shape is dead (FilterChips,
+ * AtomCard inline expand, Cmd+/ search, in-page ViewTabs were all
+ * unmounted as part of the single-canvas + Cmd+K-everything redesign).
+ * Coverage moved to `tests/v1_19-single-canvas.test.tsx`. The file
+ * stays on disk so `git log` keeps the historical context; describe
+ * is `.skip` so vitest doesn't fail on a dead surface.
  */
 
 import { describe, expect, it, beforeEach, vi } from "vitest";
@@ -94,7 +85,7 @@ function renderFeed() {
   );
 }
 
-describe("Wave 2 B1 — /feed Story Feed", () => {
+describe.skip("Wave 2 B1 — /feed Story Feed (DEAD: v1.19 single-canvas)", () => {
   it("shows the loading state then renders the feed list", async () => {
     vi.spyOn(views, "readTimelineRecent").mockResolvedValue({
       events: SAMPLE_EVENTS,

@@ -8,6 +8,28 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
      Each version block focuses on user-visible features so this doc can
      also feed the in-app /whats-new-app route. -->
 
+## [1.19.0] — 2026-04-29 — Single-canvas + Cmd+K: Obsidian-grade redesign (Round 1)
+
+After deep audit of Obsidian's premium feel, the verdict on v1.16/.17/.18's 5-tab sidebar architecture was that it's unfixable by polish — it's the wrong shape. v1.19 rips it out and replaces with single-canvas + Cmd+K-everything. This is Round 1 of an N-round iteration; Daizhe will dogfood and dispatch follow-up rounds against the friction surfaces this leaves behind.
+
+### Changes
+
+1. **AppShell rip-out** — every banner unmounted (LicenseTransitionBanner / WhatsNewBanner / DemoModeBanner / ConnectionBanner / GitInitBanner). StatusBar 4 chips, FilterChips bar, HomeStrip, TeammatesPill, MagicMoment 4-step onboarding, FirstRunTour, TryThisFAB, KeyboardShortcutsOverlay, HelpButton — all unmounted. Components stay on disk (Round 2+ may bring some back). Sidebar gated behind `ui.sidebarVisible` (default `false`).
+
+2. **Single canvas surface** — `/feed` rewritten as a time-density typography list. Centered column max-w-2xl, generous `mx-auto px-8` padding, bold day separator (`Wed 23` / `Today`), `grid-cols-[7ch_8ch_8ch_1fr]` rows: time / actor / source / body. Hover row gets 1px orange left border; click → AtomBottomSheet. CSS `content-visibility: auto` for 1000-row 60fps. No HighlightsRow, no TangerineNotes, no FilterChips, no AtomCard — pure list.
+
+3. **Spotlight (Cmd+K everything)** — new `app/src/components/spotlight/Spotlight.tsx`. Modal overlay, mono input at top, four result groups (Recent / People / Threads / Commands). Filter prefixes: `@<alias>` / `#<concept>` / `:<command>` / plain. Arrow keys navigate, Enter selects, ESC closes. Commands: `:replay` / `:settings` / `:theme` / `:sources` / `:about`.
+
+4. **Single-key view switchers** — `T` / `H` / `P` / `R` cycle the canvas view (time / heatmap / people / replay) when Spotlight is closed and no input has focus. View state lives in `ui.canvasView` (zustand, not persisted). H reuses the v1.18 `CanvasView` heatmap; R reuses `useReplayController`; P is a new dense per-actor list.
+
+5. **Footer hint** — single line at bottom: `T time · H heat · P people · R replay · ⌘K all else  v1.19.0`. Counter `ui.shortcutHintShown` bumps once per cold boot; hint hides at ≥ 5.
+
+6. **Onboarding obliteration** — `welcomed = true` permanently for everyone. Empty state is a single line: `No captures yet. Tangerine is watching.` (R6 honesty preserved — no fake atoms, no diagnostic 3-row card).
+
+7. **Route table simplified** — every legacy primary surface (`/today` / `/this-week` / `/daily` / `/canvas` / `/people` / `/threads` / `/inbox` / `/alignment` / `/brain` / `/co-thinker` / `/feed`) redirects to `/`. Power-user / detail routes (`/settings`, `/people/:alias`, `/projects/:slug`, `/sources/:id`, `/marketplace/*`, etc.) preserved for direct URL + Cmd+K reach.
+
+8. **R6 honesty preserved** — Settings → Connect still surfaces capture errors honestly. Empty state is honest. v1.18.2's 4 status-display fixes are intact (no Rust changes this round).
+
 ## [1.18.2] — 2026-04-29 — R6 audit pass: 4 status displays could lie
 
 Continuation of the v1.18.1 R6 audit. Daizhe asked: "你要保证这个 app 上面所有信息都是真实的". Status / count / metric display surfaces were swept; four were actively or passively dishonest about their state. Fixed in this release.

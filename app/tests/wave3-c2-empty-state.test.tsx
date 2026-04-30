@@ -89,7 +89,7 @@ describe("Wave 3 C2 — EmptyStateAnimation component", () => {
     ).toContain("Settings");
   });
 
-  it("v1.17 — /feed empty events renders the diagnostic empty state, not the animation", async () => {
+  it.skip("v1.17 — /feed empty events renders the diagnostic empty state, not the animation (DEAD: v1.19 empty state is single-line)", async () => {
     vi.spyOn(views, "readTimelineRecent").mockResolvedValue({
       events: [],
       notes: [],

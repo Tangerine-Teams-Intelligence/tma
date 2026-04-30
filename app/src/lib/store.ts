@@ -212,6 +212,28 @@ interface UiSlice {
    *  can always press the Replay button manually. */
   welcomedReplayDone: boolean;
   // === end v1.18.0 ===
+  // === v1.19.0 — Single-canvas + Cmd+K-everything ===
+  /** Active main-content view. `time` is the default density list,
+   *  `heatmap` is the v1.18 zoom-out grid, `people` is the per-actor
+   *  density list, `replay` triggers the timelapse. Single-key
+   *  shortcuts T/H/P/R cycle this when no input is focused. */
+  canvasView: "time" | "heatmap" | "people" | "replay";
+  setCanvasView: (v: "time" | "heatmap" | "people" | "replay") => void;
+  /** Sidebar visibility gate. Round-1 default = false (no sidebar).
+   *  Cmd+B will eventually toggle. Power users only. */
+  sidebarVisible: boolean;
+  setSidebarVisible: (v: boolean) => void;
+  /** Spotlight (Cmd+K) overlay visibility. Lives in zustand because the
+   *  open/close call site sits at AppShell while the modal renders
+   *  outside the sidebar / Outlet stack. */
+  spotlightOpen: boolean;
+  setSpotlightOpen: (v: boolean) => void;
+  /** Number of times the user has launched the app since v1.19. The
+   *  footer hint row hides itself once this clears 5 (assume the user
+   *  has memorized the shortcuts by then). Bumps once per cold boot. */
+  shortcutHintShown: number;
+  bumpShortcutHintShown: () => void;
+  // === end v1.19.0 ===
   /** v1.8 Phase 1 — id of the user's "primary" AI tool (the one with the ⭐
    *  in the sidebar). `null` until first launch's auto-pick runs. The pick
    *  itself happens in components/ai-tools/AIToolsSection.tsx after
@@ -846,6 +868,17 @@ export const useStore = create<Store>()(
         // user lands on /canvas and the welcome timelapse plays once.
         welcomedReplayDone: false,
         // === end v1.18.0 ===
+        // === v1.19.0 ===
+        // Single-canvas surface. Default = the time-density typography list.
+        canvasView: "time",
+        // Sidebar hidden by default in Round 1 (Obsidian-grade restraint).
+        sidebarVisible: false,
+        // Spotlight closed at boot.
+        spotlightOpen: false,
+        // Footer-hint visibility counter. Increments once per cold launch
+        // (in AppShell's mount effect); the hint hides at >= 5.
+        shortcutHintShown: 0,
+        // === end v1.19.0 ===
         primaryAITool: null,
         agiParticipation: true,
         agiVolume: "quiet",
@@ -1106,6 +1139,18 @@ export const useStore = create<Store>()(
         setWelcomedReplayDone: (v) =>
           set((s) => ({ ui: { ...s.ui, welcomedReplayDone: v } })),
         // === end v1.18.0 ===
+        // === v1.19.0 ===
+        setCanvasView: (v) =>
+          set((s) => ({ ui: { ...s.ui, canvasView: v } })),
+        setSidebarVisible: (v) =>
+          set((s) => ({ ui: { ...s.ui, sidebarVisible: v } })),
+        setSpotlightOpen: (v) =>
+          set((s) => ({ ui: { ...s.ui, spotlightOpen: v } })),
+        bumpShortcutHintShown: () =>
+          set((s) => ({
+            ui: { ...s.ui, shortcutHintShown: s.ui.shortcutHintShown + 1 },
+          })),
+        // === end v1.19.0 ===
         setPrimaryAITool: (id) =>
           set((s) => ({ ui: { ...s.ui, primaryAITool: id } })),
         // ---- v1.8 Phase 4 ambient input layer ----
@@ -1542,6 +1587,15 @@ export const useStore = create<Store>()(
             // === v1.18.0 === — canvas first-week auto-replay latch.
             welcomedReplayDone: s.ui.welcomedReplayDone,
             // === end v1.18.0 ===
+            // === v1.19.0 === — single-canvas redesign latches.
+            // canvasView is intentionally NOT persisted (transient UI;
+            // every cold launch should land on the time-density list).
+            // sidebarVisible IS persisted so a power user who toggled it
+            // on stays on. spotlightOpen never persists (modal). hint
+            // counter persists so the footer goes away once memorized.
+            sidebarVisible: s.ui.sidebarVisible,
+            shortcutHintShown: s.ui.shortcutHintShown,
+            // === end v1.19.0 ===
             // === wave 22 ===
             // Persist tour + coachmark + try-this dismiss memory so a
             // returning user who finished the tour never sees it again.
@@ -1612,6 +1666,10 @@ export const useStore = create<Store>()(
                 // === v1.18.0 ===
                 welcomedReplayDone?: boolean;
                 // === end v1.18.0 ===
+                // === v1.19.0 ===
+                sidebarVisible?: boolean;
+                shortcutHintShown?: number;
+                // === end v1.19.0 ===
               };
               skills?: { meetingConfig?: MeetingConfig };
             }
@@ -1833,6 +1891,12 @@ export const useStore = create<Store>()(
             welcomedReplayDone:
               p?.ui?.welcomedReplayDone ?? current.ui.welcomedReplayDone,
             // === end v1.18.0 ===
+            // === v1.19.0 === — single-canvas redesign.
+            sidebarVisible:
+              p?.ui?.sidebarVisible ?? current.ui.sidebarVisible,
+            shortcutHintShown:
+              p?.ui?.shortcutHintShown ?? current.ui.shortcutHintShown,
+            // === end v1.19.0 ===
           },
           skills: {
             ...current.skills,
