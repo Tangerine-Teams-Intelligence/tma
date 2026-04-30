@@ -254,12 +254,29 @@ function FeedEmptyState({
             <dt className="w-24 shrink-0 font-mono text-[10px] uppercase tracking-wider text-stone-400">
               memory dir
             </dt>
-            <dd
-              data-testid="feed-empty-memory-root"
-              className="min-w-0 flex-1 break-all font-mono text-[11px] text-stone-600 dark:text-stone-300"
-            >
-              {root}
-            </dd>
+            {/* === v1.18.2 R6 fix === When the zustand store hasn't yet
+                hydrated `memoryRoot`, displayMemoryRoot returns the
+                MEMORY_ROOT_UNRESOLVED sentinel — render an honest amber
+                "resolving…" line rather than a fake `~/.tangerine-memory/`
+                default. The user can no longer mistake an unhydrated
+                store for a confidently-active capture path. */}
+            {root === MEMORY_ROOT_UNRESOLVED ? (
+              <dd
+                data-testid="feed-empty-memory-root"
+                data-state="unresolved"
+                className="min-w-0 flex-1 break-all font-mono text-[11px] text-amber-600 dark:text-amber-400"
+              >
+                resolving… (open Settings → Sync to set or verify)
+              </dd>
+            ) : (
+              <dd
+                data-testid="feed-empty-memory-root"
+                data-state="resolved"
+                className="min-w-0 flex-1 break-all font-mono text-[11px] text-stone-600 dark:text-stone-300"
+              >
+                {root}
+              </dd>
+            )}
           </div>
           <div className="flex items-baseline gap-2">
             <dt className="w-24 shrink-0 font-mono text-[10px] uppercase tracking-wider text-stone-400">
@@ -305,8 +322,21 @@ function activeSourceLabels(map: Record<string, boolean>): string[] {
     .map(([k]) => SOURCE_DISPLAY[k] ?? k);
 }
 
+// === v1.18.2 R6 fix ===
+// Pre-fix this returned the literal string "~/.tangerine-memory/" when
+// `root` was undefined — i.e. when the zustand store hadn't hydrated
+// the memory root yet. That's a fake-default lie: the displayed path
+// has no relationship to where Tangerine is actually reading from
+// (could be a custom dir, could not be configured at all). Daizhe's
+// R6 audit literally called this out: "If `memoryRoot` is undefined
+// because the store hasn't hydrated, the row should say so honestly,
+// not silently show ~/.tangerine-memory (a default that may not be
+// active)." We now return a sentinel the caller renders as a "not
+// resolved yet" amber line instead of a confident absolute path.
+const MEMORY_ROOT_UNRESOLVED = "__UNRESOLVED__" as const;
+
 function displayMemoryRoot(root: string | undefined): string {
-  if (!root) return "~/.tangerine-memory/";
+  if (!root) return MEMORY_ROOT_UNRESOLVED;
   // Trim long absolute paths to a leading "~" form when we recognize the
   // home anchor. Keeps the empty-state card from line-wrapping on
   // C:/Users/<long>/Desktop/... paths.

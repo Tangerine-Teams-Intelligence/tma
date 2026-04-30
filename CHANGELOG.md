@@ -8,6 +8,85 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
      Each version block focuses on user-visible features so this doc can
      also feed the in-app /whats-new-app route. -->
 
+## [1.18.2] — 2026-04-29 — R6 audit pass: 4 status displays could lie
+
+Continuation of the v1.18.1 R6 audit. Daizhe asked: "你要保证这个 app 上面所有信息都是真实的". Status / count / metric display surfaces were swept; four were actively or passively dishonest about their state. Fixed in this release.
+
+### Fixes
+
+1. **`personal_agents/codex.rs:167-189`** — `capture_one` only checked
+   idempotency against the filename-stem path; when the parsed JSON
+   `session_id` differed from the filename stem (Codex resume / fork),
+   the second pass wrote the same atom every heartbeat and the
+   Settings → Connect toast read "wrote N, skipped 0" forever, lying
+   about how much real work was being done. Mirror of the fix already
+   landed in `claude_code.rs`. Regression test:
+   `capture_is_idempotent_when_session_id_differs_from_filename_stem`.
+
+2. **`personal_agents/windsurf.rs:203-228`** — same bug shape as the
+   Codex one above (Windsurf re-uses the Cursor parser, so the JSON
+   `id` field plays the role of `session_id`). Same fix; regression
+   test `capture_is_idempotent_when_json_id_differs_from_filename_stem`.
+
+3. **`pages/settings/sections/ConnectSection.tsx:323-343`** — `onSyncNow`
+   toast message and `Last sync wrote N, skipped M` row both ignored
+   `result.errors`. A user could see a red toast colour and read green
+   numbers and assume nothing went wrong. Toast now appends error count
+   + first error excerpt; the persistent row gets a `<details>` block
+   that lists the first 5 errors verbatim with a "show errors"
+   disclosure. The earlier failure was particularly bad in combo with
+   Codex/Windsurf bug #1+#2: those errors were already going into
+   `result.errors`, just never surfaced past the 3-second toast.
+
+4. **`routes/feed.tsx:308-323` + `:253-273`** — when zustand hadn't yet
+   hydrated `memoryRoot`, the empty-state diagnostic card silently
+   showed `~/.tangerine-memory/` (a default that may not be the
+   active path). Per Daizhe's R6 audit: "the row should say so honestly,
+   not silently show ~/.tangerine-memory". Now returns a sentinel the
+   renderer paints as an amber "resolving… (open Settings → Sync to
+   set or verify)" line instead of a confident absolute path that may
+   be wrong.
+
+### Logged but not fixed (borderline cases)
+
+- `StatusBar.tsx:112-117` swallows `readTimelineRecent` failures
+  silently. Comment claims this is intentional ("the route's own error
+  banner already fires") but on `/settings` there is no route banner —
+  the chip just shows stale data. Documented; no fix this wave.
+- `Threads · N active` label uses `threads.length` regardless of
+  recency — a thread from a year ago still counts as "active". Not
+  user-fatal. Logged.
+- `GitSyncIndicatorContainer.tsx:117-121` leaves `rust` at prior
+  successful value when poll throws. Comment says "shows
+  `not_initialized` until next successful poll" but the code shows the
+  last good state. Misleading comment, but the indicator is mostly
+  honest because the `last_error` field surfaces in the popover.
+  Logged.
+- `team_index.rs:87` reports `atoms_scanned = events.len()` while the
+  empty-stub branch (sample-only) writes "0 atoms scanned" in the
+  Markdown body. The Tauri return value diverges from the on-disk
+  string when the corpus is sample-only. Borderline.
+- Codex / Windsurf adapters do not push to the activity ring after
+  capture (only Cursor + Claude Code do). Captures still land on disk
+  + show on `/feed` after the next timeline read, but the live
+  activity feed misses those vendors' write events. Worth a follow-up
+  audit; not a v1.18.2 fix because the surface is internal-only.
+
+### Tests
+
+`cargo test --lib personal_agents` — 58 passed (including 2 new R6
+regression tests). React `npm run build` — green.
+
+### Files
+
+- `app/src-tauri/src/personal_agents/codex.rs`
+- `app/src-tauri/src/personal_agents/windsurf.rs`
+- `app/src/pages/settings/sections/ConnectSection.tsx`
+- `app/src/routes/feed.tsx`
+- `CHANGELOG.md` (this file)
+- Version bumps: `app/package.json`, `app/src-tauri/tauri.conf.json`,
+  `app/src-tauri/Cargo.toml`, `pyproject.toml`
+
 ## [1.18.1] — 2026-04-29 — R6 honesty fix: Claude Code adapter walks arbitrary depth
 
 Daizhe spotted the Settings → Connect panel showing `Claude Code · Confirmed

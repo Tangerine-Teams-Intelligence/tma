@@ -183,6 +183,19 @@ fn capture_one(src: &Path, target_dir: &Path) -> Result<bool, String> {
     let mut atom = parse_session(&raw, &stem).map_err(|e| format!("parse: {}", e))?;
     atom.source_mtime_nanos = src_nanos;
     let final_path = target_dir.join(format!("{}.md", sanitize_id(&atom.conversation_id)));
+    // === v1.18.2 R6 fix === When parsed `conversation_id` differs from the
+    // filename stem (Codex resumes / forks where the JSON `session_id` !=
+    // file stem), the provisional check above misses and we'd write the
+    // atom every heartbeat, inflating the "wrote N" toast and never
+    // counting a single `skipped`. Second idempotence check against the
+    // resolved path mirrors the claude_code adapter pattern.
+    if final_path != provisional {
+        if let Some(prev) = read_atom_source_mtime(&final_path) {
+            if prev >= src_nanos {
+                return Ok(false);
+            }
+        }
+    }
     fs::write(&final_path, render_atom(&atom))
         .map_err(|e| format!("write {}: {}", final_path.display(), e))?;
     Ok(true)
@@ -389,6 +402,51 @@ mod tests {
     fn rejects_empty_session() {
         let raw = r#"{"messages": []}"#;
         assert!(parse_session(raw, "x").is_err());
+    }
+
+    /// === v1.18.2 R6 regression test ===
+    /// Pre-fix bug: when the JSON's `session_id` differed from the source
+    /// filename stem, every heartbeat wrote the atom and reported it as
+    /// `written` (never `skipped`). The Settings "wrote N, skipped 0"
+    /// toast inflated forever, lying to the user about how much work the
+    /// adapter was actually doing.
+    #[test]
+    fn capture_is_idempotent_when_session_id_differs_from_filename_stem() {
+        let tmp = std::env::temp_dir().join(format!(
+            "tii_pa_codex_idemp_{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        let src_dir = tmp.join("src");
+        let target_dir = tmp.join("dest").join("codex");
+        fs::create_dir_all(&src_dir).unwrap();
+        fs::create_dir_all(&target_dir).unwrap();
+        // Filename stem `file-stem` != JSON `session_id` `parsed-id`. This
+        // is the codex resume / fork case the pre-fix path missed.
+        let src_file = src_dir.join("file-stem.json");
+        fs::write(
+            &src_file,
+            r#"{
+                "session_id": "parsed-id",
+                "messages": [
+                    {"role": "user", "content": "hi"}
+                ]
+            }"#,
+        )
+        .unwrap();
+        let first = capture_one(&src_file, &target_dir).unwrap();
+        assert!(first, "first run should write");
+        // Atom file lands at parsed-id.md (the JSON's session_id), not
+        // file-stem.md (the filename).
+        assert!(
+            target_dir.join("parsed-id.md").is_file(),
+            "atom must be at parsed-id.md"
+        );
+        let second = capture_one(&src_file, &target_dir).unwrap();
+        assert!(
+            !second,
+            "second run must skip — pre-fix returned true here, inflating the wrote-N counter"
+        );
+        let _ = fs::remove_dir_all(&tmp);
     }
 
     // === v1.15.2 fix #2 ===

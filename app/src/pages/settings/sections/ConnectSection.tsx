@@ -109,6 +109,18 @@ const IDE_AGENTS: AgentRow[] = [
   },
 ];
 
+// === v1.18.2 R6 fix ===
+// Toast messages have a budget of about a line; the first capture error
+// can be hundreds of chars (full path + Rust error message). Trim to a
+// readable head so the toast surfaces it without truncating the rest of
+// the summary. Non-empty input only — the caller already gated on
+// errors.length > 0.
+function truncateError(msg: string): string {
+  const cleaned = msg.replace(/\s+/g, " ").trim();
+  if (cleaned.length <= 80) return cleaned;
+  return cleaned.slice(0, 77) + "…";
+}
+
 function StatusBadge({
   status,
   fallbackDetected,
@@ -325,10 +337,21 @@ function IDECaptureGrid() {
     try {
       const result = await row.capture(currentUser);
       setLastResult((r) => ({ ...r, [row.flagKey]: result }));
-      pushToast(
-        result.errors.length ? "error" : "success",
-        `${row.label}: wrote ${result.written}, skipped ${result.skipped}`,
-      );
+      // === v1.18.2 R6 fix === The toast must never lie about "all good"
+      // when the capture pass had failures. Pre-fix the message read
+      // "wrote N, skipped M" with red coloring but no error count, so a
+      // user could see toast color = error and read green-looking
+      // numbers and assume nothing went wrong. Now we always include
+      // the error count and tail the first error message so the user
+      // can act on it without opening Settings.
+      const errCount = result.errors.length;
+      const summary =
+        errCount > 0
+          ? `${row.label}: wrote ${result.written}, skipped ${result.skipped}, ${errCount} error${
+              errCount === 1 ? "" : "s"
+            } — ${truncateError(result.errors[0])}`
+          : `${row.label}: wrote ${result.written}, skipped ${result.skipped}`;
+      pushToast(errCount > 0 ? "error" : "success", summary);
       try {
         setSummaries(await personalAgentsScanAll());
       } catch {
@@ -401,10 +424,45 @@ function IDECaptureGrid() {
                     {homePath}
                   </p>
                   {last && (
-                    <p className="mt-2 text-xs text-[var(--ti-ink-500)]">
-                      Last sync wrote <strong>{last.written}</strong>, skipped{" "}
-                      <strong>{last.skipped}</strong>
-                    </p>
+                    <div className="mt-2 text-xs">
+                      <p className="text-[var(--ti-ink-500)]">
+                        Last sync wrote <strong>{last.written}</strong>, skipped{" "}
+                        <strong>{last.skipped}</strong>
+                        {/* === v1.18.2 R6 fix === The errors line was hidden
+                            entirely when length === 0; that's still right.
+                            But when length > 0 the legacy display showed
+                            only wrote / skipped, leaving a red-coloured
+                            error toast as the only signal something
+                            failed. Errors deserve to land in the row's
+                            persistent display, not just a toast that
+                            disappears in 3s. */}
+                        {last.errors.length > 0 && (
+                          <span className="text-rose-700 dark:text-rose-400">
+                            {", "}
+                            <strong>{last.errors.length}</strong> error
+                            {last.errors.length === 1 ? "" : "s"}
+                          </span>
+                        )}
+                      </p>
+                      {last.errors.length > 0 && (
+                        <details
+                          data-testid={`st-personal-agent-errors-${row.flagKey}`}
+                          className="mt-1 text-rose-700 dark:text-rose-400"
+                        >
+                          <summary className="cursor-pointer font-mono text-[10px]">
+                            show error{last.errors.length === 1 ? "" : "s"}
+                          </summary>
+                          <ul className="mt-1 ml-3 list-disc space-y-0.5 break-words font-mono text-[10px]">
+                            {last.errors.slice(0, 5).map((e, i) => (
+                              <li key={i}>{e}</li>
+                            ))}
+                            {last.errors.length > 5 && (
+                              <li>… {last.errors.length - 5} more</li>
+                            )}
+                          </ul>
+                        </details>
+                      )}
+                    </div>
                   )}
                 </div>
                 <div className="flex flex-row items-center gap-3 md:flex-col md:items-end md:gap-2">

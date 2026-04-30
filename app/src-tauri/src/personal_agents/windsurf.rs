@@ -222,6 +222,19 @@ fn capture_one(src: &Path, target_dir: &Path) -> Result<bool, String> {
     atom.source = "windsurf".to_string();
     atom.source_mtime_nanos = src_nanos;
     let final_path = target_dir.join(format!("{}.md", sanitize_id(&atom.conversation_id)));
+    // === v1.18.2 R6 fix === When parsed `conversation_id` (from the JSON
+    // `id` field) differs from the filename stem, the provisional check
+    // above misses and we'd write the atom every heartbeat — counted as
+    // `written` instead of `skipped`. Mirrors the same fix in codex /
+    // claude_code adapters so the Settings toast doesn't lie about
+    // capture work being done.
+    if final_path != provisional {
+        if let Some(prev) = read_atom_source_mtime(&final_path) {
+            if prev >= src_nanos {
+                return Ok(false);
+            }
+        }
+    }
     fs::write(&final_path, render_atom(&atom))
         .map_err(|e| format!("write {}: {}", final_path.display(), e))?;
     Ok(true)
@@ -329,6 +342,42 @@ mod tests {
         assert!(body.contains("source: windsurf"));
         // Idempotent.
         assert!(!capture_one(&src_file, &target_dir).unwrap());
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    /// === v1.18.2 R6 regression test ===
+    /// Pre-fix bug: when the JSON's `id` differed from the filename stem
+    /// (Windsurf rename / re-export), the second pass wrote the same atom
+    /// every heartbeat and reported it as `written`. The Settings toast
+    /// "wrote N, skipped 0" therefore lied about how much real work the
+    /// capture pass did. Mirror of the codex regression test.
+    #[test]
+    fn capture_is_idempotent_when_json_id_differs_from_filename_stem() {
+        let tmp = std::env::temp_dir().join(format!(
+            "tii_pa_ws_idemp_{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        let src_dir = tmp.join("src");
+        let target_dir = tmp.join("dest").join("windsurf");
+        fs::create_dir_all(&src_dir).unwrap();
+        fs::create_dir_all(&target_dir).unwrap();
+        let src_file = src_dir.join("file-stem.json");
+        fs::write(
+            &src_file,
+            r#"{"id":"parsed-id","title":"x","messages":[{"role":"user","content":"hi"}]}"#,
+        )
+        .unwrap();
+        let first = capture_one(&src_file, &target_dir).unwrap();
+        assert!(first, "first run should write");
+        assert!(
+            target_dir.join("parsed-id.md").is_file(),
+            "atom must land at parsed-id.md (JSON id), not file-stem.md"
+        );
+        let second = capture_one(&src_file, &target_dir).unwrap();
+        assert!(
+            !second,
+            "second run must skip — pre-fix returned true, inflating wrote-N"
+        );
         let _ = fs::remove_dir_all(&tmp);
     }
 }
