@@ -8,6 +8,40 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
      Each version block focuses on user-visible features so this doc can
      also feed the in-app /whats-new-app route. -->
 
+## [1.19.1] — 2026-04-30 — Round 2 friction sweep (empty-state honesty / view indicator / typography)
+
+Daizhe dogfooded v1.19.0 Round 1, identified 8 concrete friction points, and dispatched this Round 2 fix-list. No redesign — polish on Round 1's bones.
+
+### Changes (Round 2 A–H)
+
+A. **Empty-state honesty restored** — `routes/feed.tsx::EmptyState` now reads `useStore(s => s.ui.personalAgentsEnabled)` and branches on connected sources. Zero connected → `"No sources connected. Press ⌘K and type :sources, or open Settings to connect Cursor / Claude Code / Slack."`. ≥1 connected → v1.17.5-style three-row diagnostic (`watching` / `memory dir` / `first atom`) inside the v1.19 single-canvas aesthetic — `grid-cols-[10ch_1fr]`, mono labels, sans values, no card border, no orange accent. Source list normalises `claude_code` → `claude-code`, truncates after 3 with `· N more`. `memoryRoot` undefined → `"resolving…"` in `text-stone-400` (R6 amber treatment v1.18.2 added). New testIds: `empty-state-watching` / `-memory-root` / `-first-atom`. (`routes/feed.tsx:355-461`)
+
+B. **Active view indicator in footer hint** — `components/layout/AppShell.tsx::FooterHint` now renders T/H/H/R as separate spans driven by an array; the active label gets `font-semibold text-[var(--ti-orange-500)]`. Each span exposes `data-testid="footer-hint-label-${key}"` and `data-active="true|false"` for tests. Version chip preserved. (`AppShell.tsx:355-413`)
+
+C. **Atom count + timeframe header** — `routes/feed.tsx::TimeDensityList` renders a single mono line above the first day separator: `past 7 days · N atoms`. Singular handled (`1 atom`). Hidden in the empty-state branch. testId `time-view-header`. (`routes/feed.tsx:148-156`)
+
+D. **CanvasView chromeless mode** — added `chromeless?: boolean` prop to `components/canvas/CanvasView.tsx`. When `true`, the internal Replay button + zoom-hint overlay are gated off. `feed.tsx::HeatmapView` and `ReplayView` now pass `chromeless={true}` so the v1.19 outer surface owns the replay shortcut + canvas affordances. Default `false` preserves any v1.18 callers untouched. (`CanvasView.tsx:50-58, 80-83, 233-247`; `feed.tsx:218-224, 308-314`)
+
+E. **Spotlight closes on selection** — `components/spotlight/Spotlight.tsx::onSelect` now closes after atom / person / thread / `:replay` / `:settings` / `:sources` / `:about` selection. `:theme` is the one exception — it leaves the spotlight open so the user can cycle system → light → dark in one go. `:about` re-routes to `/settings` (no separate about modal in Round 2). (`Spotlight.tsx:124-160, 549-586`)
+
+F. **First-launch auto-replay** — `components/layout/AppShell.tsx` mount effect: if `welcomedReplayDone === false` AND `samplesSeeded === true` (the Round 1 spec's fallback proxy for "data pipeline confirms at least sample data on disk"), set `canvasView=replay` and flip `welcomedReplayDone=true`. ReplayView's onComplete handler returns the user to time view naturally. `welcomedReplayDone` was already in zustand `ui` slice + persist whitelist from v1.18.0. (`AppShell.tsx:115-141`)
+
+G. **Typography sweep + accent restraint** — Inter sans for body / labels / buttons; JetBrains Mono for time stamps / dates / IDs / numbers / keybind hints / version strings; orange `var(--ti-orange-500)` reserved for hover row left-border, Spotlight selected-row left-border, footer hint active-view label, and the literal day-separator string `"Today"`. Lucide icons stripped from the v1.19 surface (the `X` in `AtomBottomSheet` close button → text-only `×`). Search icon kept in Spotlight per Round 1 exception. The time-row source column moved from sans to mono so source text matches the time-stamp typography family. (`AtomBottomSheet.tsx:24, 127-135`; `feed.tsx:191-193`)
+
+H. **Day-separator "Today" gets the orange accent** — `routes/feed.tsx::groupByDay` now also returns `isToday: boolean`. The day separator h2 conditionally sets `text-[var(--ti-orange-500)]` when `isToday`, else stays at `text-stone-700 dark:text-stone-300`. data attribute `data-is-today` exposed for tests. The single visual nod that gives the time-density list a daily heartbeat without breaking the pure-typography aesthetic. (`feed.tsx:163-180, 471-501`)
+
+### Tests
+
+- `app/tests/v1_19-single-canvas.test.tsx` expanded from 21 to 35 specs. New describe blocks: `Round 2 A` (empty-state branches: no-sources copy + diagnostic three-row + `resolving…` + `· N more` truncation, 4 tests), `Round 2 B` (footer active label + version chip preserved, 2 tests), `Round 2 C` (header singular/plural/hidden, 3 tests), `Round 2 E` (atom open closes spotlight, `:theme` leaves open, 2 tests), `Round 2 F` (auto-replay fires once / suppressed when latch flipped / suppressed when samplesSeeded=false, 3 tests), `Round 2 H` (Today gets accent, 1 test). Total: 35 tests passing.
+- D and G are visually-verified through `data-` attributes / class assertions only (no pixel comparison) — `data-is-today`, `data-empty-mode`, `data-active`. Acceptable Round 2 coverage; Round 3 candidate to add Playwright visual snapshots if desired.
+
+### Constraints honoured
+
+- Round 1's IA preserved — no new routes, no new sidebars, no banners back.
+- v1.18.2's R6 fixes intact — `pages/settings/sections/ConnectSection.tsx` untouched, capture-error toast still surfaces honestly.
+- Mobile is acceptable to break (Round 3 problem).
+- 21 Round 1 specs still pass (4 are now expanded / replaced with Round 2 variants).
+
 ## [1.19.0] — 2026-04-29 — Single-canvas + Cmd+K: Obsidian-grade redesign (Round 1)
 
 After deep audit of Obsidian's premium feel, the verdict on v1.16/.17/.18's 5-tab sidebar architecture was that it's unfixable by polish — it's the wrong shape. v1.19 rips it out and replaces with single-canvas + Cmd+K-everything. This is Round 1 of an N-round iteration; Daizhe will dogfood and dispatch follow-up rounds against the friction surfaces this leaves behind.

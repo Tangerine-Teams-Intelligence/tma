@@ -22,7 +22,6 @@
  */
 
 import { useEffect, useRef } from "react";
-import { X } from "lucide-react";
 import type { TimelineEvent } from "@/lib/views";
 import { formatRelativeTime } from "@/lib/views";
 import { vendorFor } from "./vendor";
@@ -129,9 +128,9 @@ export function AtomBottomSheet({ event, onClose }: AtomBottomSheetProps) {
             data-testid="atom-bottom-sheet-close"
             aria-label="Close"
             onClick={onClose}
-            className="-mr-1 rounded p-1 text-stone-500 hover:bg-stone-100 dark:text-stone-400 dark:hover:bg-stone-800"
+            className="-mr-1 rounded px-2 py-1 font-mono text-[14px] leading-none text-stone-500 hover:bg-stone-100 dark:text-stone-400 dark:hover:bg-stone-800"
           >
-            <X size={16} />
+            ×
           </button>
         </header>
         <p

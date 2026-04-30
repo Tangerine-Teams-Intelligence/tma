@@ -1,7 +1,7 @@
 /**
- * v1.19.0 Round 1 — Single-canvas + Cmd+K-everything regression specs.
+ * v1.19.0 Round 1 + v1.19.1 Round 2 — Single-canvas + Cmd+K-everything specs.
  *
- * Coverage:
+ * Round 1 coverage:
  *   • Spotlight: Cmd+K opens, ESC closes, click-outside closes, type
  *     filters, Enter selects, arrow keys navigate, `@` `#` `:` prefixes
  *     route to the right groups.
@@ -9,9 +9,21 @@
  *     grid columns; click opens AtomBottomSheet; day separators bold.
  *   • Single-key view switchers (T/H/P/R) update `ui.canvasView` only
  *     when no input is focused AND Spotlight is closed.
- *   • Empty state: literal "No captures yet. Tangerine is watching."
  *   • Footer hint: visible by default; hidden when shortcutHintShown >= 5.
  *   • buildResults helper: prefix routing.
+ *
+ * Round 2 coverage (additions):
+ *   • A. EmptyState branches on connected sources. 0 → "No sources
+ *     connected. Press ⌘K and type :sources…". ≥1 → diagnostic
+ *     three-row card with `empty-state-watching`/`-memory-root`/
+ *     `-first-atom` testids.
+ *   • B. Footer hint highlights the active view label (orange + bold).
+ *   • C. Time-view header renders "past 7 days · N atoms".
+ *   • E. Spotlight closes when an atom / person / thread is selected;
+ *     :theme leaves it open.
+ *   • F. AppShell mount fires auto-replay once when samplesSeeded=true
+ *     and welcomedReplayDone=false; flips welcomedReplayDone=true.
+ *   • H. Day separator "Today" gets the orange accent.
  *
  * The old wave-2-B1 / wave-4-D2 / wave-14 tests target dead surfaces
  * (FilterChips, StatusBar chips, sidebar nav). They've been left on disk
@@ -88,7 +100,7 @@ const SAMPLE_EVENTS: TimelineEvent[] = [
 
 beforeEach(() => {
   cleanup();
-  // Reset store to v1.19 defaults so tests don't see persisted leakage.
+  // Reset store to v1.19.1 defaults so tests don't see persisted leakage.
   useStore.setState((s) => ({
     ui: {
       ...s.ui,
@@ -98,6 +110,23 @@ beforeEach(() => {
       spotlightOpen: false,
       shortcutHintShown: 0,
       welcomed: true,
+      // Round 2 F — keep auto-replay quiet by default so unrelated tests
+      // don't flip canvasView to "replay" out from under them.
+      welcomedReplayDone: true,
+      samplesSeeded: false,
+      // Round 2 A — default to "all sources off" so the empty state
+      // resolves to the no-sources branch unless a test overrides.
+      personalAgentsEnabled: {
+        cursor: false,
+        claude_code: false,
+        codex: false,
+        windsurf: false,
+        devin: false,
+        replit: false,
+        apple_intelligence: false,
+        ms_copilot: false,
+      },
+      memoryRoot: "",
     },
   }));
   vi.restoreAllMocks();
@@ -235,7 +264,8 @@ describe("v1.19 Round 1 — Time-density list", () => {
     );
   }
 
-  it("renders the empty state with the literal v1.19 string", async () => {
+  // Round 2 A — empty state now BRANCHES on connected sources.
+  it("Round 2 A — empty state with 0 sources connected says 'No sources connected'", async () => {
     vi.spyOn(views, "readTimelineRecent").mockResolvedValue({
       events: [],
       notes: [],
@@ -244,8 +274,103 @@ describe("v1.19 Round 1 — Time-density list", () => {
     await waitFor(() => {
       expect(screen.getByTestId("empty-state")).toBeInTheDocument();
     });
+    expect(screen.getByTestId("empty-state").getAttribute("data-empty-mode")).toBe(
+      "no-sources",
+    );
     expect(screen.getByTestId("empty-state").textContent).toContain(
-      "No captures yet. Tangerine is watching.",
+      "No sources connected",
+    );
+    expect(screen.getByTestId("empty-state").textContent).toContain(":sources");
+  });
+
+  it("Round 2 A — empty state with ≥1 source connected renders 3-row diagnostic", async () => {
+    vi.spyOn(views, "readTimelineRecent").mockResolvedValue({
+      events: [],
+      notes: [],
+    });
+    useStore.setState((s) => ({
+      ui: {
+        ...s.ui,
+        personalAgentsEnabled: {
+          ...s.ui.personalAgentsEnabled,
+          cursor: true,
+          claude_code: true,
+        },
+        memoryRoot: "/Users/daizhe/.tangerine-memory",
+      },
+    }));
+    renderRoute();
+    await waitFor(() => {
+      expect(screen.getByTestId("empty-state")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("empty-state").getAttribute("data-empty-mode")).toBe(
+      "diagnostic",
+    );
+    expect(screen.getByTestId("empty-state-watching").textContent).toContain(
+      "cursor",
+    );
+    expect(screen.getByTestId("empty-state-watching").textContent).toContain(
+      "claude-code",
+    );
+    expect(screen.getByTestId("empty-state-memory-root").textContent).toContain(
+      "/Users/daizhe/.tangerine-memory",
+    );
+    expect(screen.getByTestId("empty-state-first-atom").textContent).toContain(
+      "open Cursor and run a Claude prompt",
+    );
+  });
+
+  it("Round 2 A — memoryRoot empty renders 'resolving…' (R6 honesty)", async () => {
+    vi.spyOn(views, "readTimelineRecent").mockResolvedValue({
+      events: [],
+      notes: [],
+    });
+    useStore.setState((s) => ({
+      ui: {
+        ...s.ui,
+        personalAgentsEnabled: {
+          ...s.ui.personalAgentsEnabled,
+          cursor: true,
+        },
+        memoryRoot: "",
+      },
+    }));
+    renderRoute();
+    await waitFor(() => {
+      expect(screen.getByTestId("empty-state")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("empty-state-memory-root").textContent).toContain(
+      "resolving…",
+    );
+  });
+
+  it("Round 2 A — sources truncate after 3 with '· N more'", async () => {
+    vi.spyOn(views, "readTimelineRecent").mockResolvedValue({
+      events: [],
+      notes: [],
+    });
+    useStore.setState((s) => ({
+      ui: {
+        ...s.ui,
+        personalAgentsEnabled: {
+          cursor: true,
+          claude_code: true,
+          codex: true,
+          windsurf: true,
+          devin: true,
+          replit: false,
+          apple_intelligence: false,
+          ms_copilot: false,
+        },
+        memoryRoot: "/x",
+      },
+    }));
+    renderRoute();
+    await waitFor(() => {
+      expect(screen.getByTestId("empty-state-watching")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("empty-state-watching").textContent).toContain(
+      "2 more",
     );
   });
 
@@ -426,3 +551,261 @@ describe("v1.19 Round 1 — AppShell wiring", () => {
     expect(useStore.getState().ui.shortcutHintShown).toBe(3);
   });
 });
+
+// ===================== v1.19.1 Round 2 specs =====================
+
+describe("v1.19.1 Round 2 B — Footer hint active view indicator", () => {
+  function renderShell() {
+    return render(
+      <MemoryRouter initialEntries={["/"]}>
+        <AppShell />
+      </MemoryRouter>,
+    );
+  }
+
+  it("active view label gets data-active=true; others false", async () => {
+    vi.spyOn(views, "readTimelineRecent").mockResolvedValue({
+      events: [],
+      notes: [],
+    });
+    useStore.setState((s) => ({
+      ui: { ...s.ui, shortcutHintShown: 0, canvasView: "heatmap" },
+    }));
+    renderShell();
+    await waitFor(() =>
+      expect(screen.getByTestId("footer-hint")).toBeInTheDocument(),
+    );
+    expect(
+      screen.getByTestId("footer-hint-label-time").getAttribute("data-active"),
+    ).toBe("false");
+    expect(
+      screen.getByTestId("footer-hint-label-heatmap").getAttribute("data-active"),
+    ).toBe("true");
+    expect(
+      screen.getByTestId("footer-hint-label-people").getAttribute("data-active"),
+    ).toBe("false");
+    expect(
+      screen.getByTestId("footer-hint-label-replay").getAttribute("data-active"),
+    ).toBe("false");
+  });
+
+  it("footer still ends with the version chip", async () => {
+    vi.spyOn(views, "readTimelineRecent").mockResolvedValue({
+      events: [],
+      notes: [],
+    });
+    useStore.setState((s) => ({ ui: { ...s.ui, shortcutHintShown: 0 } }));
+    renderShell();
+    await waitFor(() =>
+      expect(screen.getByTestId("footer-hint")).toBeInTheDocument(),
+    );
+    expect(screen.getByTestId("footer-hint").textContent).toMatch(/v\d/);
+  });
+});
+
+describe("v1.19.1 Round 2 C — Time view atom-count header", () => {
+  function renderRoute() {
+    return render(
+      <MemoryRouter initialEntries={["/"]}>
+        <FeedRoute />
+      </MemoryRouter>,
+    );
+  }
+
+  it("renders 'past 7 days · N atoms' for many atoms", async () => {
+    vi.spyOn(views, "readTimelineRecent").mockResolvedValue({
+      events: SAMPLE_EVENTS,
+      notes: [],
+    });
+    renderRoute();
+    await waitFor(() => {
+      expect(screen.getByTestId("time-density-list")).toBeInTheDocument();
+    });
+    const header = screen.getByTestId("time-view-header");
+    expect(header.textContent).toContain("past 7 days");
+    expect(header.textContent).toContain("3 atoms");
+  });
+
+  it("renders singular '1 atom' when exactly one event", async () => {
+    vi.spyOn(views, "readTimelineRecent").mockResolvedValue({
+      events: [SAMPLE_EVENTS[0]],
+      notes: [],
+    });
+    renderRoute();
+    await waitFor(() => {
+      expect(screen.getByTestId("time-density-list")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("time-view-header").textContent).toContain(
+      "1 atom",
+    );
+    // Singular must NOT pluralize.
+    expect(
+      screen.getByTestId("time-view-header").textContent,
+    ).not.toContain("1 atoms");
+  });
+
+  it("header is hidden in the empty-state branch", async () => {
+    vi.spyOn(views, "readTimelineRecent").mockResolvedValue({
+      events: [],
+      notes: [],
+    });
+    renderRoute();
+    await waitFor(() => {
+      expect(screen.getByTestId("empty-state")).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("time-view-header")).not.toBeInTheDocument();
+  });
+});
+
+describe("v1.19.1 Round 2 E — Spotlight closes on selection", () => {
+  it("opening an atom closes spotlight", async () => {
+    vi.spyOn(views, "readTimelineRecent").mockResolvedValue({
+      events: SAMPLE_EVENTS,
+      notes: [],
+    });
+    useStore.setState((s) => ({ ui: { ...s.ui, spotlightOpen: true } }));
+    render(<Spotlight />);
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("spotlight-results").getAttribute("data-count"),
+      ).not.toBe("0"),
+    );
+    // Click the first atom row (which is a "recent" group result).
+    const rows = screen.getAllByTestId("spotlight-result");
+    fireEvent.click(rows[0]);
+    await waitFor(() => {
+      expect(useStore.getState().ui.spotlightOpen).toBe(false);
+    });
+  });
+
+  it(":theme leaves spotlight open so user can cycle", async () => {
+    vi.spyOn(views, "readTimelineRecent").mockResolvedValue({
+      events: SAMPLE_EVENTS,
+      notes: [],
+    });
+    useStore.setState((s) => ({ ui: { ...s.ui, spotlightOpen: true } }));
+    render(<Spotlight />);
+    await waitFor(() =>
+      expect(screen.getByTestId("spotlight-input")).toBeInTheDocument(),
+    );
+    fireEvent.change(screen.getByTestId("spotlight-input"), {
+      target: { value: ":theme" },
+    });
+    await waitFor(() => {
+      const rs = screen.queryAllByTestId("spotlight-result");
+      expect(rs.length).toBeGreaterThan(0);
+    });
+    const rows = screen.getAllByTestId("spotlight-result");
+    fireEvent.click(rows[0]);
+    expect(useStore.getState().ui.spotlightOpen).toBe(true);
+  });
+});
+
+describe("v1.19.1 Round 2 F — First-launch auto-replay", () => {
+  function renderShell() {
+    return render(
+      <MemoryRouter initialEntries={["/"]}>
+        <AppShell />
+      </MemoryRouter>,
+    );
+  }
+
+  it("fires once when samplesSeeded=true && welcomedReplayDone=false", async () => {
+    vi.spyOn(views, "readTimelineRecent").mockResolvedValue({
+      events: [],
+      notes: [],
+    });
+    useStore.setState((s) => ({
+      ui: {
+        ...s.ui,
+        canvasView: "time",
+        samplesSeeded: true,
+        welcomedReplayDone: false,
+      },
+    }));
+    renderShell();
+    await waitFor(() =>
+      expect(screen.getByTestId("app-shell-root")).toBeInTheDocument(),
+    );
+    await waitFor(() => {
+      expect(useStore.getState().ui.canvasView).toBe("replay");
+    });
+    expect(useStore.getState().ui.welcomedReplayDone).toBe(true);
+  });
+
+  it("does NOT fire when welcomedReplayDone=true", async () => {
+    vi.spyOn(views, "readTimelineRecent").mockResolvedValue({
+      events: [],
+      notes: [],
+    });
+    useStore.setState((s) => ({
+      ui: {
+        ...s.ui,
+        canvasView: "time",
+        samplesSeeded: true,
+        welcomedReplayDone: true,
+      },
+    }));
+    renderShell();
+    await waitFor(() =>
+      expect(screen.getByTestId("app-shell-root")).toBeInTheDocument(),
+    );
+    // Give effects a beat to not run; canvasView should stay "time".
+    expect(useStore.getState().ui.canvasView).toBe("time");
+  });
+
+  it("does NOT fire when samplesSeeded=false", async () => {
+    vi.spyOn(views, "readTimelineRecent").mockResolvedValue({
+      events: [],
+      notes: [],
+    });
+    useStore.setState((s) => ({
+      ui: {
+        ...s.ui,
+        canvasView: "time",
+        samplesSeeded: false,
+        welcomedReplayDone: false,
+      },
+    }));
+    renderShell();
+    await waitFor(() =>
+      expect(screen.getByTestId("app-shell-root")).toBeInTheDocument(),
+    );
+    expect(useStore.getState().ui.canvasView).toBe("time");
+  });
+});
+
+describe("v1.19.1 Round 2 H — Today gets the orange accent", () => {
+  function renderRoute() {
+    return render(
+      <MemoryRouter initialEntries={["/"]}>
+        <FeedRoute />
+      </MemoryRouter>,
+    );
+  }
+
+  it("the day matching today gets data-is-today=true", async () => {
+    const todayIso = new Date().toISOString();
+    const todayEvents: TimelineEvent[] = [
+      makeEvent({ id: "today-1", ts: todayIso }),
+      makeEvent({ id: "yest-1", ts: "2020-01-01T10:00:00Z" }),
+    ];
+    vi.spyOn(views, "readTimelineRecent").mockResolvedValue({
+      events: todayEvents,
+      notes: [],
+    });
+    renderRoute();
+    await waitFor(() => {
+      expect(screen.getByTestId("time-density-list")).toBeInTheDocument();
+    });
+    const seps = screen.getAllByTestId("time-day-separator");
+    // Newest first: first separator is today.
+    expect(seps[0].getAttribute("data-is-today")).toBe("true");
+    expect(seps[0].textContent).toContain("Today");
+    expect(seps[0].className).toContain("ti-orange");
+    // Second separator is the older day, plain stone.
+    expect(seps[1].getAttribute("data-is-today")).toBe("false");
+    expect(seps[1].className).not.toContain("ti-orange");
+  });
+});
+

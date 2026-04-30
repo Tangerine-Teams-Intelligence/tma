@@ -17,6 +17,18 @@
  *     stutter, Round 2 swaps in react-virtuoso.
  *   • No header chrome on the time view. The page IS the list.
  *   • Mobile is acceptable to break. Desktop-first.
+ *
+ * v1.19.1 Round 2 changes:
+ *   • A. EmptyState honesty restored: branches on number of connected
+ *     sources. 0 → no-sources copy with ⌘K hint. ≥1 → diagnostic
+ *     three-row (watching / memory dir / first atom) with mono labels.
+ *     `memoryRoot` undefined → "resolving…" (R6 amber treatment).
+ *   • C. Time-view header line: "past 7 days · N atoms" mono.
+ *   • D. Heatmap + Replay views mount CanvasView with `chromeless`,
+ *     so the inner Replay button + zoom hint don't duplicate the
+ *     v1.19 outer chrome.
+ *   • H. Day separator "Today" gets the orange accent; other days
+ *     stay stone.
  */
 
 import { useEffect, useMemo, useState } from "react";
@@ -121,8 +133,12 @@ export default function FeedRoute() {
  *     leading mono columns hold time / actor / source; the body
  *     truncates with `line-clamp-1`.
  *   • Day separator = bold mono text, NOT an <hr>. Top-aligned to the
- *     day's first row.
+ *     day's first row. "Today" gets the orange accent so the most-recent
+ *     day anchors the eye (Round 2 H).
  *   • Hover = subtle bg + 1px orange left border, click → bottom sheet.
+ *
+ * Round 2 C: a single mono header line — "past N days · M atoms" —
+ * sits above the first day separator so the page has top context.
  */
 function TimeDensityList({
   events,
@@ -132,6 +148,7 @@ function TimeDensityList({
   onOpenAtom: (e: TimelineEvent) => void;
 }) {
   const grouped = useMemo(() => groupByDay(events), [events]);
+  const atomCountLabel = events.length === 1 ? "1 atom" : `${events.length} atoms`;
 
   return (
     <div
@@ -140,7 +157,13 @@ function TimeDensityList({
       className="mx-auto h-full w-full max-w-2xl overflow-y-auto px-8 py-12"
       style={{ contentVisibility: "auto" }}
     >
-      {grouped.map(({ dateLabel, dayEvents }, idx) => (
+      <div
+        data-testid="time-view-header"
+        className="mb-6 font-mono text-[11px] text-stone-500"
+      >
+        past 7 days · {atomCountLabel}
+      </div>
+      {grouped.map(({ dateLabel, dayEvents, isToday }, idx) => (
         <section
           key={dateLabel + idx}
           data-testid="time-day-section"
@@ -149,7 +172,13 @@ function TimeDensityList({
         >
           <h2
             data-testid="time-day-separator"
-            className="mb-3 font-mono text-[14px] font-bold tracking-tight text-stone-700 dark:text-stone-300"
+            data-is-today={isToday ? "true" : "false"}
+            className={
+              "mb-3 font-mono text-[14px] font-bold tracking-tight " +
+              (isToday
+                ? "text-[var(--ti-orange-500)]"
+                : "text-stone-700 dark:text-stone-300")
+            }
           >
             {dateLabel}
           </h2>
@@ -169,7 +198,7 @@ function TimeDensityList({
                   <span className="truncate text-[13px] font-medium text-stone-900 dark:text-stone-100">
                     {ev.actor || "?"}
                   </span>
-                  <span className="truncate text-[11px] text-stone-500 dark:text-stone-500">
+                  <span className="truncate font-mono text-[11px] text-stone-500 dark:text-stone-500">
                     {ev.source || "?"}
                   </span>
                   <span className="truncate text-[13px] text-stone-800 dark:text-stone-200">
@@ -191,7 +220,7 @@ function HeatmapView({ events }: { events: TimelineEvent[] }) {
       data-testid="heatmap-view"
       className="mx-auto h-full w-full max-w-5xl overflow-hidden p-4"
     >
-      <CanvasView events={events} autoPlayReplay={false} />
+      <CanvasView events={events} autoPlayReplay={false} chromeless={true} />
     </div>
   );
 }
@@ -273,7 +302,7 @@ function PeopleDensityList({
                   <span className="font-mono text-[11px] text-stone-500">
                     {formatClock(ev.ts)}
                   </span>
-                  <span className="truncate text-[11px] text-stone-500">
+                  <span className="truncate font-mono text-[11px] text-stone-500">
                     {ev.source || "?"}
                   </span>
                   <span className="truncate text-[13px] text-stone-800 dark:text-stone-200">
@@ -293,6 +322,10 @@ function PeopleDensityList({
  * Replay surface. Auto-plays once on mount; ESC stops + flips back to time.
  * Reuses the v1.18 useReplayController hook + CanvasView, just driven into
  * an instant-start mode with no UI chrome around it.
+ *
+ * Round 2 D: passes `chromeless` to CanvasView so the v1.18 internal
+ * Replay button + pan-zoom hint don't duplicate the v1.19 outer chrome
+ * (R is the replay shortcut now; the page IS the canvas).
  */
 function ReplayView({
   events,
@@ -335,25 +368,116 @@ function ReplayView({
       data-testid="replay-view"
       className="relative mx-auto h-full w-full max-w-5xl overflow-hidden"
     >
-      <CanvasView events={events} autoPlayReplay={true} />
+      <CanvasView events={events} autoPlayReplay={true} chromeless={true} />
     </div>
   );
 }
 
+/**
+ * Round 2 A — empty-state honesty restored.
+ *
+ * The Round 1 single-line "No captures yet. Tangerine is watching." LIES
+ * when zero sources are connected — there is nothing watching. Branch:
+ *   • 0 sources connected → tell the truth + point at ⌘K :sources
+ *   • ≥1 source connected → v1.17.5-style three-row diagnostic, but
+ *     inside the v1.19 single-canvas aesthetic (no card border, no
+ *     orange accent, just typography + mono labels).
+ * `memoryRoot === undefined` → render "resolving…" in stone-400, the
+ * same R6 amber treatment v1.18.2 added when the path was unknown.
+ */
 function EmptyState() {
+  const personalAgentsEnabled = useStore(
+    (s) => s.ui.personalAgentsEnabled,
+  );
+  const memoryRoot = useStore((s) => s.ui.memoryRoot);
+
+  const enabledSources = useMemo(() => {
+    return Object.entries(personalAgentsEnabled)
+      .filter(([, v]) => v)
+      .map(([k]) => k);
+  }, [personalAgentsEnabled]);
+
+  const noSources = enabledSources.length === 0;
+
+  if (noSources) {
+    return (
+      <div
+        data-testid="empty-state"
+        data-empty-mode="no-sources"
+        className="flex h-full items-center justify-center px-8"
+      >
+        <p className="max-w-md text-center text-[14px] text-stone-500 dark:text-stone-400">
+          No sources connected. Press{" "}
+          <span className="font-mono text-stone-700 dark:text-stone-300">
+            ⌘K
+          </span>{" "}
+          and type{" "}
+          <span className="font-mono text-stone-700 dark:text-stone-300">
+            :sources
+          </span>
+          , or open Settings to connect Cursor / Claude Code / Slack.
+        </p>
+      </div>
+    );
+  }
+
+  // ≥1 source connected: diagnostic 3-row card pattern, single-canvas
+  // aesthetic. Mono labels, sans values; no card border, no orange.
+  const sourceList = formatSources(enabledSources);
+  const memoryRootDisplay = memoryRoot && memoryRoot.length > 0 ? memoryRoot : null;
+
   return (
     <div
       data-testid="empty-state"
-      className="flex h-full items-center justify-center"
+      data-empty-mode="diagnostic"
+      className="flex h-full items-center justify-center px-8"
     >
-      <p className="text-[14px] text-stone-400">
-        No captures yet. Tangerine is watching.
-      </p>
+      <div className="grid w-full max-w-md grid-cols-[10ch_1fr] items-baseline gap-x-3 gap-y-2">
+        <span className="font-mono text-[11px] text-stone-500">watching</span>
+        <span
+          data-testid="empty-state-watching"
+          className="truncate text-[13px] text-stone-800 dark:text-stone-200"
+        >
+          {sourceList}
+        </span>
+        <span className="font-mono text-[11px] text-stone-500">memory dir</span>
+        <span
+          data-testid="empty-state-memory-root"
+          className={
+            "truncate text-[13px] " +
+            (memoryRootDisplay
+              ? "text-stone-800 dark:text-stone-200"
+              : "text-stone-400")
+          }
+        >
+          {memoryRootDisplay ?? "resolving…"}
+        </span>
+        <span className="font-mono text-[11px] text-stone-500">first atom</span>
+        <span
+          data-testid="empty-state-first-atom"
+          className="text-[13px] text-stone-800 dark:text-stone-200"
+        >
+          open Cursor and run a Claude prompt — it lands here within ~30s
+        </span>
+      </div>
     </div>
   );
 }
 
 // ---------- helpers ----------
+
+/**
+ * Normalize a snake_case adapter id (`claude_code`) into a kebab-case
+ * display name (`claude-code`). Truncate the list to 3 entries with
+ * `· N more` so the diagnostic card doesn't wrap onto a 4th line.
+ */
+function formatSources(ids: string[]): string {
+  const normalized = ids.map((id) => id.replace(/_/g, "-"));
+  if (normalized.length <= 3) return normalized.join(" · ");
+  const head = normalized.slice(0, 3).join(" · ");
+  const remaining = normalized.length - 3;
+  return `${head} · ${remaining} more`;
+}
 
 function firstNonEmptyLine(ev: TimelineEvent): string {
   const body = ev.body ?? ev.kind ?? "";
@@ -376,12 +500,15 @@ function formatClock(iso: string | null | undefined): string {
 interface DayBucket {
   dateLabel: string;
   dayEvents: TimelineEvent[];
+  /** Round 2 H — drives the orange accent on the day separator. */
+  isToday: boolean;
 }
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 /** Group atoms into day buckets — newest first. Day label format
- *  matches the spec: "Wed 23" (day-of-week + day-of-month). */
+ *  matches the spec: "Wed 23" (day-of-week + day-of-month). The
+ *  current day labels as "Today" and gets the orange accent (Round 2 H). */
 export function groupByDay(events: TimelineEvent[]): DayBucket[] {
   const sorted = [...events].sort((a, b) =>
     (b.ts ?? "").localeCompare(a.ts ?? ""),
@@ -400,11 +527,12 @@ export function groupByDay(events: TimelineEvent[]): DayBucket[] {
   const todayKey = new Date().toISOString().slice(0, 10);
   return [...map.entries()].map(([day, dayEvents]) => {
     const d = new Date(day + "T00:00:00Z");
+    const isToday = day === todayKey;
     const label = Number.isNaN(d.getTime())
       ? day
-      : day === todayKey
+      : isToday
         ? "Today"
         : `${DAY_NAMES[d.getUTCDay()]} ${d.getUTCDate()}`;
-    return { dateLabel: label, dayEvents };
+    return { dateLabel: label, dayEvents, isToday };
   });
 }

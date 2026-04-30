@@ -105,6 +105,13 @@ export function AppShell() {
   const samplesSeeded = useStore((s) => s.ui.samplesSeeded);
   const setSamplesSeeded = useStore((s) => s.ui.setSamplesSeeded);
   const memoryConfigMode = useStore((s) => s.ui.memoryConfig.mode);
+  // === v1.19.1 Round 2 F — first-launch auto-replay ===
+  // The v1.18 spec had this on `/canvas` first visit; v1.19 doesn't have a
+  // /canvas route any more, so the equivalent fires on first AppShell
+  // mount. Gated on `samplesSeeded` (means data pipeline confirms at
+  // least sample data exists on disk) AND `welcomedReplayDone === false`.
+  const welcomedReplayDone = useStore((s) => s.ui.welcomedReplayDone);
+  const setWelcomedReplayDone = useStore((s) => s.ui.setWelcomedReplayDone);
 
   // === v1.19.0 onboarding obliteration ===
   // Permanently flip welcomed=true on first AppShell mount. The
@@ -113,6 +120,27 @@ export function AppShell() {
   useEffect(() => {
     if (!welcomed) setWelcomed(true);
   }, [welcomed, setWelcomed]);
+
+  // === v1.19.1 Round 2 F — first-launch auto-replay ===
+  // v1.18 ran this on the first /canvas visit. v1.19 routes /canvas → /,
+  // so the equivalent fires here. Trigger once when:
+  //   1. welcomedReplayDone === false (one-shot latch)
+  //   2. samplesSeeded === true       (data pipeline confirms there's
+  //                                    at least sample data on disk —
+  //                                    we can't synchronously check
+  //                                    the corpus length, so this is
+  //                                    the spec's fallback proxy)
+  // After triggering, immediately flip the latch. ReplayView's
+  // onComplete handler returns the user to time view naturally.
+  const autoReplayFiredRef = useRef(false);
+  useEffect(() => {
+    if (autoReplayFiredRef.current) return;
+    if (welcomedReplayDone) return;
+    if (!samplesSeeded) return;
+    autoReplayFiredRef.current = true;
+    setCanvasView("replay");
+    setWelcomedReplayDone(true);
+  }, [welcomedReplayDone, samplesSeeded, setCanvasView, setWelcomedReplayDone]);
 
   // === v1.19.0 footer hint counter bump ===
   // One bump per app boot. The hint becomes invisible at >= 5.
@@ -304,7 +332,10 @@ export function AppShell() {
           <BannerHost />
           <main className="relative flex-1 overflow-auto bg-stone-50 dark:bg-stone-950">
             <Outlet />
-            <FooterHint visible={shortcutHintShown < 5} />
+            <FooterHint
+              visible={shortcutHintShown < 5}
+              activeView={canvasView}
+            />
           </main>
         </div>
         <Spotlight />
@@ -322,15 +353,59 @@ export function AppShell() {
  * itself once the user has booted ≥ 5 times (assume they have memorized
  * the shortcut row by then). Round-1 ships always-visible since fresh
  * installs start at 0; the hint disappears on the 6th boot.
+ *
+ * v1.19.1 Round 2 B — the active view's label is bolded + accent-colored
+ * so the user sees which mode T/H/P/R is currently in. Inactive labels
+ * stay at the existing stone tone.
  */
-function FooterHint({ visible }: { visible: boolean }) {
+type CanvasView = "time" | "heatmap" | "people" | "replay";
+
+interface FooterHintLabel {
+  key: CanvasView;
+  text: string;
+}
+
+const FOOTER_HINT_LABELS: FooterHintLabel[] = [
+  { key: "time", text: "T time" },
+  { key: "heatmap", text: "H heat" },
+  { key: "people", text: "P people" },
+  { key: "replay", text: "R replay" },
+];
+
+function FooterHint({
+  visible,
+  activeView,
+}: {
+  visible: boolean;
+  activeView: CanvasView;
+}) {
   if (!visible) return null;
   return (
     <div
       data-testid="footer-hint"
       className="pointer-events-none fixed bottom-2 left-1/2 z-30 -translate-x-1/2 select-none whitespace-nowrap font-mono text-[10px] text-stone-400 dark:text-stone-600"
     >
-      T time · H heat · P people · R replay · ⌘K all else
+      {FOOTER_HINT_LABELS.map((l, i) => {
+        const active = l.key === activeView;
+        return (
+          <span key={l.key}>
+            <span
+              data-testid={`footer-hint-label-${l.key}`}
+              data-active={active ? "true" : "false"}
+              className={
+                active
+                  ? "font-semibold text-[var(--ti-orange-500)]"
+                  : undefined
+              }
+            >
+              {l.text}
+            </span>
+            {i < FOOTER_HINT_LABELS.length - 1 ? " · " : ""}
+          </span>
+        );
+      })}
+      {" · "}
+      <span data-testid="footer-hint-label-spotlight">⌘K all else</span>
       <span className="ml-3 opacity-60">v{__APP_VERSION__}</span>
     </div>
   );

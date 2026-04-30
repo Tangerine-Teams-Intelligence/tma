@@ -127,8 +127,8 @@ export function Spotlight() {
       if (!p) return;
       if (p.kind === "atom") {
         setOpenAtom(p.event);
-        // Keep the spotlight open behind the bottom sheet feels weird —
-        // close it so the sheet has full focus.
+        // v1.19.1 Round 2 E — atom open closes spotlight so the sheet has
+        // full focus (the agent's own Round 1 comment: "feels weird").
         setOpen(false);
         return;
       }
@@ -148,8 +148,11 @@ export function Spotlight() {
         return;
       }
       if (p.kind === "command") {
+        // v1.19.1 Round 2 E — `theme` is incremental (user may want to
+        // cycle through system → light → dark in one go), so we leave
+        // the spotlight open. Every other command closes after running.
         runCommand(p.key, { setCanvasView, cycleTheme });
-        setOpen(false);
+        if (p.key !== "theme") setOpen(false);
         return;
       }
     },
@@ -560,17 +563,23 @@ function runCommand(
       }
       return;
     case "theme":
+      // v1.19.1 Round 2 E — caller leaves spotlight open after :theme so
+      // the user can cycle multiple times.
       ctx.cycleTheme();
       return;
     case "sources":
+      // v1.19.1 Round 2 E — there's no /settings/connect route in v1.19;
+      // /settings owns the Connect tab. Route to /settings.
       if (typeof window !== "undefined") {
         window.history.pushState({}, "", "/settings");
         window.dispatchEvent(new PopStateEvent("popstate"));
       }
       return;
     case "about":
+      // v1.19.1 Round 2 E — Round 2 routes :about to /settings (where the
+      // version chip lives). v1.19 has no separate about modal yet.
       if (typeof window !== "undefined") {
-        window.history.pushState({}, "", "/whats-new-app");
+        window.history.pushState({}, "", "/settings");
         window.dispatchEvent(new PopStateEvent("popstate"));
       }
       return;

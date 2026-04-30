@@ -47,6 +47,14 @@ export interface CanvasViewProps {
   days?: number;
   /** Anchor "now" — pinned in tests. */
   anchorMs?: number;
+  /**
+   * v1.19.1 Round 2 D — when true, hide CanvasView's internal chrome
+   * (Replay button + zoom hint overlay). The v1.19 outer surface owns
+   * those affordances now (R is the replay shortcut; the page IS the
+   * canvas), so when feed.tsx mounts CanvasView inside HeatmapView /
+   * ReplayView it sets this true. Default false for backward compat.
+   */
+  chromeless?: boolean;
 }
 
 interface View {
@@ -70,6 +78,7 @@ export function CanvasView({
   onAutoReplayComplete,
   days = 30,
   anchorMs,
+  chromeless = false,
 }: CanvasViewProps) {
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const [view, setView] = useState<View>(INITIAL_VIEW);
@@ -221,8 +230,9 @@ export function CanvasView({
         </g>
       </svg>
       {/* Zoom hint overlay so first-time users know the surface is
-          zoomable. Self-hides once the user has zoomed in past 1.0. */}
-      {view.scale < 1.05 && events.length > 0 && (
+          zoomable. Self-hides once the user has zoomed in past 1.0.
+          v1.19.1 Round 2 D — gated off when `chromeless`. */}
+      {!chromeless && view.scale < 1.05 && events.length > 0 && (
         <div
           data-testid="canvas-zoom-hint"
           className="pointer-events-none absolute bottom-3 left-3 rounded border border-stone-200 bg-white/85 px-2 py-1 font-mono text-[10px] text-stone-500 shadow-sm dark:border-stone-700 dark:bg-stone-900/85 dark:text-stone-400"
@@ -230,13 +240,15 @@ export function CanvasView({
           scroll to zoom · drag to pan
         </div>
       )}
-      <ReplayButton
-        playing={replay.playing}
-        progress={replay.progress}
-        atomCount={events.length}
-        onToggle={replay.toggle}
-        onReset={replay.reset}
-      />
+      {!chromeless && (
+        <ReplayButton
+          playing={replay.playing}
+          progress={replay.progress}
+          atomCount={events.length}
+          onToggle={replay.toggle}
+          onReset={replay.reset}
+        />
+      )}
     </div>
   );
 }
