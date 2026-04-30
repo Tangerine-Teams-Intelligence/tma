@@ -76,3 +76,6 @@ Desktop.ini
 README_PUBLIC_DRAFT.md
 OSS_REPO_PLAN.md
 V1_6_FEATURES.md
+
+# Tangerine workflow memory (per-project, never committed)
+.tangerine/
