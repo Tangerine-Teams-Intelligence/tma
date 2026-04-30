@@ -57,24 +57,28 @@ describe("Wave 14 sidebar — wave-19 IA contract", () => {
     vi.restoreAllMocks();
   });
 
-  it("renders the 4 v1.16.1 primary nav links (feed / threads / people / memory)", () => {
+  // === v1.20.0 audit === — all 5 sidebar nav items used to point at
+  // routes (/feed, /threads, /people, /canvas, /memory). v1.19's
+  // redirect table sends 4 of those to / so clicking did nothing
+  // visible. v1.20 rewrote them as buttons that flip ui.canvasView.
+  // The only surviving NavLink is /memory (the one route that still
+  // works directly). Brand link is now /, not /feed.
+  it("v1.20.0 — sidebar exposes 4 canvas-view buttons + 1 Memory NavLink", () => {
     render(
       <MemoryRouter>
         <Sidebar />
       </MemoryRouter>,
     );
-    // v1.16.1 reshuffled the sidebar to match the new IA: /feed default
-    // landing, /threads + /people the other two v1.16 view modes, and
-    // /memory as the file-tree power-user fallback. /today /brain
-    // /canvas were 砍 in v1.16 Wave 1; the smart-layer routes had no
-    // surviving surface to link to.
-    const expectedHrefs = ["/feed", "/threads", "/people", "/memory"];
-    for (const href of expectedHrefs) {
-      expect(
-        document.querySelector(`a[href="${href}"]`),
-        `expected sidebar link to ${href}`,
-      ).not.toBeNull();
-    }
+    // The four T/H/P/R buttons are now <button> elements with stable
+    // testids, not <a> links — clicking them flips ui.canvasView.
+    expect(screen.getByTestId("sidebar-nav-time")).toBeInTheDocument();
+    expect(screen.getByTestId("sidebar-nav-heatmap")).toBeInTheDocument();
+    expect(screen.getByTestId("sidebar-nav-people")).toBeInTheDocument();
+    expect(screen.getByTestId("sidebar-nav-replay")).toBeInTheDocument();
+    // Memory survives as a real NavLink to /memory.
+    expect(document.querySelector('a[href="/memory"]')).not.toBeNull();
+    // Brand link goes to / (was /feed pre-v1.20).
+    expect(document.querySelector('a[href="/"]')).not.toBeNull();
   });
 
   it("does NOT render sub-sections (no collapsible Sources / AI tools / Active agents)", () => {
@@ -94,20 +98,21 @@ describe("Wave 14 sidebar — wave-19 IA contract", () => {
     expect(screen.queryByTestId("sidebar-show-advanced")).not.toBeInTheDocument();
   });
 
-  it("killed-from-sidebar routes have no NavLink in the rail", () => {
+  it("v1.20.0 — none of the dead-redirect routes appear as direct NavLinks", () => {
     render(
       <MemoryRouter>
         <Sidebar />
       </MemoryRouter>,
     );
-    // v1.16.1 killed list. /people + /threads moved INTO the rail
-    // (they're the v1.16 view modes), so they're no longer "killed".
-    // === v1.18.0 === — /canvas reclaimed as the new heat-map + atom +
-    // Replay surface (the founder's "one canvas, two zoom levels"
-    // ask). It was on the killed list during v1.16 demolition; now
-    // it's a real second-tab nav item, so it's been removed below.
-    // /today + /brain stayed killed (smart-layer surfaces still砍).
+    // v1.20 explicitly killed direct links to /feed, /threads, /people,
+    // /canvas — they all redirect to / so a NavLink would just look
+    // broken. The user reaches those views via the canvas-view buttons
+    // (T/H/P/R) which set ui.canvasView in-place.
     const killedHrefs = [
+      "/feed",
+      "/threads",
+      "/people",
+      "/canvas",
       "/this-week",
       "/projects",
       "/alignment",
@@ -122,14 +127,9 @@ describe("Wave 14 sidebar — wave-19 IA contract", () => {
     for (const href of killedHrefs) {
       expect(
         document.querySelector(`a[href="${href}"]`),
-        `expected sidebar to NOT link directly to ${href} (Cmd+K / Settings only)`,
+        `expected sidebar to NOT link directly to ${href} (Cmd+K / canvas-view button only)`,
       ).toBeNull();
     }
-    // === v1.18.0 === — explicit positive assertion that /canvas DOES
-    // mount in the rail. Pinned so a future "hide canvas behind a
-    // setting" change can't silently kill the founder's spec.
-    expect(document.querySelector('a[href="/canvas"]')).not.toBeNull();
-    // === end v1.18.0 ===
   });
 });
 // === end wave 19 ===

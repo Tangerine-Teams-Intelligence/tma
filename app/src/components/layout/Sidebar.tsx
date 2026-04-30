@@ -42,25 +42,17 @@ import {
   Calendar,
   FolderKanban,
   Brain,
-  Layers,
-  // === wave 1.13-A === — Inbox is the 6th sidebar nav item.
-  Inbox as InboxIcon,
-  // === end wave 1.13-A ===
   // === v1.18.0 === — Canvas (heat-map + atom + Replay) surface.
   Map as MapIcon,
   // === end v1.18.0 ===
+  // === v1.20.0 === — Replay icon for the new R-view sidebar entry.
+  Play as PlayIcon,
+  // === end v1.20.0 ===
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { signOut } from "@/lib/auth";
 import { useStore } from "@/lib/store";
 import { SyncStatusIndicator } from "@/components/SyncStatusIndicator";
-// === wave 1.13-A ===
-// Wave 1.13-A — drives the orange unread badge next to the Inbox label.
-// Hook polls once on mount and listens for `inbox:event_created` so a
-// fresh @mention bumps the count immediately. Listener is a no-op
-// outside Tauri — the count stays at 0 in browser dev / vitest.
-import { useInboxUnreadCount } from "@/lib/identity";
-// === end wave 1.13-A ===
 // === wave 10 === — v1.10 git auto-sync indicator (above Settings).
 import { GitSyncIndicatorContainer } from "@/components/GitSyncIndicatorContainer";
 // === end wave 10 ===
@@ -71,32 +63,33 @@ import { GitSyncIndicatorContainer } from "@/components/GitSyncIndicatorContaine
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 // === end wave 10.1 hotfix ===
 import { kbdShortcut } from "@/lib/platform";
-// === wave 1.13-D ===
-// v1.13 — small avatar dots inline with each primary nav item showing
-// which teammates are currently viewing that route. Self-hides per item
-// when no teammates match.
-import { SidebarPresenceDots } from "@/components/presence/SidebarPresenceDots";
-// === end wave 1.13-D ===
 
 /**
- * Always-visible left rail (~240px).
+ * Always-visible left rail (~240px) — hidden by default in v1.19+.
  *
- * === wave 19 === — drastic IA reduction. The rail now hosts a single
- * 5-item primary nav (Today / Memory / Brain / Canvas + Settings in
- * the footer) plus a brand mark and the system-action footer. Every
- * other surface (sources, AI tools, alignment, inbox, this-week, people,
- * projects, threads, reviews, marketplace, graphs, sinks) still lives
- * at the same routes — they're just no longer in the rail. Power users
- * reach them via Cmd+K (CommandPalette already indexes all of them) or
- * Settings → Sources / AI tools tabs.
+ * === v1.20.0 === — full IA rewrite to match the v1.19 single-canvas
+ * design. The wave-19 sidebar still pointed all 5 nav links at routes
+ * (/feed, /threads, /people, /canvas, /memory) that v1.19's redirect
+ * table sends to /. Clicking any of them while the user was on /
+ * looked like a no-op — orange highlight flickered but the canvas view
+ * never changed. Now each link is a button that flips
+ * `ui.canvasView` directly, mirroring the T/H/P/R single-key
+ * shortcuts that AppShell wires up. The Memory entry stays as the
+ * only true route nav (it does live at /memory; v1.19 redirects it but
+ * MemoryRoute is still mounted so direct URL access works).
+ *
+ * Brand link: was /feed (dead), now /. The Cmd+K trigger button used
+ * to call togglePalette() which flipped a `paletteOpen` flag with no
+ * UI consumer (legacy CommandPalette overlay was deleted in v1.16).
+ * Now it sets `ui.spotlightOpen = true` so the new Spotlight modal
+ * actually opens when clicked.
  */
 export function Sidebar() {
   const navigate = useNavigate();
   const { t } = useTranslation();
-  const togglePalette = useStore((s) => s.ui.togglePalette);
-  // === wave 1.13-A === — drives the unread badge on the Inbox nav item.
-  const inboxUnread = useInboxUnreadCount();
-  // === end wave 1.13-A ===
+  const setSpotlightOpen = useStore((s) => s.ui.setSpotlightOpen);
+  const canvasView = useStore((s) => s.ui.canvasView);
+  const setCanvasView = useStore((s) => s.ui.setCanvasView);
 
   async function handleLock() {
     await signOut();
@@ -105,16 +98,13 @@ export function Sidebar() {
 
   return (
     <aside className="ti-no-select flex h-full w-[240px] shrink-0 flex-col border-r border-stone-200 bg-stone-50 dark:border-stone-800 dark:bg-stone-950">
-      {/* === wave 19 === — Brand header. Larger than the wave-8 22×22 chip:
-          a 28×28 rounded tile + display-serif "Tangerine" wordmark + a
-          subtitle ("Your team's AI memory") that hammers the team-memory
-          positioning every time the rail loads. Click → /today.
-          Cmd+K trigger sits to the right of the wordmark. */}
+      {/* Brand header — 28×28 rounded "T" tile + display-serif wordmark
+          + subtitle ("Your team's AI memory"). Click → /. */}
       <div className="flex items-start justify-between gap-2 border-b border-stone-200 px-3 py-3 dark:border-stone-800">
         <NavLink
-          to="/feed"
+          to="/"
           className="flex min-w-0 flex-1 items-center gap-2"
-          aria-label="Tangerine — Feed"
+          aria-label="Tangerine — home"
           data-testid="sidebar-brand"
         >
           <div
@@ -149,65 +139,74 @@ export function Sidebar() {
         </NavLink>
         <button
           type="button"
-          onClick={togglePalette}
+          onClick={() => setSpotlightOpen(true)}
           className="mt-0.5 shrink-0 rounded border border-stone-200 px-1.5 py-0.5 font-mono text-[10px] text-stone-500 hover:bg-stone-100 dark:border-stone-800 dark:text-stone-400 dark:hover:bg-stone-900"
-          aria-label="Open command palette"
+          aria-label="Open Spotlight"
           title="Search memory · Cmd+K"
         >
           {kbdShortcut("k")}
         </button>
       </div>
 
-      {/* === v1.16 Wave 6 dogfood — sidebar rewritten to match the new
-          3-view-mode design. /today / /co-thinker / /canvas were all
-          砍 in Wave 1 demolition; the surviving primary surfaces are
-          /feed (Story Feed, default landing), /threads (mention auto-
-          group), /people (teammate grid), and /memory (file tree fallback
-          for power users). Inbox is collapsed into /threads since
-          @mention notifications are the same data. Linear-style clean
-          rail: 4 primary nav items + footer system controls. */}
+      {/* === v1.20.0 — canvas-view buttons.
+          T (time), H (heatmap), P (people), R (replay) mirror the
+          AppShell single-key shortcuts. Active state highlights the
+          current `ui.canvasView`. The 5th item (Memory) is the only
+          true route nav since /memory is still a legitimate fallback
+          surface for power users editing the file tree directly. */}
       <nav
         className="flex-1 overflow-y-auto px-2 py-3"
         data-testid="sidebar-primary-nav"
       >
-        <ViewLink
-          to="/feed"
+        <CanvasViewButton
           icon={Calendar}
-          label={t("sidebar.feed", { defaultValue: "Feed" })}
-          testId="sidebar-nav-feed"
-          presenceRoute="/feed"
+          label={t("sidebar.viewTime", { defaultValue: "Time" })}
+          testId="sidebar-nav-time"
+          view="time"
+          activeView={canvasView}
+          onClick={() => {
+            setCanvasView("time");
+            navigate("/");
+          }}
         />
-        <ViewLink
-          to="/threads"
-          icon={InboxIcon}
-          label={t("sidebar.threads", { defaultValue: "Threads" })}
-          testId="sidebar-nav-threads"
-          badge={inboxUnread > 0 ? inboxUnread : undefined}
-        />
-        <ViewLink
-          to="/people"
-          icon={Brain}
-          label={t("sidebar.people", { defaultValue: "People" })}
-          testId="sidebar-nav-people"
-          presenceRoute="/people"
-        />
-        {/* === v1.18.0 === — Canvas: 2D zoom-based heat-map + atom view
-            + Replay timelapse. Sits between /people and /memory per
-            the spec ("一个 surface, 两个 zoom level + 一个 timelapse"). */}
-        <ViewLink
-          to="/canvas"
+        <CanvasViewButton
           icon={MapIcon}
-          label={t("sidebar.canvas", { defaultValue: "Canvas" })}
-          testId="sidebar-nav-canvas"
-          presenceRoute="/canvas"
+          label={t("sidebar.viewHeatmap", { defaultValue: "Heatmap" })}
+          testId="sidebar-nav-heatmap"
+          view="heatmap"
+          activeView={canvasView}
+          onClick={() => {
+            setCanvasView("heatmap");
+            navigate("/");
+          }}
         />
-        {/* === end v1.18.0 === */}
+        <CanvasViewButton
+          icon={Brain}
+          label={t("sidebar.viewPeople", { defaultValue: "People" })}
+          testId="sidebar-nav-people"
+          view="people"
+          activeView={canvasView}
+          onClick={() => {
+            setCanvasView("people");
+            navigate("/");
+          }}
+        />
+        <CanvasViewButton
+          icon={PlayIcon}
+          label={t("sidebar.viewReplay", { defaultValue: "Replay" })}
+          testId="sidebar-nav-replay"
+          view="replay"
+          activeView={canvasView}
+          onClick={() => {
+            setCanvasView("replay");
+            navigate("/");
+          }}
+        />
         <ViewLink
           to="/memory"
           icon={FolderKanban}
           label={t("sidebar.memory")}
           testId="sidebar-nav-memory"
-          presenceRoute="/memory"
         />
       </nav>
 
@@ -262,84 +261,84 @@ export function Sidebar() {
   );
 }
 
-// === wave 19 ===
-// Single ViewLink primitive remains. The Section / SourceLink / SinkLink /
-// StatusChip primitives moved out (wave 19 sidebar has no sub-sections).
-// `activeMatchPaths` accepts an optional list of legacy routes that should
-// also count as "active" for the highlight — used so the new /brain route
-// shows the orange active state when the user lands on the legacy
-// /co-thinker URL via a bookmark or external deep link.
-// === end wave 19 ===
+/**
+ * v1.20.0 — Slim ViewLink kept for the surviving Memory route nav.
+ * The wave-1.13 presence dots + unread badge wiring is gone (the only
+ * caller that used them was Inbox/Threads, which v1.20 removed because
+ * those routes redirect to / anyway).
+ */
 function ViewLink({
   to,
   icon: Icon,
   label,
   testId,
-  activeMatchPaths,
-  // === wave 1.13-D === — opt-in route key for SidebarPresenceDots. When
-  // omitted (e.g. footer items, Settings) no presence indicator renders.
-  presenceRoute,
-  // === end wave 1.13-D ===
-  // === wave 1.13-A === — opt-in unread badge (orange chip with count).
-  // Currently consumed by the Inbox nav item; future surfaces may reuse
-  // for review queue / suppressed suggestions count.
-  badge,
-  // === end wave 1.13-A ===
 }: {
   to: string;
   icon: React.ComponentType<{ size?: number; className?: string }>;
   label: string;
   testId?: string;
-  activeMatchPaths?: string[];
-  presenceRoute?: string;
-  badge?: number;
 }) {
   return (
     <NavLink
       to={to}
       data-testid={testId}
-      className={({ isActive }) => {
-        // === wave 19 === — manual extra-active check so /brain stays
-        // highlighted when the user is sitting on /co-thinker (legacy
-        // bookmark). NavLink's built-in `isActive` only honours `to`.
-        const extraActive =
-          (activeMatchPaths ?? []).some(
-            (p) =>
-              typeof window !== "undefined" &&
-              window.location.pathname.startsWith(p),
-          );
-        const active = isActive || extraActive;
-        return cn(
-          // === wave 19 === — rail items get a touch more breathing room
-          // (py-1 vs. wave-8 py-0.5) since there are only 4 of them; the
-          // dense vertical rhythm only made sense when 30+ items competed.
+      className={({ isActive }) =>
+        cn(
           "flex items-center gap-2 rounded px-2 py-1 text-[13px]",
-          active
+          isActive
             ? "bg-[var(--ti-orange-50)] text-[var(--ti-orange-700)] dark:bg-stone-800 dark:text-[var(--ti-orange-500)]"
             : "text-stone-700 hover:bg-stone-100 dark:text-stone-300 dark:hover:bg-stone-900",
-        );
-      }}
+        )
+      }
     >
       <Icon size={14} className="shrink-0" />
       <span className="truncate">{label}</span>
-      {/* === wave 1.13-A === — orange unread chip. Mirrors the system
-          design (mono font, 10px) used by GitSyncIndicator + the Inbox
-          tab badges so the rail reads as one cohesive system. */}
-      {badge !== undefined && badge > 0 && (
-        <span
-          data-testid={testId ? `${testId}-badge` : undefined}
-          className="ml-auto rounded-full bg-[var(--ti-orange-500)] px-1.5 py-0.5 font-mono text-[10px] leading-none text-white"
-        >
-          {badge > 99 ? "99+" : badge}
-        </span>
-      )}
-      {/* === end wave 1.13-A === */}
-      {/* === wave 1.13-D === — teammate avatars inline with the route
-          when one or more teammates are viewing it. Self-hides when
-          empty so solo users see the rail unchanged. */}
-      {presenceRoute && <SidebarPresenceDots route={presenceRoute} />}
-      {/* === end wave 1.13-D === */}
     </NavLink>
+  );
+}
+
+/**
+ * v1.20.0 — Canvas-view nav button.
+ *
+ * The wave-19 sidebar wired its 4 primary nav items to dead routes
+ * (/feed → /, /threads → /, /people → /, /canvas → /). v1.20 reroutes
+ * them to `setCanvasView()` so clicking actually changes what the user
+ * sees. Active highlight derives from `ui.canvasView`, not from the
+ * URL, since they all live at `/`.
+ */
+function CanvasViewButton({
+  icon: Icon,
+  label,
+  testId,
+  view,
+  activeView,
+  onClick,
+}: {
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+  label: string;
+  testId?: string;
+  view: "time" | "heatmap" | "people" | "replay";
+  activeView: "time" | "heatmap" | "people" | "replay";
+  onClick: () => void;
+}) {
+  const active = view === activeView;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      data-testid={testId}
+      data-active={active ? "true" : "false"}
+      data-view={view}
+      className={cn(
+        "flex w-full items-center gap-2 rounded px-2 py-1 text-left text-[13px] transition-colors",
+        active
+          ? "bg-[var(--ti-orange-50)] text-[var(--ti-orange-700)] dark:bg-stone-800 dark:text-[var(--ti-orange-500)]"
+          : "text-stone-700 hover:bg-stone-100 dark:text-stone-300 dark:hover:bg-stone-900",
+      )}
+    >
+      <Icon size={14} className="shrink-0" />
+      <span className="truncate">{label}</span>
+    </button>
   );
 }
 

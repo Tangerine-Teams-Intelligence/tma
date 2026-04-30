@@ -24,15 +24,17 @@
  */
 
 import { useEffect, useRef } from "react";
-import { Outlet, useLocation, NavLink } from "react-router-dom";
+import { Outlet, useLocation, NavLink, useNavigate } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { Spotlight } from "@/components/spotlight/Spotlight";
+import { ToastHost } from "./ToastHost";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AmbientInputObserver } from "@/components/ambient/AmbientInputObserver";
 import { BannerHost } from "@/components/suggestions/BannerHost";
 import { ModalHost } from "@/components/suggestions/ModalHost";
 import { UpdaterCheck } from "@/components/UpdaterCheck";
 import { useStore } from "@/lib/store";
+import { signOut } from "@/lib/auth";
 import { markUserOpened, readTimelineRecent } from "@/lib/views";
 import { userFacingFoldersEmpty } from "@/lib/memory";
 import {
@@ -409,7 +411,11 @@ export function AppShell() {
             {/* === v1.19.4 emergency nav fix === always-visible top-right
                 navbar so users have a reliable escape hatch when sidebar
                 is hidden + footer hint has decayed. v1.19.0–.3 left users
-                stranded if they didn't memorize ⌘K. */}
+                stranded if they didn't memorize ⌘K.
+                v1.20.0 — TopNav now also has a "T" home button (so user
+                on /settings can return without guessing) and the signout
+                button actually calls signOut() before routing to /auth
+                (else App.tsx auth-gate bounces them right back to /). */}
             <TopNav onOpenSpotlight={() => setSpotlightOpen(true)} />
             <Outlet />
             <FooterHint
@@ -419,6 +425,7 @@ export function AppShell() {
           </main>
         </div>
         <Spotlight />
+        <ToastHost />
         <ModalHost />
         <ErrorBoundary label="UpdaterCheck">
           <UpdaterCheck />
@@ -430,30 +437,74 @@ export function AppShell() {
 
 /**
  * v1.19.4 emergency nav fix — always-visible top-right minibar.
- * Three icon-buttons: Spotlight (⌘K), Settings (gear), Sign-out.
- * Pinned `position: fixed top-right` so every route + every state
- * shows it — no matter the sidebar's hidden state, the footer hint
- * counter, or the user's familiarity with keyboard shortcuts.
+ * v1.20.0 expansion — added a "T" home button on the left so the user can
+ * return to / from /settings without guessing, and the sign-out button now
+ * actually calls signOut() before routing to /auth (the v1.19.4 NavLink
+ * version would just bounce off App.tsx's auth-gate redirect since the
+ * session was still live).
+ *
+ * Buttons (left to right): Home (T) → Spotlight (⌘K) → Settings (gear) →
+ * Sign-out. Pinned `position: fixed top-right` so every route + every state
+ * shows it — no matter the sidebar's hidden state, the footer hint counter,
+ * or the user's familiarity with keyboard shortcuts.
  *
  * Why a TopNav instead of restoring the v1.18 sidebar:
  *   • Sidebar restoration is a v1.20 IA decision (real rethink, not
  *     hot-fix scope).
- *   • The pain Daizhe hit was "no exit" — solved by 3 always-visible
+ *   • The pain Daizhe hit was "no exit" — solved by always-visible
  *     buttons. Sidebar's full nav (4 view tabs) stays second-class.
- *   • TopNav is mono-icon, no labels, ~120px wide — minimal chrome.
+ *   • TopNav is mono-icon, no labels, ~160px wide — minimal chrome.
  */
 function TopNav({ onOpenSpotlight }: { onOpenSpotlight: () => void }) {
+  const navigate = useNavigate();
+
+  async function handleSignOut() {
+    // v1.20.0 fix — v1.19.4 used a plain NavLink to /auth which left the
+    // user signed in; App.tsx's auth gate (line ~149) then bounced them
+    // straight back to /. The signout was a no-op. Now we properly call
+    // signOut() first, which clears the stub session / Supabase session,
+    // THEN navigate to /auth. The auth-gate check sees signedIn=false
+    // and renders the login surface as intended.
+    try {
+      await signOut();
+    } catch {
+      // Even if signOut fails (offline / Supabase down), still route to
+      // /auth so the user gets the sign-in surface — they can retry from
+      // there.
+    }
+    navigate("/auth", { replace: true });
+  }
+
   return (
     <nav
       data-testid="top-nav"
       className="pointer-events-none fixed right-4 top-3 z-30 flex select-none items-center gap-1"
       aria-label="Quick navigation"
     >
+      {/* v1.20.0 — Home button. The "T" tile mirrors the sidebar brand
+          so the user has a consistent home affordance whether the
+          sidebar is on or off. Routes to /. */}
+      <NavLink
+        data-testid="top-nav-home"
+        to="/"
+        title="Home"
+        aria-label="Home"
+        className="pointer-events-auto flex h-7 w-7 items-center justify-center rounded-md text-[12px] font-semibold text-white shadow-sm transition-opacity hover:opacity-90"
+        style={{
+          background:
+            "linear-gradient(135deg, var(--ti-orange-500) 0%, var(--ti-orange-700) 100%)",
+          fontFamily: "var(--ti-font-display)",
+          lineHeight: "1",
+        }}
+      >
+        T
+      </NavLink>
       <button
         type="button"
         data-testid="top-nav-spotlight"
         onClick={onOpenSpotlight}
         title="Open Spotlight (⌘K)"
+        aria-label="Open Spotlight"
         className="pointer-events-auto rounded-md border border-stone-200 bg-white/80 px-2 py-1 font-mono text-[11px] text-stone-600 shadow-sm backdrop-blur transition-colors hover:bg-stone-100 dark:border-stone-800 dark:bg-stone-900/80 dark:text-stone-400 dark:hover:bg-stone-800"
       >
         ⌘K
@@ -462,6 +513,7 @@ function TopNav({ onOpenSpotlight }: { onOpenSpotlight: () => void }) {
         data-testid="top-nav-settings"
         to="/settings"
         title="Settings (⌘,)"
+        aria-label="Settings"
         className="pointer-events-auto rounded-md border border-stone-200 bg-white/80 p-1.5 text-stone-600 shadow-sm backdrop-blur transition-colors hover:bg-stone-100 dark:border-stone-800 dark:bg-stone-900/80 dark:text-stone-400 dark:hover:bg-stone-800"
       >
         <svg
@@ -479,10 +531,12 @@ function TopNav({ onOpenSpotlight }: { onOpenSpotlight: () => void }) {
           <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
         </svg>
       </NavLink>
-      <NavLink
+      <button
+        type="button"
         data-testid="top-nav-signout"
-        to="/auth"
+        onClick={() => void handleSignOut()}
         title="Sign out / switch account"
+        aria-label="Sign out"
         className="pointer-events-auto rounded-md border border-stone-200 bg-white/80 p-1.5 text-stone-600 shadow-sm backdrop-blur transition-colors hover:bg-stone-100 dark:border-stone-800 dark:bg-stone-900/80 dark:text-stone-400 dark:hover:bg-stone-800"
       >
         <svg
@@ -500,7 +554,7 @@ function TopNav({ onOpenSpotlight }: { onOpenSpotlight: () => void }) {
           <polyline points="16 17 21 12 16 7" />
           <line x1="21" y1="12" x2="9" y2="12" />
         </svg>
-      </NavLink>
+      </button>
     </nav>
   );
 }

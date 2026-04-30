@@ -60,7 +60,9 @@ const COMMANDS: SpotlightCommandSpec[] = [
   { key: "settings", label: ":settings", hint: "open Settings" },
   { key: "theme", label: ":theme", hint: "cycle theme" },
   { key: "sources", label: ":sources", hint: "list connected sources" },
-  { key: "about", label: ":about", hint: "Tangerine v" },
+  // v1.20.0 — `:about` now surfaces the running app version as a toast
+  // (was a misdirect to /settings before).
+  { key: "about", label: ":about", hint: "show app version" },
 ];
 
 interface ResultRow {
@@ -80,6 +82,9 @@ export function Spotlight() {
   const setOpen = useStore((s) => s.ui.setSpotlightOpen);
   const setCanvasView = useStore((s) => s.ui.setCanvasView);
   const cycleTheme = useStore((s) => s.ui.cycleTheme);
+  // v1.20.0 — `:replay` and `:about` go through pushToast for honest
+  // empty-corpus + version-disclosure flows.
+  const pushToast = useStore((s) => s.ui.pushToast);
   const [query, setQuery] = useState("");
   const [activeIdx, setActiveIdx] = useState(0);
   const [events, setEvents] = useState<TimelineEvent[]>([]);
@@ -151,12 +156,17 @@ export function Spotlight() {
         // v1.19.1 Round 2 E — `theme` is incremental (user may want to
         // cycle through system → light → dark in one go), so we leave
         // the spotlight open. Every other command closes after running.
-        runCommand(p.key, { setCanvasView, cycleTheme });
+        runCommand(p.key, {
+          setCanvasView,
+          cycleTheme,
+          pushToast,
+          eventCount: events.length,
+        });
         if (p.key !== "theme") setOpen(false);
         return;
       }
     },
-    [setOpen, setCanvasView, cycleTheme],
+    [setOpen, setCanvasView, cycleTheme, pushToast, events.length],
   );
 
   useEffect(() => {
@@ -553,10 +563,24 @@ function runCommand(
   ctx: {
     setCanvasView: (v: "time" | "heatmap" | "people" | "replay") => void;
     cycleTheme: () => void;
+    pushToast: (kind: "info" | "success" | "error", text: string) => void;
+    eventCount: number;
   },
 ): void {
   switch (key) {
     case "replay":
+      // v1.20.0 honesty fix — running `:replay` with an empty corpus
+      // would silently switch to the replay view with nothing to play.
+      // The user'd see a blank canvas + a slowly ticking progress bar
+      // for 5s, then auto-flip back to the time view. Now we surface
+      // the empty-corpus case as an honest toast and stay where we are.
+      if (ctx.eventCount === 0) {
+        ctx.pushToast(
+          "info",
+          "No captures to replay. Connect a source in Settings first.",
+        );
+        return;
+      }
       ctx.setCanvasView("replay");
       return;
     case "settings":
@@ -579,12 +603,15 @@ function runCommand(
       }
       return;
     case "about":
-      // v1.19.1 Round 2 E — Round 2 routes :about to /settings (where the
-      // version chip lives). v1.19 has no separate about modal yet.
-      if (typeof window !== "undefined") {
-        window.history.pushState({}, "", "/settings");
-        window.dispatchEvent(new PopStateEvent("popstate"));
-      }
+      // v1.20.0 honesty fix — `:about` used to navigate to /settings
+      // and hope the user found the version chip somewhere. The
+      // version is actually defined as `__APP_VERSION__` (a Vite
+      // build-time constant); we surface it as a toast so the user
+      // gets the answer immediately without leaving the canvas.
+      ctx.pushToast(
+        "info",
+        `Tangerine AI Teams v${__APP_VERSION__}`,
+      );
       return;
   }
 }

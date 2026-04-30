@@ -200,6 +200,16 @@ export default function AuthRoute() {
           </p>
 
           {/* === v2.5 real auth === */}
+          {/* === v1.20.0 honesty fix === — Daizhe explicitly hit "github
+              登录页面用不了" because the v1.19 OAuth buttons silently
+              minted a stub session named `Github-stub@tangerine.local`
+              instead of opening GitHub. The button label said "Continue
+              with GitHub" but no GitHub web page ever loaded — confusing.
+              Now the OAuth buttons are visibly disabled in stub mode
+              with a one-line explanation. The user is steered to email
+              sign-in or "Skip to local" instead, both of which actually
+              work in stub mode. To enable real OAuth, set SUPABASE_URL +
+              SUPABASE_ANON_KEY at build time per app/.env.example. */}
           <div className="border-t border-[var(--ti-ink-200,#E5E5E0)] pt-4">
             {!showRealAuth ? (
               <Button
@@ -219,11 +229,23 @@ export default function AuthRoute() {
                 <p className="mb-2 text-center text-[11px] text-[var(--ti-ink-500)]">
                   {t("auth.realAuthHint")}
                 </p>
+                {isStubMode && (
+                  <div
+                    data-testid="auth-oauth-stub-warning"
+                    className="mb-3 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-[11px] text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100"
+                  >
+                    GitHub / Google sign-in needs Supabase configured. Until
+                    then the buttons below stay disabled — use email
+                    sign-in above, or "Skip to local" to keep going without
+                    auth.
+                  </div>
+                )}
                 <div className="flex flex-col gap-2">
                   <Button
                     type="button"
                     variant="outline"
-                    disabled={busy}
+                    disabled={busy || isStubMode}
+                    data-testid="auth-oauth-github"
                     onClick={() => void oauth("github")}
                     className="w-full"
                   >
@@ -232,7 +254,8 @@ export default function AuthRoute() {
                   <Button
                     type="button"
                     variant="outline"
-                    disabled={busy}
+                    disabled={busy || isStubMode}
+                    data-testid="auth-oauth-google"
                     onClick={() => void oauth("google")}
                     className="w-full"
                   >

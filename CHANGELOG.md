@@ -8,6 +8,46 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
      Each version block focuses on user-visible features so this doc can
      also feed the in-app /whats-new-app route. -->
 
+## [1.20.0] — 2026-04-30 — Comprehensive functional audit
+
+CEO Daizhe pointed out that the v1.19.3 audit was reading source code, not walking through user flows. This release does the walk: every interactive surface verified end-to-end, every honesty / dead-link / lie-to-the-user bug fixed in a single commit. Quote: *"你犯了这个错误说明这个app还会有很多其他功能性使用性错误，你他妈去改好所有东西"*.
+
+### Bugs fixed
+
+- **TopNav home button + working signout** — `app/src/components/layout/AppShell.tsx`. v1.19.4 shipped a 3-button TopNav (⌘K / ⚙ / ⏻) but missed two critical pieces: (a) no way back to home from `/settings` (clicking ⚙ while on /settings is a no-op); (b) the ⏻ signout was a plain `<NavLink to="/auth">` — App.tsx's auth-gate sees the user is still signed in and bounces them right back to `/`, so signout did nothing. Now: 4 buttons (T home → ⌘K → ⚙ → ⏻); home button routes to `/`; signout actually calls `signOut()` from `@/lib/auth` then navigates to `/auth`. All buttons get `aria-label`s.
+
+- **Sidebar canvas-view buttons (no more dead-route nav)** — `app/src/components/layout/Sidebar.tsx`. The wave-19 sidebar had 5 nav links pointing at `/feed`, `/threads`, `/people`, `/canvas`, `/memory` — but v1.19's redirect table sends 4 of those to `/`. Clicking any of them while on `/` looked like a no-op (orange highlight flickered, canvas view never changed). Now they're `<button>`s that flip `ui.canvasView` directly (T/H/P/R mirror the AppShell single-key shortcuts). Brand link: `/feed` → `/`. Cmd+K trigger button: was calling `togglePalette()` against a dead `paletteOpen` flag with no UI consumer; now opens the v1.19 Spotlight via `setSpotlightOpen(true)`. Drops the wave-1.13 unread-badge / presence-dots primitives that nothing was consuming after v1.20.
+
+- **Auth OAuth honesty in stub mode** — `app/src/routes/auth.tsx`. Daizhe explicitly hit "github 登录页面用不了". Diagnosis: the v1.19 "Continue with GitHub" button silently minted a stub session named `Github-stub@tangerine.local` instead of opening GitHub. The button label promised something the app couldn't deliver in stub mode (no `SUPABASE_URL` env var). Now: in stub mode, an amber notice explains "GitHub / Google sign-in needs Supabase configured", and both OAuth buttons render disabled. The user is steered to email sign-in (which works in stub) or "Skip to local" (also works).
+
+- **ToastHost added — pushed toasts now actually render** — `app/src/components/layout/ToastHost.tsx` (new), mounted in `AppShell.tsx`. The store had `pushToast()` writing to `ui.toasts[]` and `dismissToast()` removing entries, but **no component was rendering them**. ~12 call sites (Sync now / Git init / OAuth flow / etc) were writing into a void. Settings → Connect's "Sync now wrote 14, skipped 0" feedback the v1.18.2 R6 audit specifically hardened was invisible to users. Now: bottom-right toast stack (newest top), error toasts sticky, info/success auto-dismiss after `durationMs`. `aria-live="polite"`; per-toast ✕ close button.
+
+- **Spotlight `:replay` honesty** — `app/src/components/spotlight/Spotlight.tsx`. Running `:replay` with an empty corpus would silently switch to the replay view with nothing to play (blank canvas, slowly ticking progress bar for 5s, auto-flip back). Now: zero-corpus replay calls `pushToast("info", "No captures to replay. Connect a source in Settings first.")` and stays on the current view.
+
+- **Spotlight `:about` shows version** — `app/src/components/spotlight/Spotlight.tsx`. Pre-v1.20, `:about` redirected to `/settings` and hoped the user'd find the version chip somewhere. Now it pushes a toast with `Tangerine AI Teams v${__APP_VERSION__}` directly. Updated the command hint from `Tangerine v` (filler) to `show app version`.
+
+### Tests added
+
+- `app/tests/v1_20-audit.test.tsx` (new, 12 tests) — pinned every audit fix:
+  - Sidebar T/H/P/R buttons flip `ui.canvasView`
+  - Sidebar active button has `data-active="true"`
+  - Sidebar brand → `/`, Cmd+K trigger opens Spotlight
+  - ToastHost renders pushed toasts; error toasts sticky; dismiss button works; empty stack renders nothing
+  - Spotlight `:replay` with empty corpus pushes a toast
+  - Spotlight `:about` pushes a version toast
+  - Auth OAuth buttons disabled in stub mode + warning notice present
+  - `signOut()` clears the stub session
+
+- `app/tests/wave14-sidebar-collapse.test.tsx` — rewrote 2 of 3 cases for the v1.20 IA. The legacy contract (5 anchor `<a>` tags pointing at `/feed`/`/threads`/`/people`/`/canvas`/`/memory`) is now an explicit anti-contract: the suite now asserts `<button>` testids for the 4 canvas-view buttons + the surviving Memory NavLink, and pins `/feed`/`/threads`/`/people`/`/canvas` to the killed-href list.
+
+Suite numbers: **712 passed, 14 skipped, 0 failed** (up from 700/14/0).
+
+### What this DOESN'T fix (deferred to v1.21+ scope)
+
+- Real Supabase OAuth backend wiring. The Tauri command is plumbed but the actual Supabase HTTP `auth/v1/authorize` redirect handler is still `Err(StubModeOnly)` in `auth.rs`. Setting `SUPABASE_URL` + `SUPABASE_ANON_KEY` env vars + writing the deep-link handler is its own design ticket.
+- Mobile responsive sweep. v1.20 keeps the v1.19 desktop-first stance per the audit prompt; mobile remains acceptable to break.
+- Cargo `commands::billing::tests::cmd_trial_subscribe_cancel_round_trip` + `commands::identity::tests::resolve_uses_env_var_when_no_persisted` — pre-existing parallel-test-isolation flakes (verified to pass in isolation; fail only when the full suite runs concurrently). Same status as v1.19.3.
+
 ## [1.19.4] — 2026-04-30 — Emergency nav fix: TopNav + clickable Open Settings
 
 CEO Daizhe installed v1.19.3 and got stuck. Quote: *"一打开就还是这个页面，都回不去登陆页面没有按钮，你在设计什么 app 啊"*. Diagnosis: v1.19.0 killed the sidebar by default and trusted Cmd+K + footer hint as the only nav. Footer hint hides itself after 5 boots. Result: a user who doesn't memorize Cmd+K had zero way to reach Settings, sign-out, or any other route. R6 honesty was preserved (the empty state told the truth) but the surface offered no escape hatch.
