@@ -29,11 +29,23 @@
  *     v1.19 outer chrome.
  *   • H. Day separator "Today" gets the orange accent; other days
  *     stay stone.
+ *
+ * v1.21.0 — Operability surfaces A + B:
+ *   • Catch-up banner at the top of TimeDensityList (above the
+ *     time-view header) — reads cursor.last_opened_at and shows
+ *     the user N new atoms since last visit + the top 3 rows.
+ *   • Capture input pinned to the bottom of FeedRoute (sticky,
+ *     above the FooterHint). Click → expand → type → Save writes
+ *     a manual atom to disk + appends to the timeline index.
+ *   • `bumpVisitedOnce` — first time the user clicks any atom or
+ *     fires T/H/P/R, we mark cursor.last_opened_at = now() so the
+ *     catch-up resets honestly on the next reload.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
+  markUserOpened,
   readTimelineRecent,
   type TimelineEvent,
 } from "@/lib/views";
@@ -42,14 +54,56 @@ import { AtomBottomSheet } from "@/components/feed/AtomBottomSheet";
 import { CanvasView } from "@/components/canvas/CanvasView";
 import { buildPeopleStats } from "@/routes/people/index";
 import { useReplayController } from "@/components/canvas/ReplayController";
+import { CatchupBanner } from "@/components/feed/CatchupBanner";
+import { CaptureInput } from "@/components/feed/CaptureInput";
 
 export default function FeedRoute() {
   const canvasView = useStore((s) => s.ui.canvasView);
   const setCanvasView = useStore((s) => s.ui.setCanvasView);
+  const currentUser = useStore((s) => s.ui.currentUser);
   const [events, setEvents] = useState<TimelineEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [openAtom, setOpenAtom] = useState<TimelineEvent | null>(null);
+
+  // v1.21.0 — track whether we've already bumped last_opened_at this
+  // session so the engagement-driven cursor write fires exactly once.
+  const visitedRef = useRef(false);
+  const bumpVisitedOnce = useCallback(() => {
+    if (visitedRef.current) return;
+    visitedRef.current = true;
+    void markUserOpened(currentUser || "me");
+  }, [currentUser]);
+
+  const handleOpenAtom = useCallback(
+    (ev: TimelineEvent) => {
+      bumpVisitedOnce();
+      setOpenAtom(ev);
+    },
+    [bumpVisitedOnce],
+  );
+
+  // v1.21.0 — bumpVisitedOnce should also fire when the user hits a
+  // single-key view switcher (T/H/P/R). The handler lives in AppShell
+  // (it owns the listener so spotlight + textarea don't trigger), so
+  // we observe `canvasView` changes from a non-initial state and treat
+  // that as "engagement."
+  const initialViewRef = useRef(canvasView);
+  useEffect(() => {
+    if (canvasView !== initialViewRef.current) {
+      bumpVisitedOnce();
+    }
+  }, [canvasView, bumpVisitedOnce]);
+
+  // v1.21.0 — when the Capture input lands a new atom, prepend it to
+  // the local events state so the user sees it immediately at the top
+  // of the time-density list (the on-disk timeline.json was updated
+  // synchronously by the Tauri command, but a re-fetch race could miss
+  // it). Counts as engagement.
+  const handleCaptured = useCallback((ev: TimelineEvent) => {
+    setEvents((prev) => [ev, ...prev]);
+    visitedRef.current = true;
+  }, []);
 
   useEffect(() => {
     let cancel = false;
@@ -81,43 +135,60 @@ export default function FeedRoute() {
       data-canvas-view={canvasView}
       className="flex h-full w-full flex-col bg-stone-50 dark:bg-stone-950"
     >
-      {loading && (
-        <div
-          data-testid="feed-loading"
-          className="flex h-full items-center justify-center text-stone-500"
-        >
-          <span className="font-mono text-[12px]">Loading captures…</span>
-        </div>
-      )}
-      {error && !loading && (
-        <div className="flex h-full items-center justify-center px-6">
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        {loading && (
           <div
-            data-testid="feed-error"
-            role="alert"
-            className="max-w-md rounded-md border border-rose-300 bg-rose-50 p-4 text-[13px] text-rose-800 dark:border-rose-900/50 dark:bg-rose-950/40 dark:text-rose-200"
+            data-testid="feed-loading"
+            className="flex h-full items-center justify-center text-stone-500"
           >
-            <div className="font-semibold">Couldn't load captures.</div>
-            <div className="mt-1 font-mono text-[11px]">{error}</div>
+            <span className="font-mono text-[12px]">Loading captures…</span>
           </div>
-        </div>
-      )}
-      {!loading && !error && events.length === 0 && <EmptyState />}
+        )}
+        {error && !loading && (
+          <div className="flex h-full items-center justify-center px-6">
+            <div
+              data-testid="feed-error"
+              role="alert"
+              className="max-w-md rounded-md border border-rose-300 bg-rose-50 p-4 text-[13px] text-rose-800 dark:border-rose-900/50 dark:bg-rose-950/40 dark:text-rose-200"
+            >
+              <div className="font-semibold">Couldn't load captures.</div>
+              <div className="mt-1 font-mono text-[11px]">{error}</div>
+            </div>
+          </div>
+        )}
+        {!loading && !error && events.length === 0 && <EmptyState />}
+        {!loading && !error && events.length > 0 && (
+          <>
+            {canvasView === "time" && (
+              <TimeDensityList
+                events={events}
+                onOpenAtom={handleOpenAtom}
+                user={currentUser || "me"}
+              />
+            )}
+            {canvasView === "heatmap" && <HeatmapView events={events} />}
+            {canvasView === "people" && (
+              <PeopleDensityList
+                events={events}
+                onOpenAtom={handleOpenAtom}
+              />
+            )}
+            {canvasView === "replay" && (
+              <ReplayView
+                events={events}
+                onComplete={() => setCanvasView("time")}
+              />
+            )}
+          </>
+        )}
+      </div>
+      {/* v1.21.0 — Capture input pinned to the bottom of the canvas
+          surface. Sticks above the FooterHint (which is fixed-position
+          at viewport bottom, z-30). Render only when the timeline
+          actually has data — when empty, the EmptyState already owns
+          the canvas + tells the user to connect a source first. */}
       {!loading && !error && events.length > 0 && (
-        <>
-          {canvasView === "time" && (
-            <TimeDensityList events={events} onOpenAtom={setOpenAtom} />
-          )}
-          {canvasView === "heatmap" && <HeatmapView events={events} />}
-          {canvasView === "people" && (
-            <PeopleDensityList events={events} onOpenAtom={setOpenAtom} />
-          )}
-          {canvasView === "replay" && (
-            <ReplayView
-              events={events}
-              onComplete={() => setCanvasView("time")}
-            />
-          )}
-        </>
+        <CaptureInput user={currentUser || "me"} onCaptured={handleCaptured} />
       )}
       <AtomBottomSheet event={openAtom} onClose={() => setOpenAtom(null)} />
     </div>
@@ -144,9 +215,12 @@ export default function FeedRoute() {
 function TimeDensityList({
   events,
   onOpenAtom,
+  user,
 }: {
   events: TimelineEvent[];
   onOpenAtom: (e: TimelineEvent) => void;
+  /** v1.21.0 — drives the CatchupBanner cursor read. */
+  user: string;
 }) {
   const grouped = useMemo(() => groupByDay(events), [events]);
   const headerLabel = useMemo(
@@ -161,6 +235,10 @@ function TimeDensityList({
       className="mx-auto h-full w-full max-w-2xl overflow-y-auto px-8 py-12"
       style={{ contentVisibility: "auto" }}
     >
+      {/* v1.21.0 — Catch-up banner pinned to the top of the time view.
+          Internally renders nothing on first-ever visit (no
+          last_opened_at) and a quiet caught-up line when 0 new. */}
+      <CatchupBanner events={events} user={user} onOpenAtom={onOpenAtom} />
       <div
         data-testid="time-view-header"
         className="mb-6 font-mono text-[11px] text-stone-500"

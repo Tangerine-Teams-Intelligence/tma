@@ -565,6 +565,8 @@ macro_rules! tmi_invoke_handler {
             $crate::commands::views::mark_user_opened,
             $crate::commands::views::read_cursor,
             $crate::commands::views::read_whats_new,
+            // v1.21.0 — manual capture surface (canvas-bottom Capture input).
+            $crate::commands::views::capture_manual_atom,
             // === v1.17.1 ===
             // TEAM_INDEX.md auto-write — frictionless AI session bridge.
             // Manual surface invoked from the setup wizard's "show me the

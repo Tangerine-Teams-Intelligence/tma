@@ -407,6 +407,62 @@ export async function readCursor(user: string): Promise<CursorSnapshot> {
   }));
 }
 
+// ---------- v1.21.0 manual capture (Operability surface B) ----------
+
+export type ManualAtomKind = "decision" | "note" | "task";
+
+export interface CaptureManualAtomOut {
+  event: TimelineEvent;
+  path: string;
+}
+
+/**
+ * Write a user-typed thought / decision / note into the timeline. The
+ * Tauri command writes a markdown atom to disk and synthesises a row
+ * onto `timeline.json` so the next `readTimelineRecent` reload surfaces
+ * it without waiting for the daemon's 5-min Python `index-rebuild`.
+ *
+ * Outside Tauri (vitest / vite dev) the wrapper synthesises a fake
+ * event so the UI reload still reflects the optimistic prepend.
+ */
+export async function captureManualAtom(
+  user: string,
+  body: string,
+  kind: ManualAtomKind,
+  actor?: string,
+): Promise<CaptureManualAtomOut> {
+  return invokeOrViewError(
+    "capture_manual_atom",
+    { user, body, kind, actor },
+    () => {
+      const now = new Date();
+      const id = `evt-${now.toISOString().slice(0, 10)}-${
+        Math.random().toString(16).slice(2, 14)
+      }`;
+      const safeIso = now.toISOString().replace(/:/g, "-").replace(/\+/g, "_");
+      const event: TimelineEvent = {
+        id,
+        ts: now.toISOString(),
+        source: "manual",
+        actor: actor ?? user,
+        actors: [actor ?? user],
+        kind,
+        refs: {},
+        status: "active",
+        file: `personal/${user}/threads/manual/${safeIso}.md`,
+        line: null,
+        body: body.split("\n").slice(0, 8).join("\n"),
+        sample: false,
+        confidence: 1,
+        concepts: [],
+        alternatives: [],
+        source_count: 1,
+      };
+      return { event, path: event.file ?? "" };
+    },
+  );
+}
+
 // ---------- whats-new diff ----------
 
 export interface WhatsNewData {

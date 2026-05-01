@@ -1033,6 +1033,212 @@ pub async fn read_whats_new(user: String) -> Result<WhatsNewOut, AppError> {
 }
 
 // --------------------------------------------------------------------------
+// v1.21.0 — Manual capture (Operability surface B).
+//
+// Lets the user write a thought / decision / note into Tangerine via the
+// canvas-bottom Capture input. Writes a markdown atom with YAML
+// frontmatter to `personal/<user>/threads/manual/<utc-iso>.md`, AND
+// appends an in-memory record to the live `timeline.json` so the next
+// `read_timeline_recent` reload surfaces it without waiting for the
+// daemon's Python `index-rebuild` heartbeat (5 min). The Python
+// indexer is idempotent — a follow-up rebuild reads the same atom file
+// off disk + replaces the synthetic row.
+//
+// Returns the new event so the React caller can prepend optimistically.
+
+#[derive(Debug, Serialize)]
+pub struct CaptureManualAtomOut {
+    pub event: TimelineEvent,
+    pub path: String,
+}
+
+fn validate_capture_kind(s: &str) -> Result<(), AppError> {
+    match s {
+        "decision" | "note" | "task" => Ok(()),
+        _ => Err(AppError::user(
+            "bad_kind",
+            format!("kind must be decision|note|task, got {s:?}"),
+        )),
+    }
+}
+
+fn yaml_escape(s: &str) -> String {
+    s.replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', "\\n")
+}
+
+/// Build a stable atom id from ts + uuid suffix (10 hex chars to satisfy
+/// `validate_atom_id`'s ≥12-char body rule with the `evt-` prefix).
+fn build_manual_atom_id(now: &chrono::DateTime<Utc>) -> String {
+    let date = now.format("%Y-%m-%d");
+    // 12-char hex segment so atom_id body ≥ 12 chars.
+    let suffix = uuid::Uuid::new_v4().simple().to_string();
+    let short = &suffix[..12];
+    format!("evt-{date}-{short}")
+}
+
+fn render_manual_atom_md(
+    body: &str,
+    kind: &str,
+    actor: &str,
+    ts: &str,
+    conversation_id: &str,
+) -> String {
+    let mut out = String::new();
+    out.push_str("---\n");
+    out.push_str("source: manual\n");
+    out.push_str(&format!("kind: {kind}\n"));
+    out.push_str(&format!("actor: \"{}\"\n", yaml_escape(actor)));
+    out.push_str(&format!("ts: {ts}\n"));
+    out.push_str(&format!("conversation_id: \"{}\"\n", yaml_escape(conversation_id)));
+    out.push_str("---\n\n");
+    out.push_str(body.trim_end());
+    out.push('\n');
+    out
+}
+
+/// Append (or replace by-id) a synthetic record onto the live timeline
+/// index so the next `read_timeline_recent` reload surfaces the atom
+/// immediately. Best-effort: any IO failure is non-fatal — the on-disk
+/// atom file is the canonical source of truth, and the daemon's
+/// `index-rebuild` will pick it up on the next heartbeat regardless.
+fn append_to_timeline_index(root: &Path, ev: &TimelineEvent) -> Result<(), AppError> {
+    let p = timeline_index_path(root);
+    let mut idx: serde_json::Value = if p.exists() {
+        let raw = std::fs::read_to_string(&p)
+            .map_err(|e| AppError::internal("read_timeline", e.to_string()))?;
+        serde_json::from_str(&raw).unwrap_or_else(|_| {
+            serde_json::json!({
+                "version": 1,
+                "events": [],
+                "vector_store": { "type": "none", "dimensions": null, "model": null }
+            })
+        })
+    } else {
+        serde_json::json!({
+            "version": 1,
+            "events": [],
+            "vector_store": { "type": "none", "dimensions": null, "model": null }
+        })
+    };
+
+    let new_row = serde_json::to_value(ev)
+        .map_err(|e| AppError::internal("serialize_ev", e.to_string()))?;
+
+    if let Some(arr) = idx.get_mut("events").and_then(|v| v.as_array_mut()) {
+        // Replace any pre-existing row with the same id (idempotent).
+        arr.retain(|row| row.get("id").and_then(|v| v.as_str()) != Some(ev.id.as_str()));
+        arr.push(new_row);
+    } else {
+        idx["events"] = serde_json::Value::Array(vec![new_row]);
+    }
+
+    let body = serde_json::to_string(&idx)
+        .map_err(|e| AppError::internal("serialize_idx", e.to_string()))?;
+    atomic_write(&p, &body)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn capture_manual_atom<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    user: String,
+    body: String,
+    kind: String,
+    actor: Option<String>,
+) -> Result<CaptureManualAtomOut, AppError> {
+    if !is_valid_alias(&user) {
+        return Err(AppError::user(
+            "bad_alias",
+            format!("user alias must match [a-z][a-z0-9_]*, got {user:?}"),
+        ));
+    }
+    let trimmed = body.trim();
+    if trimmed.is_empty() {
+        return Err(AppError::user("empty_body", "body must not be empty"));
+    }
+    if trimmed.len() > 32_000 {
+        return Err(AppError::user(
+            "body_too_long",
+            format!("body capped at 32K chars, got {}", trimmed.len()),
+        ));
+    }
+    validate_capture_kind(&kind)?;
+
+    let now = Utc::now();
+    let ts_iso = now.to_rfc3339();
+    let actor_str = actor.as_deref().unwrap_or(&user).to_string();
+    let id = build_manual_atom_id(&now);
+    let conversation_id = id.clone();
+
+    let root = memory_root()?;
+    // File path: personal/<user>/threads/manual/<utc-iso>.md (colons
+    // replaced with hyphens for cross-fs compatibility).
+    let safe_iso = ts_iso.replace(':', "-").replace('+', "_");
+    let dir = root
+        .join("personal")
+        .join(&user)
+        .join("threads")
+        .join("manual");
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| AppError::internal("mkdir_manual", e.to_string()))?;
+    let atom_path = dir.join(format!("{safe_iso}.md"));
+
+    let md_body = render_manual_atom_md(trimmed, &kind, &actor_str, &ts_iso, &conversation_id);
+    atomic_write(&atom_path, &md_body)?;
+
+    // Build the synthetic timeline row that mirrors what the Python
+    // indexer would produce. `body` carries the trimmed first paragraph
+    // so the time-density list shows it without re-reading the file.
+    let body_preview: String = trimmed.lines().take(8).collect::<Vec<_>>().join("\n");
+    let ev = TimelineEvent {
+        id: id.clone(),
+        ts: ts_iso.clone(),
+        source: "manual".to_string(),
+        actor: actor_str.clone(),
+        actors: vec![actor_str.clone()],
+        kind: kind.clone(),
+        refs: serde_json::json!({}),
+        status: "active".to_string(),
+        file: Some(format!(
+            "personal/{user}/threads/manual/{safe_iso}.md"
+        )),
+        line: None,
+        body: Some(body_preview),
+        lifecycle: None,
+        sample: false,
+        confidence: 1.0,
+        concepts: vec![],
+        alternatives: vec![],
+        source_count: 1,
+    };
+
+    // Best-effort timeline append + activity ring push + Tauri emit so
+    // the right-rail ActivityFeed prepends without polling.
+    let _ = append_to_timeline_index(&root, &ev);
+
+    let rel = format!("personal/{user}/threads/manual/{safe_iso}.md");
+    let activity_ev = crate::activity::ActivityAtomEvent::new(
+        rel.clone(),
+        format!("manual {kind}"),
+        crate::activity::AtomKind::Thread,
+    )
+    .with_vendor("manual")
+    .with_author(actor_str.clone());
+    crate::activity::push_event_to_ring(activity_ev.clone());
+    {
+        use tauri::Emitter;
+        let _ = app.emit("activity:atom_written", &activity_ev);
+    }
+
+    Ok(CaptureManualAtomOut {
+        event: ev,
+        path: atom_path.to_string_lossy().to_string(),
+    })
+}
+
+// --------------------------------------------------------------------------
 // Tests
 
 #[cfg(test)]
@@ -1061,6 +1267,138 @@ mod tests {
             serde_json::to_string(&body).unwrap(),
         )
         .unwrap();
+    }
+
+    // v1.21.0 — capture_manual_atom helper coverage. The full Tauri
+    // command needs an AppHandle so we can't invoke it directly from a
+    // unit test, but the rendering + index-append helpers are pure and
+    // worth pinning.
+
+    #[test]
+    fn validate_capture_kind_accepts_canonical_kinds() {
+        assert!(validate_capture_kind("decision").is_ok());
+        assert!(validate_capture_kind("note").is_ok());
+        assert!(validate_capture_kind("task").is_ok());
+    }
+
+    #[test]
+    fn validate_capture_kind_rejects_garbage() {
+        assert!(validate_capture_kind("").is_err());
+        assert!(validate_capture_kind("DECISION").is_err());
+        assert!(validate_capture_kind("idea").is_err());
+        assert!(validate_capture_kind("../etc").is_err());
+    }
+
+    #[test]
+    fn render_manual_atom_md_emits_valid_frontmatter() {
+        let body = render_manual_atom_md(
+            "the body line",
+            "decision",
+            "daizhe",
+            "2026-04-30T10:00:00Z",
+            "evt-2026-04-30-aabbccddeeff",
+        );
+        assert!(body.starts_with("---\n"));
+        assert!(body.contains("source: manual\n"));
+        assert!(body.contains("kind: decision\n"));
+        assert!(body.contains("actor: \"daizhe\"\n"));
+        assert!(body.contains("ts: 2026-04-30T10:00:00Z\n"));
+        assert!(body.contains("---\n\nthe body line\n"));
+    }
+
+    #[test]
+    fn render_manual_atom_md_escapes_quotes_in_actor() {
+        let body = render_manual_atom_md(
+            "x",
+            "note",
+            "weird\"actor",
+            "2026-04-30T10:00:00Z",
+            "evt-2026-04-30-aabbccddeeff",
+        );
+        assert!(body.contains("actor: \"weird\\\"actor\""));
+    }
+
+    #[test]
+    fn append_to_timeline_index_creates_file_when_missing() {
+        let root = tmp_root();
+        let ev = TimelineEvent {
+            id: "evt-2026-04-30-aabbccddeeff".to_string(),
+            ts: "2026-04-30T10:00:00Z".to_string(),
+            source: "manual".to_string(),
+            actor: "daizhe".to_string(),
+            actors: vec!["daizhe".to_string()],
+            kind: "note".to_string(),
+            refs: serde_json::json!({}),
+            status: "active".to_string(),
+            file: Some("personal/daizhe/threads/manual/x.md".to_string()),
+            line: None,
+            body: Some("hi".to_string()),
+            lifecycle: None,
+            sample: false,
+            confidence: 1.0,
+            concepts: vec![],
+            alternatives: vec![],
+            source_count: 1,
+        };
+        append_to_timeline_index(&root, &ev).unwrap();
+        let raw = std::fs::read_to_string(root.join(".tangerine").join("timeline.json")).unwrap();
+        let idx: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        let arr = idx.get("events").unwrap().as_array().unwrap();
+        assert_eq!(arr.len(), 1);
+        assert_eq!(arr[0].get("id").unwrap().as_str().unwrap(), ev.id);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn append_to_timeline_index_replaces_by_id_idempotent() {
+        let root = tmp_root();
+        write_index(
+            &root,
+            &[serde_json::json!({
+                "id": "evt-2026-04-30-aabbccddeeff",
+                "ts": "2026-04-30T09:00:00Z",
+                "source": "manual",
+                "actor": "daizhe",
+                "kind": "note",
+                "body": "v1"
+            })],
+        );
+        let ev = TimelineEvent {
+            id: "evt-2026-04-30-aabbccddeeff".to_string(),
+            ts: "2026-04-30T10:00:00Z".to_string(),
+            source: "manual".to_string(),
+            actor: "daizhe".to_string(),
+            actors: vec!["daizhe".to_string()],
+            kind: "note".to_string(),
+            refs: serde_json::json!({}),
+            status: "active".to_string(),
+            file: None,
+            line: None,
+            body: Some("v2".to_string()),
+            lifecycle: None,
+            sample: false,
+            confidence: 1.0,
+            concepts: vec![],
+            alternatives: vec![],
+            source_count: 1,
+        };
+        append_to_timeline_index(&root, &ev).unwrap();
+        let raw = std::fs::read_to_string(root.join(".tangerine").join("timeline.json")).unwrap();
+        let idx: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        let arr = idx.get("events").unwrap().as_array().unwrap();
+        assert_eq!(arr.len(), 1, "must replace by id, not duplicate");
+        assert_eq!(arr[0].get("body").unwrap().as_str().unwrap(), "v2");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn build_manual_atom_id_satisfies_validate_atom_id_rules() {
+        let ts = chrono::DateTime::parse_from_rfc3339("2026-04-30T10:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let id = build_manual_atom_id(&ts);
+        assert!(id.starts_with("evt-2026-04-30-"));
+        assert!(validate_atom_id(&id).is_ok());
     }
 
     #[test]

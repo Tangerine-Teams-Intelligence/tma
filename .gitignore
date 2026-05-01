@@ -79,3 +79,6 @@ V1_6_FEATURES.md
 
 # Tangerine workflow memory (per-project, never committed)
 .tangerine/
+
+# Local Claude Preview config
+.claude/launch.json

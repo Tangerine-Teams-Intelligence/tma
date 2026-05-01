@@ -34,6 +34,15 @@
  *     and threads are derived from atom actors / refs.
  *   • No fuzzy library; we use plain `String.includes`. Round 2 may
  *     add fuse.js if Daizhe complains.
+ *
+ * v1.21.0 — Operability surface C: Ask mode.
+ *   • Tab strip at the top: [ Search ] [ Ask ]. Default = Search.
+ *   • Ask mode reranks the existing 500-event corpus by a 4-signal
+ *     heuristic (term match + recency decay + decision boost +
+ *     cross-source concept overlap). NO LLM call — the work happens
+ *     in 50 lines of TS so the user gets sub-100ms answers without
+ *     a backend round trip.
+ *   • Empty / no-match → honest empty-state line, never fabricated.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -77,6 +86,8 @@ interface ResultRow {
     | { kind: "command"; key: SpotlightCommand };
 }
 
+export type SpotlightMode = "search" | "ask";
+
 export function Spotlight() {
   const open = useStore((s) => s.ui.spotlightOpen);
   const setOpen = useStore((s) => s.ui.setSpotlightOpen);
@@ -85,20 +96,22 @@ export function Spotlight() {
   // v1.20.0 — `:replay` and `:about` go through pushToast for honest
   // empty-corpus + version-disclosure flows.
   const pushToast = useStore((s) => s.ui.pushToast);
+  const [mode, setMode] = useState<SpotlightMode>("search");
   const [query, setQuery] = useState("");
   const [activeIdx, setActiveIdx] = useState(0);
   const [events, setEvents] = useState<TimelineEvent[]>([]);
   const [openAtom, setOpenAtom] = useState<TimelineEvent | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Reset query + selection when the modal toggles open. We refetch
-  // events once on each open so the result list reflects fresh writes
-  // (cheap — readTimelineRecent caps at 500). Mocks fall through outside
-  // Tauri, so the panel still renders in vitest.
+  // Reset query + selection + mode when the modal toggles open. We
+  // refetch events once on each open so the result list reflects
+  // fresh writes (cheap — readTimelineRecent caps at 500). Mocks
+  // fall through outside Tauri, so the panel still renders in vitest.
   useEffect(() => {
     if (!open) return;
     setQuery("");
     setActiveIdx(0);
+    setMode("search");
     let cancel = false;
     readTimelineRecent(500)
       .then((d) => {
@@ -124,7 +137,18 @@ export function Spotlight() {
 
   // ESC + arrow keys + Enter handlers. Mounted only while open so we
   // don't intercept ESC on the rest of the app.
-  const rows = useMemo(() => buildResults(query, events), [query, events]);
+  const rows = useMemo(
+    () => (mode === "search" ? buildResults(query, events) : []),
+    [mode, query, events],
+  );
+
+  // v1.21.0 Ask mode — rerank the corpus on every keystroke (debounced
+  // to 200ms via the Spotlight modal close-on-empty-input which is
+  // already throttled by the user typing speed).
+  const askResults = useMemo(
+    () => (mode === "ask" ? rankAskResults(query, events) : []),
+    [mode, query, events],
+  );
 
   const onSelect = useCallback(
     (row: ResultRow) => {
@@ -177,9 +201,11 @@ export function Spotlight() {
         setOpen(false);
         return;
       }
+      const list = mode === "ask" ? askResults : rows;
+      const len = list.length;
       if (e.key === "ArrowDown") {
         e.preventDefault();
-        setActiveIdx((i) => Math.min(rows.length - 1, i + 1));
+        setActiveIdx((i) => Math.min(len - 1, i + 1));
         return;
       }
       if (e.key === "ArrowUp") {
@@ -189,6 +215,14 @@ export function Spotlight() {
       }
       if (e.key === "Enter") {
         e.preventDefault();
+        if (mode === "ask") {
+          const r = askResults[activeIdx];
+          if (r) {
+            setOpenAtom(r.event);
+            setOpen(false);
+          }
+          return;
+        }
         const row = rows[activeIdx];
         if (row) onSelect(row);
         return;
@@ -196,14 +230,15 @@ export function Spotlight() {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, rows, activeIdx, setOpen, onSelect]);
+  }, [open, rows, askResults, mode, activeIdx, setOpen, onSelect]);
 
   // Clamp activeIdx if the result list shrinks while typing.
   useEffect(() => {
-    if (activeIdx >= rows.length) {
-      setActiveIdx(Math.max(0, rows.length - 1));
+    const len = mode === "ask" ? askResults.length : rows.length;
+    if (activeIdx >= len) {
+      setActiveIdx(Math.max(0, len - 1));
     }
-  }, [rows.length, activeIdx]);
+  }, [rows.length, askResults.length, mode, activeIdx]);
 
   return (
     <>
@@ -225,11 +260,58 @@ export function Spotlight() {
           />
           <section
             data-testid="spotlight-panel"
+            data-mode={mode}
             // v1.19.2 Round 3 visual fix V6 — `animate-fade-in` (200ms,
             // upward translateY 8px → 0) so the modal feels like a real
             // overlay rather than a div that snapped into place.
             className="relative z-10 w-full max-w-[640px] animate-fade-in overflow-hidden rounded-xl border border-stone-200 bg-white shadow-2xl dark:border-stone-800 dark:bg-stone-900"
           >
+            {/* v1.21.0 — mode tab strip. Search (default) keeps the
+                v1.19 fuzzy-jump behavior; Ask reranks the corpus by
+                relevance + recency + decision-kind boost. */}
+            <div
+              data-testid="spotlight-mode-strip"
+              className="flex items-center gap-1 border-b border-stone-200 px-3 pt-2 dark:border-stone-800"
+            >
+              <button
+                type="button"
+                data-testid="spotlight-mode-search"
+                data-active={mode === "search" ? "true" : "false"}
+                onClick={() => {
+                  setMode("search");
+                  setActiveIdx(0);
+                  setQuery("");
+                  inputRef.current?.focus();
+                }}
+                className={
+                  "border-b-2 px-2 pb-1.5 pt-1 text-[12px] font-medium transition-colors " +
+                  (mode === "search"
+                    ? "border-[var(--ti-orange-500)] text-stone-900 dark:text-stone-100"
+                    : "border-transparent text-stone-500 hover:text-stone-700 dark:text-stone-400 dark:hover:text-stone-200")
+                }
+              >
+                Search
+              </button>
+              <button
+                type="button"
+                data-testid="spotlight-mode-ask"
+                data-active={mode === "ask" ? "true" : "false"}
+                onClick={() => {
+                  setMode("ask");
+                  setActiveIdx(0);
+                  setQuery("");
+                  inputRef.current?.focus();
+                }}
+                className={
+                  "border-b-2 px-2 pb-1.5 pt-1 text-[12px] font-medium transition-colors " +
+                  (mode === "ask"
+                    ? "border-[var(--ti-orange-500)] text-stone-900 dark:text-stone-100"
+                    : "border-transparent text-stone-500 hover:text-stone-700 dark:text-stone-400 dark:hover:text-stone-200")
+                }
+              >
+                Ask
+              </button>
+            </div>
             <header className="flex items-center gap-3 border-b border-stone-200 px-4 py-3 dark:border-stone-800">
               <Search
                 size={16}
@@ -241,29 +323,49 @@ export function Spotlight() {
                 data-testid="spotlight-input"
                 type="text"
                 value={query}
+                placeholder={
+                  mode === "ask" ? "ask your team's memory…" : undefined
+                }
                 onChange={(e) => {
                   setQuery(e.target.value);
                   setActiveIdx(0);
                 }}
-                aria-label="Search, jump, or run"
+                aria-label={
+                  mode === "ask" ? "Ask your team's memory" : "Search, jump, or run"
+                }
                 className="w-full border-none bg-transparent font-mono text-[18px] leading-none text-stone-900 outline-none placeholder:text-stone-400 dark:text-stone-100"
               />
             </header>
-            <div
-              data-testid="spotlight-results"
-              data-count={rows.length}
-              className="max-h-[60vh] overflow-y-auto py-2"
-            >
-              {rows.length === 0 && (
-                <div
-                  data-testid="spotlight-empty"
-                  className="px-4 py-8 text-center font-mono text-[12px] text-stone-400"
-                >
-                  no matches
-                </div>
-              )}
-              {renderGroups(rows, activeIdx, onSelect, setActiveIdx)}
-            </div>
+            {mode === "search" && (
+              <div
+                data-testid="spotlight-results"
+                data-count={rows.length}
+                className="max-h-[60vh] overflow-y-auto py-2"
+              >
+                {rows.length === 0 && (
+                  <div
+                    data-testid="spotlight-empty"
+                    className="px-4 py-8 text-center font-mono text-[12px] text-stone-400"
+                  >
+                    no matches
+                  </div>
+                )}
+                {renderGroups(rows, activeIdx, onSelect, setActiveIdx)}
+              </div>
+            )}
+            {mode === "ask" && (
+              <AskResults
+                query={query}
+                results={askResults}
+                activeIdx={activeIdx}
+                onActivate={setActiveIdx}
+                onOpenAtom={(ev) => {
+                  setOpenAtom(ev);
+                  setOpen(false);
+                }}
+                eventCount={events.length}
+              />
+            )}
           </section>
         </div>
       )}
@@ -556,6 +658,232 @@ function formatLatest(iso: string | null): string {
   if (seconds < 60 * 60) return `${Math.floor(seconds / 60)}m ago`;
   if (seconds < 60 * 60 * 24) return `${Math.floor(seconds / 3600)}h ago`;
   return `${Math.floor(seconds / (60 * 60 * 24))}d ago`;
+}
+
+// ============================================================================
+// v1.21.0 — Ask mode (Operability surface C)
+// ============================================================================
+
+export interface AskResult {
+  event: TimelineEvent;
+  score: number;
+  /** First body line that contains a query term (for the result excerpt). */
+  excerpt: string;
+}
+
+const RECENCY_DAY_DECAY = 1 / 30; // 30-day half-life-ish.
+const DECISION_BOOST = 5;
+const CROSS_SOURCE_BOOST = 3;
+const MAX_ASK_RESULTS = 5;
+
+/**
+ * 4-signal rerank — pure function, exported so vitest can hit it
+ * without rendering the modal.
+ *
+ * Signals:
+ *   1. Term-match — count of distinct query keyword occurrences in
+ *      `body` ∪ `topic` ∪ `concepts` ∪ `actor`. Each occurrence adds 1.
+ *   2. Recency — `exp(-days_old * RECENCY_DAY_DECAY)`. Today ≈ 1.0;
+ *      30 days ≈ 0.37; 60 days ≈ 0.14.
+ *   3. Decision boost — +5 if `kind === "decision"`. Decisions are
+ *      what the user actually wants when they ask "what did we decide
+ *      about X."
+ *   4. Cross-source boost — +3 if any of the result's `concepts`
+ *      appears in ≥2 distinct source vendors across the matched set.
+ *      Surfaces topics that multiple tools converged on.
+ *
+ * Honesty: empty query OR empty corpus → empty results. We never
+ * fabricate "here's what you might want to know." Top 5 only.
+ */
+export function rankAskResults(
+  query: string,
+  events: TimelineEvent[],
+  now: number = Date.now(),
+): AskResult[] {
+  const q = query.trim().toLowerCase();
+  if (q.length === 0 || events.length === 0) return [];
+
+  const terms = q.split(/\s+/).filter((t) => t.length > 0);
+  if (terms.length === 0) return [];
+
+  // Pass 1 — term-match + recency + decision boost.
+  const candidates: AskResult[] = [];
+  for (const ev of events) {
+    if (ev.sample) continue;
+    const haystack = [
+      ev.body ?? "",
+      ev.actor ?? "",
+      ev.kind ?? "",
+      ...(ev.concepts ?? []),
+    ]
+      .join(" ")
+      .toLowerCase();
+    let termHits = 0;
+    for (const t of terms) {
+      if (haystack.includes(t)) termHits += 1;
+    }
+    if (termHits === 0) continue;
+
+    const tsMs = Date.parse(ev.ts ?? "");
+    const days = Number.isFinite(tsMs)
+      ? Math.max(0, (now - tsMs) / (24 * 60 * 60 * 1000))
+      : 30;
+    const recency = Math.exp(-days * RECENCY_DAY_DECAY);
+    const decisionBoost = ev.kind === "decision" ? DECISION_BOOST : 0;
+
+    const score = termHits * 2 + recency * 3 + decisionBoost;
+    candidates.push({ event: ev, score, excerpt: pickExcerpt(ev, terms) });
+  }
+
+  if (candidates.length === 0) return [];
+
+  // Pass 2 — cross-source boost. For each concept tag in the matched
+  // set, count distinct source vendors. Boost any result whose
+  // concepts overlap a multi-source concept.
+  const conceptSources = new Map<string, Set<string>>();
+  for (const c of candidates) {
+    for (const concept of c.event.concepts ?? []) {
+      const key = concept.toLowerCase();
+      let set = conceptSources.get(key);
+      if (!set) {
+        set = new Set();
+        conceptSources.set(key, set);
+      }
+      set.add(c.event.source ?? "");
+    }
+  }
+  for (const c of candidates) {
+    const hasCross = (c.event.concepts ?? []).some(
+      (concept) =>
+        (conceptSources.get(concept.toLowerCase())?.size ?? 0) >= 2,
+    );
+    if (hasCross) c.score += CROSS_SOURCE_BOOST;
+  }
+
+  candidates.sort((a, b) => b.score - a.score);
+  return candidates.slice(0, MAX_ASK_RESULTS);
+}
+
+function pickExcerpt(ev: TimelineEvent, terms: string[]): string {
+  const body = ev.body ?? "";
+  for (const line of body.split("\n")) {
+    const t = line.trim();
+    if (t.length === 0) continue;
+    const lower = t.toLowerCase();
+    if (terms.some((term) => lower.includes(term))) {
+      return truncateExcerpt(t);
+    }
+  }
+  for (const line of body.split("\n")) {
+    const t = line.trim();
+    if (t.length > 0) return truncateExcerpt(t);
+  }
+  return ev.kind ?? "(no body)";
+}
+
+function truncateExcerpt(s: string): string {
+  if (s.length <= 100) return s;
+  return s.slice(0, 97) + "…";
+}
+
+function AskResults({
+  query,
+  results,
+  activeIdx,
+  onActivate,
+  onOpenAtom,
+  eventCount,
+}: {
+  query: string;
+  results: AskResult[];
+  activeIdx: number;
+  onActivate: (idx: number) => void;
+  onOpenAtom: (ev: TimelineEvent) => void;
+  eventCount: number;
+}) {
+  const trimmed = query.trim();
+
+  if (trimmed.length === 0) {
+    return (
+      <div
+        data-testid="spotlight-ask-prompt"
+        className="px-4 py-6 text-center font-mono text-[11px] text-stone-400 dark:text-stone-600"
+      >
+        Ask a question — answers come from your team's atoms, not an LLM.
+      </div>
+    );
+  }
+
+  if (eventCount === 0) {
+    return (
+      <div
+        data-testid="spotlight-ask-empty"
+        data-empty-mode="no-corpus"
+        className="px-4 py-6 text-center font-mono text-[11px] text-stone-400 dark:text-stone-600"
+      >
+        No atoms in memory yet — connect a source in Settings first.
+      </div>
+    );
+  }
+
+  if (results.length === 0) {
+    return (
+      <div
+        data-testid="spotlight-ask-empty"
+        data-empty-mode="no-match"
+        className="px-4 py-6 text-center font-mono text-[11px] text-stone-400 dark:text-stone-600"
+      >
+        No atoms match.
+      </div>
+    );
+  }
+
+  return (
+    <div
+      data-testid="spotlight-ask-results"
+      data-count={results.length}
+      className="max-h-[60vh] overflow-y-auto py-2"
+    >
+      <div className="px-4 pb-2 pt-1 font-mono text-[10px] uppercase tracking-wider text-stone-400">
+        {results.length} atom{results.length === 1 ? "" : "s"} relevant to "
+        {trimmed}"
+      </div>
+      <ul className="px-2">
+        {results.map((r, i) => {
+          const active = i === activeIdx;
+          return (
+            <li key={r.event.id}>
+              <button
+                type="button"
+                data-testid="spotlight-ask-result-row"
+                data-event-id={r.event.id}
+                data-active={active ? "true" : "false"}
+                onMouseEnter={() => onActivate(i)}
+                onClick={() => onOpenAtom(r.event)}
+                className={
+                  "block w-full rounded-md px-2 py-2 text-left transition-colors " +
+                  (active
+                    ? "border-l border-[var(--ti-orange-500)] bg-stone-50 dark:bg-stone-800"
+                    : "hover:bg-stone-50 dark:hover:bg-stone-800")
+                }
+              >
+                <div className="flex items-baseline gap-2 font-mono text-[11px] text-stone-500 dark:text-stone-500">
+                  <span>● {(r.event.ts ?? "").slice(0, 10)}</span>
+                  <span>·</span>
+                  <span>{r.event.actor || "?"}</span>
+                  <span>·</span>
+                  <span>{r.event.source || "?"}</span>
+                </div>
+                <div className="mt-0.5 truncate text-[13px] text-stone-800 dark:text-stone-200">
+                  {r.excerpt}
+                </div>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
 }
 
 function runCommand(

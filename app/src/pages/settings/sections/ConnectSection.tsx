@@ -1,24 +1,31 @@
 /**
- * v1.16 Wave 4 D1 — Connect section.
+ * v1.20.2 — Connect section: Obsidian-grade visual rewrite.
  *
- * Composes the 3-tab Settings redesign (Connect / Privacy / Sync) by
- * pulling the still-relevant pieces out of the legacy 9-tab layout:
+ * Same content survives (Theme + Language + 4 IDE capture rows + external
+ * sources directory), but the visual layer is now pure typography:
  *
- *   1. Theme + language + memory root  (the few bits of GeneralSettings
- *      that survive the cull — meeting repo, log level, timezone, tour
- *      replay all go to Sync since they are repo / config-y)
- *   2. Capture sources — the v1.15 personal-agents grid, filtered to the
- *      4 IDE rows (Cursor / Claude Code / Codex / Windsurf). Devin /
- *      Replit / Apple Intelligence / MS Copilot are 砍 — capture surface
- *      now matches v1.16's "AI tool capture only" scope.
- *   3. External sources — the wave-19 SourcesSettings directory of 11
- *      connectors (Slack / Email / Calendar / GitHub / Discord / etc.)
+ *   • General block: 2 stacked rows (Theme, Language). Label left fixed
+ *     width, dropdown right fixed width. No grid card. No "General"
+ *     subsection heading — the rows ARE the block.
+ *   • AI tool capture block: subsection heading "Sources" + 1-line mono
+ *     path hint. Each source is typography-only: vendor color dot +
+ *     vendor name + right-aligned status meta + toggle + Sync. Below
+ *     the head row: 2 mono lines (read path + resolved disk OR
+ *     "not detected"). Connected sources float to top; not-installed
+ *     dimmed via opacity-50.
+ *   • External sources: wraps SourcesSettings (now also typography-only).
+ *   • Hairline (1px stone-200) separators between subsections + between
+ *     rows within a subsection. NO box borders.
  *
- * Backwards-compat:
- *   - `personalAgentsEnabled` store key untouched
- *   - `theme` store key untouched
- *   - All Tauri commands (personalAgentsScanAll / personalAgentsSetWatcher
- *     / etc.) called the same way — the 4-row filter is purely view-side
+ * Backwards-compat preserved end-to-end:
+ *   - All `st-personal-agent-*` testids still exist (toggle, sync, row,
+ *     status, errors).
+ *   - `st-theme` / `st-language` selects still flip the same store keys.
+ *   - `st-connect-general` / `st-connect-capture-sources` /
+ *     `st-connect-external-sources` testids stay so wave4-d1 can find
+ *     them.
+ *   - All Tauri commands (personalAgentsScanAll / set / capture*) called
+ *     identically — the rewrite is purely view-side.
  */
 
 import { useEffect, useMemo, useState } from "react";
@@ -26,8 +33,6 @@ import { useTranslation } from "react-i18next";
 
 import { useStore } from "@/lib/store";
 import { activeLocale, setLocale } from "@/i18n";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   personalAgentsScanAll,
   personalAgentsGetSettings,
@@ -44,13 +49,6 @@ import {
 
 import { SourcesSettings } from "../SourcesSettings";
 
-// ---------------------------------------------------------------------------
-// 4-IDE capture rows. Filtered down from the v1.15 8-tool grid — only the
-// 4 IDE captures survive v1.16. Webhook / cloud agent rows (Devin / Replit /
-// Apple Intelligence / MS Copilot) are dropped because the smart layer that
-// consumed them is gone.
-// ---------------------------------------------------------------------------
-
 type ParserConfidence =
   | { kind: "validated" }
   | { kind: "unvalidated"; reason: string };
@@ -59,7 +57,8 @@ type AgentRow = {
   atomDir: string;
   flagKey: PersonalAgentId;
   label: string;
-  description: string;
+  vendorId: string; // matches CSS [data-vendor="..."] in index.css
+  readPath: string; // canonical glob/path the walker reads
   capture: (currentUser?: string) => Promise<PersonalAgentCaptureResult>;
   confidence: ParserConfidence;
 };
@@ -69,8 +68,8 @@ const IDE_AGENTS: AgentRow[] = [
     atomDir: "cursor",
     flagKey: "cursor",
     label: "Cursor",
-    description:
-      "Reads ~/.cursor/conversations/*.json (or %APPDATA%/Cursor on Windows).",
+    vendorId: "cursor",
+    readPath: "~/.cursor/conversations/*.json",
     capture: personalAgentsCaptureCursor,
     confidence: {
       kind: "unvalidated",
@@ -81,7 +80,8 @@ const IDE_AGENTS: AgentRow[] = [
     atomDir: "claude-code",
     flagKey: "claude_code",
     label: "Claude Code",
-    description: "Reads ~/.claude/projects/<slug>/<session-uuid>.jsonl.",
+    vendorId: "claude-code",
+    readPath: "~/.claude/projects/<slug>/<session>.jsonl",
     capture: personalAgentsCaptureClaudeCode,
     confidence: { kind: "validated" },
   },
@@ -89,7 +89,8 @@ const IDE_AGENTS: AgentRow[] = [
     atomDir: "codex",
     flagKey: "codex",
     label: "Codex CLI",
-    description: "Reads ~/.config/openai/sessions/* (best-effort path probe).",
+    vendorId: "codex",
+    readPath: "~/.config/openai/sessions/*",
     capture: personalAgentsCaptureCodex,
     confidence: {
       kind: "unvalidated",
@@ -100,7 +101,8 @@ const IDE_AGENTS: AgentRow[] = [
     atomDir: "windsurf",
     flagKey: "windsurf",
     label: "Windsurf",
-    description: "Reads Windsurf sessions dir (Codeium fork, Cursor-like shape).",
+    vendorId: "windsurf",
+    readPath: "~/.windsurf/sessions/*",
     capture: personalAgentsCaptureWindsurf,
     confidence: {
       kind: "unvalidated",
@@ -109,89 +111,67 @@ const IDE_AGENTS: AgentRow[] = [
   },
 ];
 
-// === v1.18.2 R6 fix ===
-// Toast messages have a budget of about a line; the first capture error
-// can be hundreds of chars (full path + Rust error message). Trim to a
-// readable head so the toast surfaces it without truncating the rest of
-// the summary. Non-empty input only — the caller already gated on
-// errors.length > 0.
+// Trim long Rust error messages to fit a single toast line.
 function truncateError(msg: string): string {
   const cleaned = msg.replace(/\s+/g, " ").trim();
   if (cleaned.length <= 80) return cleaned;
   return cleaned.slice(0, 77) + "…";
 }
 
-function StatusBadge({
-  status,
-  fallbackDetected,
-  conversationCount,
-}: {
-  status: PersonalAgentDetectionStatus | undefined;
-  fallbackDetected: boolean;
-  conversationCount: number;
-}) {
-  const effective: PersonalAgentDetectionStatus = status ?? {
-    kind: fallbackDetected ? "installed" : "not_installed",
-  };
-  switch (effective.kind) {
-    case "installed":
-      return (
-        <span
-          data-testid="st-personal-agent-status-installed"
-          className="rounded border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 font-mono text-[10px] text-emerald-700"
-        >
-          captured {conversationCount}
-        </span>
-      );
+/**
+ * Resolve a source row to a single-line status meta (mono 11px stone-500).
+ * Honest: connected sources show the captured-atom count; not-installed
+ * sources say so plainly; unsupported / access-denied surface explicitly.
+ */
+function statusMeta(
+  row: AgentRow,
+  summary: PersonalAgentSummary | undefined,
+): { connected: boolean; meta: string; testid: string } {
+  const status: PersonalAgentDetectionStatus =
+    summary?.status ?? {
+      kind: summary?.detected ? "installed" : "not_installed",
+    };
+  const confLabel = row.confidence.kind === "validated" ? "Confirmed" : "Beta";
+  switch (status.kind) {
+    case "installed": {
+      const n = summary?.conversation_count ?? 0;
+      return {
+        connected: true,
+        meta: `${confLabel} · Connected · ${n} atom${n === 1 ? "" : "s"}`,
+        testid: "st-personal-agent-status-installed",
+      };
+    }
     case "access_denied":
-      return (
-        <span
-          data-testid="st-personal-agent-status-access-denied"
-          className="rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 font-mono text-[10px] text-amber-800"
-        >
-          access denied
-        </span>
-      );
+      return {
+        connected: false,
+        meta: `${confLabel} · access denied`,
+        testid: "st-personal-agent-status-access-denied",
+      };
     case "platform_unsupported":
-      return (
-        <span className="rounded border border-[var(--ti-border-default)] bg-[var(--ti-paper-100,#f3eee6)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--ti-ink-500)]">
-          platform unsupported
-        </span>
-      );
+      return {
+        connected: false,
+        meta: `${confLabel} · platform unsupported`,
+        testid: "st-personal-agent-status-platform",
+      };
     case "remote_unconfigured":
-      return (
-        <span className="rounded border border-[var(--ti-border-default)] bg-[var(--ti-paper-50)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--ti-ink-500)]">
-          awaiting first capture
-        </span>
-      );
+      return {
+        connected: false,
+        meta: `${confLabel} · awaiting first capture`,
+        testid: "st-personal-agent-status-awaiting",
+      };
     case "not_installed":
     default:
-      return (
-        <span className="rounded border border-[var(--ti-border-default)] bg-[var(--ti-paper-50)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--ti-ink-400)]">
-          not installed
-        </span>
-      );
+      return {
+        connected: false,
+        meta: `${confLabel} · not installed`,
+        testid: "st-personal-agent-status-not-installed",
+      };
   }
-}
-
-function ParserBadge({ confidence }: { confidence: ParserConfidence }) {
-  if (confidence.kind === "validated") {
-    return (
-      <span className="rounded border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 font-mono text-[10px] text-emerald-700">
-        Confirmed
-      </span>
-    );
-  }
-  return (
-    <span className="rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 font-mono text-[10px] text-amber-700">
-      Beta
-    </span>
-  );
 }
 
 // ---------------------------------------------------------------------------
-// General prefs block (top of Connect). Theme + language only — meeting repo
-// / timezone / tour replay moved to Sync section.
+// General prefs — Theme + Language. Stacked single-column rows; label fixed
+// width left, dropdown fixed width right.
 // ---------------------------------------------------------------------------
 
 function GeneralPrefs() {
@@ -201,16 +181,15 @@ function GeneralPrefs() {
   const [lang, setLang] = useState<"en" | "zh">(activeLocale());
 
   return (
-    <section
-      className="flex flex-col gap-3"
-      data-testid="st-connect-general"
-    >
-      <h3 className="font-display text-base">General</h3>
-
-      {/* v1.16 Wave 5 — Theme + Language stack vertically on mobile. */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <div>
-          <Label htmlFor="st-theme">Theme</Label>
+    <section data-testid="st-connect-general">
+      <ul className="flex flex-col gap-1">
+        <li className="flex items-center justify-between py-2">
+          <label
+            htmlFor="st-theme"
+            className="w-[10ch] text-[13px] text-stone-700 dark:text-stone-300"
+          >
+            Theme
+          </label>
           <select
             id="st-theme"
             data-testid="st-theme"
@@ -218,16 +197,20 @@ function GeneralPrefs() {
             onChange={(e) =>
               setTheme(e.target.value as "system" | "light" | "dark")
             }
-            className="mt-1 h-10 w-full rounded-md border border-[var(--ti-border-default)] bg-[var(--ti-paper-50)] px-3 text-sm"
+            className="w-[20ch] rounded-md border border-stone-200 bg-white px-3 py-1.5 text-[13px] text-stone-900 transition-colors hover:border-stone-300 focus:border-[var(--ti-orange-500)] focus:outline-none dark:border-stone-700 dark:bg-stone-900 dark:text-stone-100"
           >
             <option value="system">System</option>
             <option value="light">Light</option>
             <option value="dark">Dark</option>
           </select>
-        </div>
-
-        <div>
-          <Label htmlFor="st-language">{t("settings.language.label")}</Label>
+        </li>
+        <li className="flex items-center justify-between py-2">
+          <label
+            htmlFor="st-language"
+            className="w-[10ch] text-[13px] text-stone-700 dark:text-stone-300"
+          >
+            {t("settings.language.label", { defaultValue: "Language" })}
+          </label>
           <select
             id="st-language"
             data-testid="st-language"
@@ -237,19 +220,23 @@ function GeneralPrefs() {
               setLang(next);
               await setLocale(next);
             }}
-            className="mt-1 h-10 w-full rounded-md border border-[var(--ti-border-default)] bg-[var(--ti-paper-50)] px-3 text-sm"
+            className="w-[20ch] rounded-md border border-stone-200 bg-white px-3 py-1.5 text-[13px] text-stone-900 transition-colors hover:border-stone-300 focus:border-[var(--ti-orange-500)] focus:outline-none dark:border-stone-700 dark:bg-stone-900 dark:text-stone-100"
           >
-            <option value="en">{t("settings.language.english")}</option>
-            <option value="zh">{t("settings.language.chinese")}</option>
+            <option value="en">
+              {t("settings.language.english", { defaultValue: "English" })}
+            </option>
+            <option value="zh">
+              {t("settings.language.chinese", { defaultValue: "中文" })}
+            </option>
           </select>
-        </div>
-      </div>
+        </li>
+      </ul>
     </section>
   );
 }
 
 // ---------------------------------------------------------------------------
-// IDE capture grid — the 4-row filtered version of the v1.15 grid.
+// IDE capture — typography-only rows. Connected first, not-installed dimmed.
 // ---------------------------------------------------------------------------
 
 function IDECaptureGrid() {
@@ -284,8 +271,7 @@ function IDECaptureGrid() {
         ]);
         if (cancel) return;
         setSummaries(scan);
-        // Preserve full 8-key shape — backend & store still tracks all 8;
-        // we just don't render the cloud-agent ones.
+        // Preserve full 8-key shape — backend & store still tracks all 8.
         setPersonalAgentsEnabled({
           cursor: settings.cursor,
           claude_code: settings.claude_code,
@@ -326,7 +312,7 @@ function IDECaptureGrid() {
       const msg = e instanceof Error ? e.message : String(e);
       pushToast(
         "error",
-        `${t("settings.personalAgents.toggleFailed")} ${msg}`,
+        `${t("settings.personalAgents.toggleFailed", { defaultValue: "Toggle failed:" })} ${msg}`,
       );
       togglePersonalAgent(row.flagKey, !next);
     }
@@ -337,13 +323,6 @@ function IDECaptureGrid() {
     try {
       const result = await row.capture(currentUser);
       setLastResult((r) => ({ ...r, [row.flagKey]: result }));
-      // === v1.18.2 R6 fix === The toast must never lie about "all good"
-      // when the capture pass had failures. Pre-fix the message read
-      // "wrote N, skipped M" with red coloring but no error count, so a
-      // user could see toast color = error and read green-looking
-      // numbers and assume nothing went wrong. Now we always include
-      // the error count and tail the first error message so the user
-      // can act on it without opening Settings.
       const errCount = result.errors.length;
       const summary =
         errCount > 0
@@ -365,132 +344,141 @@ function IDECaptureGrid() {
     }
   }
 
+  // Connected sources float to the top; not-installed sources sink to the
+  // bottom. The order within each group preserves the IDE_AGENTS canonical
+  // order so toggling Cursor doesn't reflow Claude Code.
+  const ordered = useMemo(() => {
+    const connected: AgentRow[] = [];
+    const rest: AgentRow[] = [];
+    for (const row of IDE_AGENTS) {
+      const summary = summaryByDir.get(row.atomDir);
+      const detected = summary?.detected ?? false;
+      if (detected) connected.push(row);
+      else rest.push(row);
+    }
+    return [...connected, ...rest];
+  }, [summaryByDir]);
+
   return (
     <section data-testid="st-connect-capture-sources">
-      <h3 className="font-display text-base">AI tool capture</h3>
-      <p className="mt-1 max-w-2xl text-sm text-[var(--ti-ink-500)]">
-        Which AI tools' conversations Tangerine reads. Strict opt-in — every
-        source is OFF until you turn it on. Captures land under{" "}
-        <code className="font-mono text-xs">
-          personal/{currentUser}/threads/&lt;agent&gt;/
-        </code>{" "}
-        and stay on this machine.
+      <h2 className="text-[14px] font-medium text-stone-900 dark:text-stone-100">
+        Sources
+      </h2>
+      <p className="mt-1 font-mono text-[11px] text-stone-500 dark:text-stone-500">
+        ~/.tangerine-memory/personal/{currentUser}/threads/&lt;source&gt;/
       </p>
 
-      <ul className="mt-4 flex flex-col gap-3">
-        {IDE_AGENTS.map((row) => {
+      <ul className="mt-4 divide-y divide-stone-200 dark:divide-stone-800">
+        {ordered.map((row) => {
           const summary = summaryByDir.get(row.atomDir);
           const detected = summary?.detected ?? false;
-          const conversationCount = summary?.conversation_count ?? 0;
-          const homePath = summary?.home_path ?? "(unknown)";
           const isOn = enabled[row.flagKey];
           const last = lastResult[row.flagKey];
+          const meta = statusMeta(row, summary);
           return (
             <li
               key={row.flagKey}
               data-testid={`st-personal-agent-row-${row.flagKey}`}
-              className="rounded-md border border-[var(--ti-border-default)] bg-[var(--ti-paper-50)] px-3 py-3 md:px-4"
+              className={
+                "py-3 transition-opacity " +
+                (detected ? "opacity-100" : "opacity-50")
+              }
             >
-              {/* v1.16 Wave 5 — IDE row: description + controls stack
-                  vertically on mobile so the toggle / Sync now button
-                  isn't pushed off-screen on a 375px viewport. */}
-              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span
-                      aria-hidden
-                      className={
-                        "inline-block h-2 w-2 rounded-full " +
-                        (summary?.status?.kind === "access_denied"
-                          ? "bg-amber-500"
-                          : detected
-                            ? "bg-[var(--ti-success-500,#3a8c5a)]"
-                            : "bg-[var(--ti-ink-400,#8c8c93)]")
-                      }
-                    />
-                    <h4 className="font-display text-base">{row.label}</h4>
-                    <ParserBadge confidence={row.confidence} />
-                    <StatusBadge
-                      status={summary?.status}
-                      fallbackDetected={detected}
-                      conversationCount={conversationCount}
-                    />
-                  </div>
-                  <p className="mt-1 text-sm text-[var(--ti-ink-500)]">
-                    {row.description}
-                  </p>
-                  <p className="mt-1 break-all font-mono text-xs text-[var(--ti-ink-400)]">
-                    {detected ? "Reading from " : "Looking at "}
-                    {homePath}
-                  </p>
-                  {last && (
-                    <div className="mt-2 text-xs">
-                      <p className="text-[var(--ti-ink-500)]">
-                        Last sync wrote <strong>{last.written}</strong>, skipped{" "}
-                        <strong>{last.skipped}</strong>
-                        {/* === v1.18.2 R6 fix === The errors line was hidden
-                            entirely when length === 0; that's still right.
-                            But when length > 0 the legacy display showed
-                            only wrote / skipped, leaving a red-coloured
-                            error toast as the only signal something
-                            failed. Errors deserve to land in the row's
-                            persistent display, not just a toast that
-                            disappears in 3s. */}
-                        {last.errors.length > 0 && (
-                          <span className="text-rose-700 dark:text-rose-400">
-                            {", "}
-                            <strong>{last.errors.length}</strong> error
-                            {last.errors.length === 1 ? "" : "s"}
-                          </span>
-                        )}
-                      </p>
-                      {last.errors.length > 0 && (
-                        <details
-                          data-testid={`st-personal-agent-errors-${row.flagKey}`}
-                          className="mt-1 text-rose-700 dark:text-rose-400"
-                        >
-                          <summary className="cursor-pointer font-mono text-[10px]">
-                            show error{last.errors.length === 1 ? "" : "s"}
-                          </summary>
-                          <ul className="mt-1 ml-3 list-disc space-y-0.5 break-words font-mono text-[10px]">
-                            {last.errors.slice(0, 5).map((e, i) => (
-                              <li key={i}>{e}</li>
-                            ))}
-                            {last.errors.length > 5 && (
-                              <li>… {last.errors.length - 5} more</li>
-                            )}
-                          </ul>
-                        </details>
-                      )}
-                    </div>
-                  )}
-                </div>
-                <div className="flex flex-row items-center gap-3 md:flex-col md:items-end md:gap-2">
-                  <label className="flex cursor-pointer items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={isOn}
-                      onChange={(e) => void onToggle(row, e.target.checked)}
-                      data-testid={`st-personal-agent-toggle-${row.flagKey}`}
-                    />
-                    <span>{isOn ? "on" : "off"}</span>
-                  </label>
+              {/* Head row: dot · vendor name | meta | toggle | Sync */}
+              <div className="flex items-center gap-3">
+                <span
+                  aria-hidden
+                  data-vendor={row.vendorId}
+                  className="inline-block h-1.5 w-1.5 shrink-0 rounded-full"
+                  style={{
+                    background:
+                      "var(--ti-vendor-color, var(--ti-ink-300))",
+                  }}
+                />
+                <span className="flex-1 text-[14px] font-medium text-stone-900 dark:text-stone-100">
+                  {row.label}
+                </span>
+                <span
+                  data-testid={meta.testid}
+                  className={
+                    "shrink-0 font-mono text-[11px] " +
+                    (meta.connected
+                      ? "text-[var(--ti-orange-500)]"
+                      : "text-stone-500 dark:text-stone-500")
+                  }
+                >
+                  {meta.meta}
+                </span>
+                <label className="flex shrink-0 cursor-pointer items-center gap-1.5 text-[12px] text-stone-700 dark:text-stone-300">
+                  <input
+                    type="checkbox"
+                    checked={isOn}
+                    onChange={(e) => void onToggle(row, e.target.checked)}
+                    data-testid={`st-personal-agent-toggle-${row.flagKey}`}
+                    className="accent-[var(--ti-orange-500)]"
+                  />
+                  <span className="font-mono">{isOn ? "on" : "off"}</span>
+                </label>
+                {isOn && (
                   <button
                     type="button"
                     onClick={() => void onSyncNow(row)}
                     disabled={busy[row.flagKey] || !detected}
                     data-testid={`st-personal-agent-sync-${row.flagKey}`}
                     className={
-                      "rounded-md border border-[var(--ti-border-default)] px-3 py-1 text-xs transition-colors " +
-                      (detected
-                        ? "hover:bg-[var(--ti-paper-100,#f3eee6)]"
-                        : "cursor-not-allowed opacity-50")
+                      "shrink-0 rounded-md border border-stone-200 px-2.5 py-1 font-mono text-[11px] text-stone-700 transition-colors hover:border-stone-300 hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-stone-700 dark:text-stone-300 dark:hover:border-stone-600 dark:hover:bg-stone-900"
                     }
                   >
-                    {busy[row.flagKey] ? "Syncing…" : "Sync now"}
+                    {busy[row.flagKey] ? "Syncing…" : "Sync ↻"}
                   </button>
-                </div>
+                )}
               </div>
+
+              {/* Sub line — read path (mono, stone-500) */}
+              <p className="mt-1 break-all pl-[18px] font-mono text-[11px] text-stone-500 dark:text-stone-500">
+                {row.readPath}
+              </p>
+
+              {/* Sub line — disk presence. Dedupe: if installed, just say so;
+                  no need to repeat the path. If not, say "not detected". */}
+              <p className="break-all pl-[18px] font-mono text-[11px] text-stone-400 dark:text-stone-600">
+                {detected ? "✓ reading from disk" : "not detected on disk"}
+              </p>
+
+              {/* Persistent last-sync line + collapsible errors. Only shown
+                  after the user has clicked Sync once for this row. */}
+              {last && (
+                <div className="mt-2 pl-[18px] font-mono text-[11px]">
+                  <p className="text-stone-500 dark:text-stone-500">
+                    last sync · wrote {last.written} · skipped {last.skipped}
+                    {last.errors.length > 0 && (
+                      <span className="text-rose-700 dark:text-rose-400">
+                        {" · "}
+                        {last.errors.length} error
+                        {last.errors.length === 1 ? "" : "s"}
+                      </span>
+                    )}
+                  </p>
+                  {last.errors.length > 0 && (
+                    <details
+                      data-testid={`st-personal-agent-errors-${row.flagKey}`}
+                      className="mt-1 text-rose-700 dark:text-rose-400"
+                    >
+                      <summary className="cursor-pointer">
+                        show error{last.errors.length === 1 ? "" : "s"}
+                      </summary>
+                      <ul className="mt-1 ml-3 list-disc space-y-0.5 break-words">
+                        {last.errors.slice(0, 5).map((e, i) => (
+                          <li key={i}>{e}</li>
+                        ))}
+                        {last.errors.length > 5 && (
+                          <li>… {last.errors.length - 5} more</li>
+                        )}
+                      </ul>
+                    </details>
+                  )}
+                </div>
+              )}
             </li>
           );
         })}
@@ -500,9 +488,7 @@ function IDECaptureGrid() {
 }
 
 // ---------------------------------------------------------------------------
-// External sources — wraps SourcesSettings (the wave-19 11-connector
-// directory) under a sub-heading. SourcesSettings already handles its own
-// title; we just add an explicit divider above it.
+// External sources — wraps SourcesSettings (now also typography-only).
 // ---------------------------------------------------------------------------
 
 function ExternalSourcesBlock() {
@@ -517,9 +503,15 @@ export function ConnectSection() {
   return (
     <div className="flex flex-col gap-8" data-testid="st-section-connect">
       <GeneralPrefs />
-      <hr className="border-[var(--ti-border-faint)]" />
+      <div
+        aria-hidden
+        className="h-px w-full bg-stone-200 dark:bg-stone-800"
+      />
       <IDECaptureGrid />
-      <hr className="border-[var(--ti-border-faint)]" />
+      <div
+        aria-hidden
+        className="h-px w-full bg-stone-200 dark:bg-stone-800"
+      />
       <ExternalSourcesBlock />
     </div>
   );

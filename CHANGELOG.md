@@ -8,6 +8,91 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
      Each version block focuses on user-visible features so this doc can
      also feed the in-app /whats-new-app route. -->
 
+## [1.21.0] — 2026-04-30 — Operability: catch-up / capture / ask + Settings rewrite
+
+CEO inspected v1.20 and surfaced THE big architectural problem: the redesign
+made the app pure read-only — atoms scrolled past, no input, no action, no
+"what do I do" surface. v1.21.0 adds three operational surfaces and finishes
+the Settings visual rewrite that v1.20.2 started but never shipped.
+
+After v1.21.0 the user can: see what's new since they last looked, drop a
+thought into the timeline without leaving the canvas, and ask their team's
+memory a natural-language question without an LLM round-trip.
+
+### Surfaces added
+
+- **A. Catch-up banner** — `app/src/components/feed/CatchupBanner.tsx`. Pinned
+  to the top of `/feed` (inside the `max-w-2xl` column, above the time-view
+  header). Reads `~/.tangerine-memory/.tangerine/cursors/<user>.json` for
+  `last_opened_at`; filters events newer than that; renders a header line
+  + the top 3 rows in the same 4-col grid the time-density list uses (time
+  / actor / source / body). `show all ↓` reveals the rest in-line. The
+  user's `last_opened_at` is bumped to "now" on first engagement (atom
+  click or T/H/P/R key press) so the next reload resets honestly to "0
+  new atoms" — never auto-bumped on mount. R6 honesty: never-visited →
+  render nothing (the full timeline IS the catch-up); 0-new → quiet
+  `caught up · last looked X ago` mono line in stone-400.
+
+- **B. Capture input** — `app/src/components/feed/CaptureInput.tsx`. Sticky
+  to the bottom of `/feed`, above the FooterHint. Collapsed = single
+  hairline-bordered row with `+` glyph and placeholder. Click → expands
+  into a 3-row textarea + 3 tag chips (`decision` / `note` / `task`) +
+  Save button. ⌘+Enter saves. Save path: new Tauri command
+  `capture_manual_atom` writes a markdown atom with YAML frontmatter to
+  `personal/<user>/threads/manual/<utc-iso>.md` AND appends a synthetic
+  row to `timeline.json` so the next reload surfaces it without waiting
+  for the daemon's 5-min Python `index-rebuild`. The atom flows through
+  the activity ring + Tauri emit so the right-rail ActivityFeed prepends
+  without polling. Failures surface via toast with the truncated Rust
+  error message; success → quiet `Captured ✓` toast + collapsed input
+  + cleared textarea.
+
+- **C. Cmd+K Ask mode** — `app/src/components/spotlight/Spotlight.tsx`.
+  Tab strip at the top of the spotlight modal: `[ Search ]` (default,
+  v1.19 behavior) and `[ Ask ]` (new). Ask mode reranks the existing
+  500-event corpus by a 4-signal heuristic (term match + recency
+  exponential decay + decision-kind boost + cross-source concept
+  overlap) — 50 lines of pure TS, NO LLM round-trip, sub-100ms answers.
+  Top 5 results shown with one-line excerpt extracted from the body
+  line that contains a query term. Click → opens AtomBottomSheet. R6:
+  empty corpus → "No atoms in memory yet — connect a source in
+  Settings first"; zero matches → "No atoms match." Never fabricates.
+
+- **D. Settings visual rewrite** — `app/src/pages/settings/`. Carries
+  through what v1.20.2 started but never shipped (rate-limit
+  interrupted). `Settings.tsx` is now a sans-serif h1, 3-tab strip
+  with orange-underline active, hairline below. `ConnectSection.tsx`
+  has stacked Theme + Language rows (label `w-[10ch]`, dropdown
+  `w-[20ch]`), 8 IDE source rows in typography-only layout (no card
+  chrome) with vendor-color dot · name · status · toggle · sync, mono
+  read-path subline, mono disk-presence subline, connected sources
+  floated to top + not-installed dimmed `opacity-50`, hairline between
+  rows. Same restraint pattern in `PrivacySettings.tsx` and
+  `SyncSection.tsx`. All `st-*` test ids preserved end-to-end.
+
+### Rust additions
+
+- `app/src-tauri/src/commands/views.rs` — new `capture_manual_atom`
+  Tauri command: validates user alias + body (≤32K chars) + kind ∈
+  {decision, note, task}, writes the markdown atom with YAML
+  frontmatter via `atomic_write` (tmp + rename), synthesises a
+  `TimelineEvent` matching the Python indexer's row shape, appends
+  it to `timeline.json` (replace-by-id idempotent), pushes onto the
+  activity ring, fires `activity:atom_written` Tauri emit. Returns
+  the new event so the React caller can prepend optimistically.
+
+### Design constraints honored
+
+- Single-canvas IA preserved — Catch-up + Capture are ADDITIONS to the
+  existing canvas, not redesigns. TopNav unchanged. T/H/P/R single-key
+  shortcuts unchanged. Spotlight Cmd+K unchanged for Search mode.
+- Single-accent rule — orange used only at: active mode tab, hover row,
+  capture Save button, catch-up "X new atoms" count.
+- No emoji, no lucide icons in body content (Spotlight Search icon
+  retained per Round 1 exception; capture `+` is a text glyph).
+- v1.20.1 timeline-fix preserved — catch-up uses the same
+  `read_timeline_recent` Tauri command.
+
 ## [1.20.1] — 2026-04-30 — Fix timeline.json index pipeline
 
 CEO inspected his disk: 71 atom `.md` files exist under `~/.tangerine-memory/`,

@@ -1,31 +1,33 @@
 /**
- * v1.16 Wave 4 D1 — 3-section Settings shell.
+ * v1.20.2 — Settings: Obsidian-grade visual rewrite.
  *
- * Pre-D1 layout: 9 tabs (General / AI tools / Sources / Privacy / AGI /
- * Adapters / Team / Advanced + show-advanced toggle). 9 tabs is the same
- * "where do I find X?" disease that bloated v1.15 — D1 collapses to 3:
+ * The 3-section IA (Connect / Privacy / Sync) survives from v1.16 W4 D1.
+ * What changed in v1.20.2 is the visual layer: the page got the same
+ * Obsidian-grade restraint /feed earned in v1.19 — narrow centered column
+ * (max-w-2xl ≈ 640px), pure typography hierarchy, no card chrome around
+ * subsections, single-accent rule (`var(--ti-orange-500)` only on active
+ * tab / hover / Save / Connected pip), mono for paths + IDs + counts,
+ * sans for labels + headlines.
  *
- *   1. Connect — AI tool capture (4 IDE) + external sources (Slack /
- *      GitHub / Lark / etc.) + theme & language.
- *   2. Privacy — the R6 honest panel (ASCII data-flow + ✓ list).
- *   3. Sync — Solo vs Team mode, GitHub remote URL, auto-sync, personal
- *      vault toggle, meeting repo, team roster, debug bundle / samples.
+ * Header rewrite: `Settings` is sans-serif h1 (was display-serif). The
+ * mono `~/.tmi/config.yaml` hint moved out of the header into the Sync
+ * section (where it's relevant). A right-aligned `⌘,` chip signals the
+ * keyboard shortcut.
  *
- * Cut entirely:
- *   - "AI 工具" Primary-channel picker (smart layer is gone in v1.16 W1)
- *   - "AGI" tab (smart layer)
- *   - "Adapters" tab (LLM adapter wiring — smart layer)
- *   - All "show advanced" indirection — there are 3 things, all visible.
+ * Tab strip: orange underline on active, no background fill, hairline
+ * separator below.
  *
- * Backwards-compat:
- *   - All store keys preserved: theme / personalAgentsEnabled / memoryConfig
- *     / gitMode / gitAutoPullIntervalMin / etc.
- *   - All Tauri commands called the same way (the 4-IDE filter is purely
- *     view-side; backend still tracks all 8 personal-agent keys).
- *   - `?tab=privacy` deep-link from WelcomeOverlay still works (now maps
- *     to the privacy section).
- *   - `?tab=ai-tools` / `?tab=sources` legacy deep-links redirect to the
- *     Connect section so external links don't 404.
+ * Save bar: bottom border-t, mono "discards unsaved changes on close"
+ * hint left, orange Save button right.
+ *
+ * Backwards-compat preserved end-to-end:
+ *   - All `st-*` test ids that the wave4-d1 + wave5-mobile + wave1-13e
+ *     tests assert against still exist.
+ *   - The 3 section components keep their `data-testid="st-section-*"`
+ *     contract.
+ *   - All store keys (theme / personalAgentsEnabled / memoryConfig / ...)
+ *     untouched.
+ *   - Legacy `?tab=` query value mapping unchanged.
  */
 
 import { useEffect, useState } from "react";
@@ -132,29 +134,31 @@ export default function Settings() {
 
   return (
     <div
-      // v1.16 Wave 5 — tighter padding on mobile, horizontal scroll on
-      // overflow if a content section is wider than 375px (e.g. team
-      // roster grid). max-w-4xl keeps desktop centered.
-      className="mx-auto flex h-full w-full max-w-4xl flex-col gap-6 p-4 md:p-8"
+      // v1.20.2 — narrow centered column, same width as /feed time-density.
+      // No card chrome, no h-full bleed; the page IS the type.
+      className="mx-auto flex w-full max-w-2xl flex-col px-8 py-12"
       data-testid="st-0"
     >
-      <header>
-        <h1 className="font-display text-2xl md:text-3xl">
+      <header className="flex items-baseline justify-between">
+        <h1 className="text-[28px] font-medium tracking-tight text-stone-900 dark:text-stone-100">
           {t("settings.title", { defaultValue: "Settings" })}
         </h1>
-        <p className="mt-1 text-sm text-[var(--ti-ink-500)]">
-          {t("settings.subtitleHint", {
-            defaultValue: "Stored in",
-          })}{" "}
-          <code className="font-mono">~/.tmi/config.yaml</code>
-          {t("settings.subtitleHintTail", { defaultValue: "" })}
-        </p>
+        <span
+          aria-hidden
+          className="font-mono text-[11px] text-stone-500 dark:text-stone-500"
+        >
+          ⌘,
+        </span>
       </header>
+      <div
+        aria-hidden
+        className="mt-4 h-px w-full bg-stone-200 dark:bg-stone-800"
+      />
 
       <nav
-        // v1.16 Wave 5 — chip-style compact horizontal scroll on mobile;
-        // desktop keeps the existing inline tab nav.
-        className="-mx-1 flex gap-1 overflow-x-auto border-b border-[var(--ti-border-faint)] px-1 md:mx-0 md:overflow-visible md:px-0"
+        // v1.20.2 — tab strip is plain typography. Orange underline on
+        // active, stone-500 inactive, no chrome.
+        className="mt-6 flex gap-1"
         data-testid="st-section-nav"
       >
         {SECTIONS.map((s) => (
@@ -163,18 +167,22 @@ export default function Settings() {
             onClick={() => setSection(s.id)}
             data-testid={`st-tab-${s.id}`}
             className={
-              "shrink-0 border-b-2 px-3 py-2 text-sm transition-colors duration-fast " +
+              "shrink-0 border-b-2 px-3 py-2 text-[14px] font-medium transition-colors duration-fast " +
               (section === s.id
-                ? "border-[var(--ti-orange-500)] text-[var(--ti-orange-700)]"
-                : "border-transparent text-[var(--ti-ink-500)] hover:text-[var(--ti-ink-700)]")
+                ? "border-[var(--ti-orange-500)] text-stone-900 dark:text-stone-100"
+                : "border-transparent text-stone-500 hover:text-stone-700 dark:text-stone-400 dark:hover:text-stone-200")
             }
           >
             {s.label}
           </button>
         ))}
       </nav>
+      <div
+        aria-hidden
+        className="h-px w-full bg-stone-200 dark:bg-stone-800"
+      />
 
-      <section className="flex-1 overflow-auto">
+      <section className="mt-8 flex-1">
         {section === "connect" && <ConnectSection />}
         {section === "privacy" && <PrivacySection />}
         {section === "sync" && (
@@ -182,20 +190,22 @@ export default function Settings() {
         )}
       </section>
 
-      <footer className="flex items-center justify-between border-t border-[var(--ti-border-faint)] pt-4">
-        <p className="text-xs text-[var(--ti-ink-500)]">
+      <footer className="mt-12 flex items-center justify-between border-t border-stone-200 py-4 dark:border-stone-800">
+        <p className="font-mono text-[11px] text-stone-500 dark:text-stone-500">
           {error ? (
             <span className="text-[var(--ti-danger)]">{error}</span>
           ) : savedAt ? (
-            `${t("settings.savedAt", { defaultValue: "Saved" })} · ${new Date(savedAt).toLocaleTimeString()}`
+            `${t("settings.savedAt", { defaultValue: "saved" })} · ${new Date(savedAt).toLocaleTimeString()}`
           ) : (
-            t("settings.unsavedHint", { defaultValue: "Unsaved changes" })
+            t("settings.unsavedHint", {
+              defaultValue: "discards unsaved changes on close",
+            })
           )}
         </p>
         <button
           onClick={save}
           data-testid="st-save"
-          className="rounded-md bg-[var(--ti-orange-500)] px-4 py-1.5 text-sm text-white hover:bg-[var(--ti-orange-600)]"
+          className="rounded-md bg-[var(--ti-orange-500)] px-4 py-2 text-[13px] font-medium text-white transition-colors hover:bg-[var(--ti-orange-700)]"
         >
           {t("settings.save", { defaultValue: "Save" })}
         </button>

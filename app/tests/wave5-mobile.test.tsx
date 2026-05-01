@@ -289,7 +289,13 @@ describe("Wave 5 — mobile responsive", () => {
     expect(full.textContent).toBe("🟢 Cursor + CC");
   });
 
-  it("Settings Connect: Theme/Language stack vertically on mobile (grid-cols-1)", () => {
+  it("Settings Connect: Theme/Language stack vertically on mobile (typography-only rows)", () => {
+    // v1.20.2 visual rewrite: General prefs is no longer a grid — it's a
+    // stacked `<ul>` with 1 row per setting (Theme, Language). Each row
+    // is `flex items-center justify-between` so labels + selects align
+    // horizontally on every viewport. Mobile-friendly because the row
+    // never wraps and the select is a fixed `w-[20ch]` (~10rem) which
+    // fits inside a 375px viewport.
     setMobileViewport();
     render(
       <MemoryRouter>
@@ -297,10 +303,15 @@ describe("Wave 5 — mobile responsive", () => {
       </MemoryRouter>,
     );
     const generalBlock = screen.getByTestId("st-connect-general");
-    // The grid wraps Theme + Language; mobile must default to grid-cols-1.
-    const grid = generalBlock.querySelector(".grid");
-    expect(grid?.className).toContain("grid-cols-1");
-    expect(grid?.className).toContain("sm:grid-cols-2");
+    const list = generalBlock.querySelector("ul");
+    expect(list).toBeTruthy();
+    // Vertical-stack layout via flex-col on the list.
+    expect(list?.className).toContain("flex-col");
+    // Each row is a horizontal flex with the label + select.
+    const rows = generalBlock.querySelectorAll("li");
+    expect(rows.length).toBeGreaterThanOrEqual(2);
+    expect(rows[0].className).toContain("flex");
+    expect(rows[0].className).toContain("items-center");
   });
 
   it("Step1Welcome headline carries responsive text-size classes", () => {

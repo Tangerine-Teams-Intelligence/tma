@@ -1,18 +1,32 @@
 // === wave 1.13-E ===
+// === v1.20.2 visual rewrite ===
 /**
- * v1.13 Agent E — Privacy panel.
+ * Privacy panel — Obsidian-grade visual rewrite.
  *
- * "Local-first" claim is load-bearing for the dual-layer capture positioning
- * (AI tools + human comm). This panel gives the user the receipts:
- *   - which v1.13-E source tokens are configured (presence-only — no values)
- *   - what data stays on the machine vs what may leave it
- *   - a one-click "verify local-execution" audit
- *   - a telemetry opt-out toggle
+ * The "Local-first" claim is load-bearing for the dual-layer capture
+ * positioning. This panel gives the user the receipts:
+ *   - Which v1.13-E source tokens are configured (presence-only — no values).
+ *   - What stays on the machine vs what may leave it.
+ *   - A one-click "verify local-execution" audit.
+ *   - A telemetry opt-out toggle.
  *
- * The diagram is ASCII-rendered (not React Flow) — keeps the dep tree lean
- * and survives a fresh install with zero source tokens configured. The fixed-
- * width font + monospace box-drawing characters match the rest of the app's
- * "builder, not McKinsey" aesthetic.
+ * v1.20.2 visual changes:
+ *   - Narrow centered column lives in the parent (Settings shell); this
+ *     component is just typography on stone-50.
+ *   - No card chrome around subsections — just hairline (1px stone-200)
+ *     spacing and clean type hierarchy.
+ *   - Mono for paths / asset keys / endpoint URLs; sans for labels.
+ *   - Single accent rule: orange ONLY on the telemetry-toggle accent +
+ *     hover state of the audit button. Status pips are `text-stone-500`
+ *     mono, not green/orange chrome.
+ *   - The ASCII data-flow diagram survives — it's the most honest
+ *     possible visual and matches the "builder, not McKinsey" aesthetic.
+ *
+ * Backwards-compat preserved end-to-end:
+ *   - `st-privacy-*` testids match the wave1-13e test contract verbatim.
+ *   - Honest error / loading branches preserved (R6).
+ *   - Subtitle still includes the "100% on your machines" load-bearing
+ *     claim copy that the wave4-d1 + wave1-13e tests assert.
  */
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -39,27 +53,16 @@ interface LocalExecutionAudit {
 }
 
 // === v1.13.6 round-6 ===
-// Round 6 audit: this used to be the same silent-fallback shape that hid
-// Round 5's apply_review_decisions bug for 5 versions. The Privacy panel's
-// "Local-first" claim is load-bearing — if the Rust call errors and we
-// quietly render mock data, the user sees fake "no sources configured"
-// receipts and trusts a false claim. Now: outside Tauri (vitest / vite dev)
-// we still mock so the UI renders for development. Inside Tauri, errors
-// PROPAGATE so the caller can surface a real error UI; the React side now
-// stores `lastError` and renders an explicit "couldn't load receipts" card
-// rather than fake green checkmarks.
-//
-// `invokeOrMockErrors` is the strict variant; `invokeOrMockSilent` keeps
-// the old shape for the telemetry opt-out toggle path where a swallow is
-// genuinely fine (the local state already updated optimistically).
+// Outside Tauri (vitest / vite dev) we still mock so the UI renders for
+// development. Inside Tauri, errors PROPAGATE so the caller can surface
+// a real error UI; the React side stores `lastError` and renders an
+// explicit "couldn't load receipts" card rather than fake green checkmarks.
 async function invokeOrMockErrors<T>(
   cmd: string,
   args: Record<string, unknown> | undefined,
   mock: () => T,
 ): Promise<T> {
   if (!inTauri()) return mock();
-  // No try/catch — let the real bridge error reach the caller so the
-  // Privacy panel can render an honest "couldn't load receipts" state.
   const { invoke } = await import("@tauri-apps/api/core");
   return await invoke<T>(cmd, args);
 }
@@ -128,13 +131,9 @@ export function PrivacySettings() {
   const [audit, setAudit] = useState<LocalExecutionAudit | null>(null);
   const [loading, setLoading] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
-  // === v1.13.6 round-6 === — surface a real error state instead of
-  // silently rendering mock receipts when the Rust call fails inside Tauri.
   const [loadError, setLoadError] = useState<string | null>(null);
-  // === end v1.13.6 round-6 ===
 
   useEffect(() => {
-    // === v1.13.6 round-6 === — strict variant for the load-bearing read.
     invokeOrMockErrors<PrivacyOverview>(
       "privacy_get_overview",
       undefined,
@@ -149,7 +148,6 @@ export function PrivacySettings() {
         console.error("[privacy] privacy_get_overview failed:", e);
         setLoadError(String(e));
       });
-    // === end v1.13.6 round-6 ===
   }, []);
 
   const flipTelemetry = async (next: boolean) => {
@@ -168,9 +166,6 @@ export function PrivacySettings() {
   const runAudit = async () => {
     setLoading(true);
     try {
-      // === v1.13.6 round-6 === — silent variant: audit is best-effort
-      // (stub today, real per-call hook lands in v1.14). A failure here
-      // genuinely should not stop the user clicking the button again.
       const r = await invokeOrMockSilent<LocalExecutionAudit>(
         "privacy_verify_local_execution",
         undefined,
@@ -189,22 +184,21 @@ export function PrivacySettings() {
     }
   };
 
-  // === v1.13.6 round-6 === — honest error state. Don't render fake mock
-  // receipts when the real load failed in production.
+  // R6 — honest error state. Don't render fake mock receipts when the
+  // real load failed in production.
   if (loadError) {
     return (
       <div
-        className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-900 dark:border-red-700 dark:bg-red-950 dark:text-red-200"
+        className="rounded-md border border-rose-300 bg-rose-50 p-3 text-[13px] text-rose-900 dark:border-rose-900/50 dark:bg-rose-950/40 dark:text-rose-200"
         data-testid="st-privacy-error"
       >
         <div className="font-medium">
-          {t(
-            "privacy.errorTitle",
-            "Couldn't load privacy receipts",
-          )}
+          {t("privacy.errorTitle", "Couldn't load privacy receipts")}
         </div>
-        <div className="mt-1 font-mono text-xs opacity-80">{loadError}</div>
-        <div className="mt-2 text-xs opacity-80">
+        <div className="mt-1 font-mono text-[11px] opacity-80">
+          {loadError}
+        </div>
+        <div className="mt-2 text-[11px] opacity-80">
           {t(
             "privacy.errorHint",
             "Restart the app or open the developer console for details. We refuse to render fake 'all-local' receipts when we can't verify them.",
@@ -213,53 +207,59 @@ export function PrivacySettings() {
       </div>
     );
   }
-  // === end v1.13.6 round-6 ===
 
   if (!overview) {
     return (
-      <div className="text-sm text-[var(--ti-ink-500)]" data-testid="st-privacy-loading">
+      <div
+        className="font-mono text-[11px] text-stone-500 dark:text-stone-500"
+        data-testid="st-privacy-loading"
+      >
         {t("privacy.loading", "Loading privacy overview…")}
       </div>
     );
   }
 
   return (
-    <div className="flex max-w-2xl flex-col gap-6" data-testid="st-privacy">
-      <header>
-        <h2 className="font-display text-xl">
-          {t("privacy.title", "Privacy")}
-        </h2>
-        <p className="mt-1 text-sm text-[var(--ti-ink-500)]">
-          {t(
-            "privacy.subtitle",
-            "Tangerine runs 100% on your machines by default. Receipts below.",
-          )}
-        </p>
-      </header>
+    <div className="flex flex-col gap-8" data-testid="st-privacy">
+      {/* Subtitle — the load-bearing "100% on your machines" claim. */}
+      <p className="text-[13px] text-stone-700 dark:text-stone-300">
+        {t(
+          "privacy.subtitle",
+          "Tangerine runs 100% on your machines by default. Receipts below.",
+        )}
+      </p>
 
       {/* ASCII data-flow diagram. Fixed-width font matches the
           "builder, not McKinsey" aesthetic. */}
       <section data-testid="st-privacy-diagram">
-        <h3 className="mb-2 text-sm font-medium text-[var(--ti-ink-700)]">
+        <h2 className="mb-3 text-[14px] font-medium text-stone-900 dark:text-stone-100">
           {t("privacy.diagramTitle", "Data flow")}
-        </h3>
-        <pre
-          className="overflow-auto rounded-md border border-[var(--ti-border-default)] bg-[var(--ti-paper-50)] p-3 font-mono text-[10px] text-[var(--ti-ink-700)]"
-        >
+        </h2>
+        <pre className="overflow-auto rounded-md bg-stone-100 p-4 font-mono text-[10px] text-stone-700 dark:bg-stone-900 dark:text-stone-300">
           {ASCII_DIAGRAM}
         </pre>
       </section>
 
       {/* What stays local */}
       <section data-testid="st-privacy-local">
-        <h3 className="mb-2 text-sm font-medium text-[var(--ti-ink-700)]">
+        <h2 className="mb-3 text-[14px] font-medium text-stone-900 dark:text-stone-100">
           {t("privacy.localTitle", "What stays on your machine")}
-        </h3>
-        <ul className="space-y-1">
+        </h2>
+        <ul className="flex flex-col gap-1">
           {overview.local_only_assets.map((asset) => (
-            <li key={asset} className="text-xs text-[var(--ti-ink-700)]">
-              <span className="text-[var(--ti-success, #2a8c4d)]">{"✓"}</span>{" "}
-              {t(`privacy.local.${asset}`, assetLabelLocal(asset))}
+            <li
+              key={asset}
+              className="flex items-baseline gap-2 text-[13px] text-stone-700 dark:text-stone-300"
+            >
+              <span
+                aria-hidden
+                className="font-mono text-[11px] text-stone-500 dark:text-stone-500"
+              >
+                ✓
+              </span>
+              <span>
+                {t(`privacy.local.${asset}`, assetLabelLocal(asset))}
+              </span>
             </li>
           ))}
         </ul>
@@ -267,14 +267,24 @@ export function PrivacySettings() {
 
       {/* What may leave */}
       <section data-testid="st-privacy-egress">
-        <h3 className="mb-2 text-sm font-medium text-[var(--ti-ink-700)]">
+        <h2 className="mb-3 text-[14px] font-medium text-stone-900 dark:text-stone-100">
           {t("privacy.egressTitle", "What may leave your machine")}
-        </h3>
-        <ul className="space-y-1">
+        </h2>
+        <ul className="flex flex-col gap-1">
           {overview.egress_assets.map((asset) => (
-            <li key={asset} className="text-xs text-[var(--ti-ink-700)]">
-              <span className="text-[var(--ti-orange-600)]">{"⦵"}</span>{" "}
-              {t(`privacy.egress.${asset}`, assetLabelEgress(asset))}
+            <li
+              key={asset}
+              className="flex items-baseline gap-2 text-[13px] text-stone-700 dark:text-stone-300"
+            >
+              <span
+                aria-hidden
+                className="font-mono text-[11px] text-stone-500 dark:text-stone-500"
+              >
+                →
+              </span>
+              <span>
+                {t(`privacy.egress.${asset}`, assetLabelEgress(asset))}
+              </span>
             </li>
           ))}
         </ul>
@@ -282,26 +292,27 @@ export function PrivacySettings() {
 
       {/* Source token presence — no values shown */}
       <section data-testid="st-privacy-sources">
-        <h3 className="mb-2 text-sm font-medium text-[var(--ti-ink-700)]">
+        <h2 className="mb-3 text-[14px] font-medium text-stone-900 dark:text-stone-100">
           {t("privacy.sourcesTitle", "Source tokens (in OS keychain)")}
-        </h3>
-        <ul className="space-y-1">
+        </h2>
+        <ul className="flex flex-col gap-1">
           {overview.sources.map((s) => (
             <li
               key={s.source}
-              className="flex items-center gap-2 text-xs text-[var(--ti-ink-700)]"
+              className="flex items-center gap-2 text-[13px] text-stone-700 dark:text-stone-300"
               data-testid={`st-privacy-source-${s.source}`}
             >
               <span
+                aria-hidden
                 className={
-                  "inline-block h-2 w-2 rounded-full " +
+                  "inline-block h-1.5 w-1.5 shrink-0 rounded-full " +
                   (s.present
-                    ? "bg-[var(--ti-success, #2a8c4d)]"
-                    : "bg-[var(--ti-ink-300, #c8c8c8)]")
+                    ? "bg-[var(--ti-orange-500)]"
+                    : "bg-stone-300 dark:bg-stone-700")
                 }
               />
-              <span className="font-mono">{s.source}</span>
-              <span className="text-[var(--ti-ink-500)]">
+              <span className="font-mono text-[12px]">{s.source}</span>
+              <span className="font-mono text-[11px] text-stone-500 dark:text-stone-500">
                 {s.present
                   ? t("privacy.sourceConfigured", "configured")
                   : t("privacy.sourceNotConfigured", "not configured")}
@@ -313,30 +324,30 @@ export function PrivacySettings() {
 
       {/* Telemetry opt-out toggle */}
       <section data-testid="st-privacy-telemetry">
-        <label className="flex items-start gap-3 text-sm">
+        <label className="flex items-start gap-3 text-[13px]">
           <input
             type="checkbox"
             checked={!overview.telemetry_opt_out}
             onChange={(e) => void flipTelemetry(!e.target.checked)}
             data-testid="st-privacy-telemetry-toggle"
-            className="mt-1"
+            className="mt-1 accent-[var(--ti-orange-500)]"
           />
           <span>
-            <span className="font-medium text-[var(--ti-ink-700)]">
+            <span className="font-medium text-stone-900 dark:text-stone-100">
               {t(
                 "privacy.telemetryToggle",
                 "Send anonymized usage telemetry",
               )}
             </span>
-            <span className="block text-xs text-[var(--ti-ink-500)]">
+            <span className="block font-mono text-[11px] text-stone-500 dark:text-stone-500">
               {t(
                 "privacy.telemetryHint",
                 "Default ON. Helps us see which features get used. No content, no identifiers.",
               )}
             </span>
             {savedAt && (
-              <span className="mt-1 block text-[10px] text-[var(--ti-ink-500)]">
-                {t("privacy.savedAt", "Saved")} ·{" "}
+              <span className="mt-1 block font-mono text-[10px] text-stone-500 dark:text-stone-500">
+                {t("privacy.savedAt", "saved")} ·{" "}
                 {new Date(savedAt).toLocaleTimeString()}
               </span>
             )}
@@ -351,25 +362,24 @@ export function PrivacySettings() {
           onClick={() => void runAudit()}
           disabled={loading}
           data-testid="st-privacy-verify-btn"
-          className="rounded-md border border-[var(--ti-border-default)] bg-white px-3 py-1.5 text-xs hover:bg-[var(--ti-paper-50)] disabled:opacity-50"
+          className="rounded-md border border-stone-200 bg-white px-3 py-1.5 text-[12px] text-stone-700 transition-colors hover:border-[var(--ti-orange-500)] hover:text-stone-900 disabled:opacity-50 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-300 dark:hover:text-stone-100"
         >
           {loading
             ? t("privacy.verifyLoading", "Auditing…")
             : t("privacy.verifyBtn", "Verify local-execution")}
         </button>
         {audit && (
-          <div className="mt-3 rounded-md border border-[var(--ti-border-default)] bg-[var(--ti-paper-50)] p-3 text-xs">
+          <div className="mt-3 font-mono text-[11px]">
             <div data-testid="st-privacy-verify-result">
               {audit.tangerine_call_count === 0 ? (
-                <span className="text-[var(--ti-success, #2a8c4d)]">
-                  {"✓"}{" "}
-                  {t(
+                <span className="text-stone-700 dark:text-stone-300">
+                  ✓ {t(
                     "privacy.verifyZero",
                     "0 calls to Tangerine servers in last hour",
                   )}
                 </span>
               ) : (
-                <span className="text-[var(--ti-danger)]">
+                <span className="text-rose-700 dark:text-rose-400">
                   {audit.tangerine_call_count}{" "}
                   {t(
                     "privacy.verifyNonZero",
@@ -379,9 +389,9 @@ export function PrivacySettings() {
               )}
             </div>
             {audit.endpoints_contacted.length > 0 && (
-              <ul className="mt-2 space-y-1 font-mono text-[10px] text-[var(--ti-ink-700)]">
+              <ul className="mt-2 space-y-0.5 text-stone-500 dark:text-stone-500">
                 {audit.endpoints_contacted.map((ep) => (
-                  <li key={ep}>• {ep}</li>
+                  <li key={ep}>· {ep}</li>
                 ))}
               </ul>
             )}

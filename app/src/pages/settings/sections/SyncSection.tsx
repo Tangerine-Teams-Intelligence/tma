@@ -1,53 +1,31 @@
 /**
- * v1.16 Wave 4 D1 — Sync section.
+ * v1.20.2 — Sync section: Obsidian-grade visual rewrite.
  *
- * Consolidates the legacy "Team" + "Advanced" tabs' git/sync content into
- * one screen. Layout:
+ * Same content (Mode, GitHub URL, Auto-sync, Personal vault, Meeting repo,
+ * Team roster, Debug bundle, Sample data) and the same store-key contract,
+ * but the visual layer is now pure typography:
  *
- *   ┌──────────────────────────────────────────┐
- *   │ Mode                                     │
- *   │   ( ) Solo         (•) Team              │
- *   │                                          │
- *   │ GitHub repo URL                          │
- *   │   [_______________________________]      │
- *   │                                          │
- *   │ Personal vault                           │
- *   │   [x] Enable personal/<user>/ scope      │
- *   │                                          │
- *   │ Auto-pull / commit / push                │
- *   │   (existing wave-10 GitSyncSettingsBlock)│
- *   │                                          │
- *   │ Meeting repo                             │
- *   │   [_______________________________]      │
- *   │                                          │
- *   │ Team roster (Solo mode hides this)       │
- *   │   ...                                    │
- *   │                                          │
- *   │ Debug bundle / Sample data / About       │
- *   └──────────────────────────────────────────┘
+ *   • No card chrome around subsections — hairline (1px stone-200) between
+ *     blocks, NOT box borders.
+ *   • Mode picker: 2 typography-only buttons. Active = orange underline +
+ *     stone-900 label; inactive = stone-500. No filled cards.
+ *   • Inputs: stone-200 underline only (no box). Mono for paths, sans for
+ *     labels.
+ *   • Auto-sync block: a stacked single-column list. Drops the inset card.
+ *   • Save bar lives in Settings.tsx; this component is just sections.
  *
- * Backwards-compat:
- *   - `gitMode` store key untouched
- *   - `memoryConfig.personalDirEnabled` untouched
- *   - `gitAutoPullIntervalMin` / `gitAutoCommitOnHeartbeat` /
- *     `gitAutoPushOnCommit` untouched
- *   - `meetings_repo` flows through the same ConfigDraft `update()`
- *     callback as the legacy GeneralSettings
- *
- * What's CUT vs the old layout:
- *   - LLM adapter config (AdaptersSettings) — entire tab dropped, smart
- *     layer is gone in v1.16 Wave 1
- *   - Whisper config — also dropped (same reason)
- *   - Tour replay — dropped, lives in WelcomeOverlay's own retrigger
+ * Backwards-compat preserved end-to-end:
+ *   - All `st-sync-*` testids match wave4-d1 verbatim.
+ *   - All store keys (gitMode / memoryConfig / gitAutoPullIntervalMin /
+ *     gitAutoCommitOnHeartbeat / gitAutoPushOnCommit) untouched.
+ *   - `meetings_repo` flows through ConfigDraft `update()` callback as
+ *     before.
+ *   - Debug bundle / sample-data clear preserved (escape hatches).
  */
 
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Plus, Trash2, Download } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { useStore } from "@/lib/store";
 import {
   exportDebugBundle,
@@ -63,29 +41,25 @@ interface Props {
 }
 
 // ---------------------------------------------------------------------------
-// Mode picker — Solo vs Team. Drives whether the team-roster block renders.
-// `gitMode` store key is the source of truth; we expose a synthetic
-// "solo" / "team" abstraction over it (gitMode === "skip" → solo, anything
-// else → team-capable).
+// Mode picker — Solo vs Team. `gitMode === "skip"` → solo.
+// Visual: two buttons, orange underline on active, no filled card chrome.
 // ---------------------------------------------------------------------------
 
 function ModePicker() {
   const gitMode = useStore((s) => s.ui.gitMode);
   const setGitMode = useStore((s) => s.ui.setGitMode);
-
   const isSolo = gitMode === "skip";
 
   return (
     <section data-testid="st-sync-mode">
-      <h3 className="font-display text-base">Mode</h3>
-      <p className="mt-1 text-sm text-[var(--ti-ink-500)]">
-        Solo keeps everything local. Team syncs to a shared git remote so
-        teammates see the same atoms.
+      <h2 className="text-[14px] font-medium text-stone-900 dark:text-stone-100">
+        Mode
+      </h2>
+      <p className="mt-1 font-mono text-[11px] text-stone-500 dark:text-stone-500">
+        Solo keeps everything local. Team syncs to a shared git remote.
       </p>
       <div
-        // v1.16 Wave 5 — Mode picker stacks on mobile so each radio gets
-        // full width; horizontal layout returns at sm:.
-        className="mt-3 flex flex-col gap-2 sm:flex-row"
+        className="mt-3 flex gap-1"
         role="radiogroup"
         aria-label="Sync mode"
       >
@@ -96,16 +70,13 @@ function ModePicker() {
           data-testid="st-sync-mode-solo"
           onClick={() => setGitMode("skip")}
           className={
-            "flex-1 rounded-md border px-3 py-2 text-sm transition-colors duration-fast " +
+            "shrink-0 border-b-2 px-3 py-2 text-[14px] font-medium transition-colors duration-fast " +
             (isSolo
-              ? "border-[var(--ti-orange-500)] bg-[var(--ti-orange-50)] text-[var(--ti-ink-900)]"
-              : "border-[var(--ti-border-default)] bg-[var(--ti-paper-50)] text-[var(--ti-ink-700)] hover:bg-[var(--ti-paper-200)]")
+              ? "border-[var(--ti-orange-500)] text-stone-900 dark:text-stone-100"
+              : "border-transparent text-stone-500 hover:text-stone-700 dark:text-stone-400 dark:hover:text-stone-200")
           }
         >
-          <div className="font-medium">Solo</div>
-          <div className="text-xs text-[var(--ti-ink-500)]">
-            Local only — no git remote
-          </div>
+          Solo
         </button>
         <button
           type="button"
@@ -114,16 +85,13 @@ function ModePicker() {
           data-testid="st-sync-mode-team"
           onClick={() => setGitMode("init")}
           className={
-            "flex-1 rounded-md border px-3 py-2 text-sm transition-colors duration-fast " +
+            "shrink-0 border-b-2 px-3 py-2 text-[14px] font-medium transition-colors duration-fast " +
             (!isSolo
-              ? "border-[var(--ti-orange-500)] bg-[var(--ti-orange-50)] text-[var(--ti-ink-900)]"
-              : "border-[var(--ti-border-default)] bg-[var(--ti-paper-50)] text-[var(--ti-ink-700)] hover:bg-[var(--ti-paper-200)]")
+              ? "border-[var(--ti-orange-500)] text-stone-900 dark:text-stone-100"
+              : "border-transparent text-stone-500 hover:text-stone-700 dark:text-stone-400 dark:hover:text-stone-200")
           }
         >
-          <div className="font-medium">Team</div>
-          <div className="text-xs text-[var(--ti-ink-500)]">
-            Push to shared git remote
-          </div>
+          Team
         </button>
       </div>
     </section>
@@ -131,8 +99,8 @@ function ModePicker() {
 }
 
 // ---------------------------------------------------------------------------
-// GitHub repo URL — writes to memoryConfig (the canonical place the rest of
-// the app reads remote URL from).
+// GitHub repo URL — writes to memoryConfig.repoUrl. Input is underline-only
+// (no box border).
 // ---------------------------------------------------------------------------
 
 function GitHubRepoUrlBlock() {
@@ -142,15 +110,24 @@ function GitHubRepoUrlBlock() {
 
   return (
     <section data-testid="st-sync-github-url">
-      <Label htmlFor="st-github-url">GitHub repo URL</Label>
-      <Input
+      <label
+        htmlFor="st-github-url"
+        className="block text-[14px] font-medium text-stone-900 dark:text-stone-100"
+      >
+        GitHub repo URL
+      </label>
+      <input
         id="st-github-url"
         data-testid="st-github-url"
         value={url}
         onChange={(e) => setMemoryConfig({ repoUrl: e.target.value })}
         placeholder="git@github.com:your-org/team-memory.git"
+        className="mt-2 w-full bg-transparent py-1.5 font-mono text-[12px] text-stone-900 placeholder-stone-400 transition-colors focus:outline-none dark:text-stone-100 dark:placeholder-stone-600"
+        style={{
+          borderBottom: "1px solid var(--ti-border-default)",
+        }}
       />
-      <p className="mt-1 text-xs text-[var(--ti-ink-500)]">
+      <p className="mt-2 font-mono text-[11px] text-stone-500 dark:text-stone-500">
         Your remote — Tangerine pushes here, teammates pull from here. The
         repo stays yours; we never proxy.
       </p>
@@ -169,13 +146,14 @@ function PersonalVaultToggle() {
 
   return (
     <section data-testid="st-sync-personal-vault">
-      <h3 className="font-display text-base">Personal vault</h3>
-      <p className="mt-1 text-sm text-[var(--ti-ink-500)]">
-        When on, atoms under <code>personal/&lt;user&gt;/</code> stay
-        git-ignored — your private notes never leave this machine even when
-        Team mode is enabled.
+      <h2 className="text-[14px] font-medium text-stone-900 dark:text-stone-100">
+        Personal vault
+      </h2>
+      <p className="mt-1 font-mono text-[11px] text-stone-500 dark:text-stone-500">
+        Atoms under <span>personal/&lt;user&gt;/</span> stay git-ignored —
+        your private notes never leave this machine.
       </p>
-      <label className="mt-2 flex items-center gap-2 text-sm">
+      <label className="mt-3 flex cursor-pointer items-center gap-2 text-[13px] text-stone-700 dark:text-stone-300">
         <input
           type="checkbox"
           data-testid="st-sync-personal-toggle"
@@ -183,6 +161,7 @@ function PersonalVaultToggle() {
           onChange={(e) =>
             setMemoryConfig({ personalDirEnabled: e.target.checked })
           }
+          className="accent-[var(--ti-orange-500)]"
         />
         <span>Enable personal vault</span>
       </label>
@@ -191,9 +170,7 @@ function PersonalVaultToggle() {
 }
 
 // ---------------------------------------------------------------------------
-// Git auto-sync block — copy of the wave-10 GitSyncSettingsBlock from the
-// legacy GeneralSettings.tsx, lifted here so it lives next to the other
-// remote / sync controls instead of a vanished "General" tab.
+// Auto-sync — single column rows (was a card with grid). Same store keys.
 // ---------------------------------------------------------------------------
 
 function GitAutoSyncBlock() {
@@ -213,20 +190,20 @@ function GitAutoSyncBlock() {
   const setGitMode = useStore((s) => s.ui.setGitMode);
 
   return (
-    <section
-      data-testid="st-git-sync-block"
-      className="rounded-md border border-[var(--ti-border-default)] bg-[var(--ti-paper-50)] px-3 py-3"
-    >
-      <div className="mb-2 text-[12px] font-semibold text-[var(--ti-ink-700)]">
+    <section data-testid="st-git-sync-block">
+      <h2 className="text-[14px] font-medium text-stone-900 dark:text-stone-100">
         {t("git.settingsHeader", { defaultValue: "Auto-sync" })}
-      </div>
+      </h2>
 
-      <div className="mb-2">
-        <Label htmlFor="st-git-pull-interval">
+      <div className="mt-3 flex items-center justify-between py-2">
+        <label
+          htmlFor="st-git-pull-interval"
+          className="text-[13px] text-stone-700 dark:text-stone-300"
+        >
           {t("git.settingsAutoPullInterval", {
-            defaultValue: "Auto-pull interval (minutes)",
+            defaultValue: "Pull interval",
           })}
-        </Label>
+        </label>
         <select
           id="st-git-pull-interval"
           data-testid="st-git-pull-interval"
@@ -234,32 +211,34 @@ function GitAutoSyncBlock() {
           onChange={(e) =>
             setGitAutoPullIntervalMin(parseInt(e.target.value, 10) || 15)
           }
-          className="mt-1 h-9 w-full rounded-md border border-[var(--ti-border-default)] bg-[var(--ti-paper-50)] px-3 text-sm"
+          className="rounded-md border border-stone-200 bg-white px-3 py-1.5 font-mono text-[12px] text-stone-900 focus:border-[var(--ti-orange-500)] focus:outline-none dark:border-stone-700 dark:bg-stone-900 dark:text-stone-100"
         >
-          <option value={5}>5</option>
-          <option value={15}>15</option>
-          <option value={30}>30</option>
+          <option value={5}>5 min</option>
+          <option value={15}>15 min</option>
+          <option value={30}>30 min</option>
         </select>
       </div>
 
-      <label className="mt-2 flex items-center gap-2 text-[12px] text-[var(--ti-ink-700)]">
+      <label className="flex cursor-pointer items-center gap-2 py-2 text-[13px] text-stone-700 dark:text-stone-300">
         <input
           type="checkbox"
           data-testid="st-git-auto-commit"
           checked={gitAutoCommitOnHeartbeat}
           onChange={(e) => setGitAutoCommitOnHeartbeat(e.target.checked)}
+          className="accent-[var(--ti-orange-500)]"
         />
         {t("git.settingsAutoCommit", {
           defaultValue: "Auto-commit on heartbeat",
         })}
       </label>
 
-      <label className="mt-2 flex items-center gap-2 text-[12px] text-[var(--ti-ink-700)]">
+      <label className="flex cursor-pointer items-center gap-2 py-2 text-[13px] text-stone-700 dark:text-stone-300">
         <input
           type="checkbox"
           data-testid="st-git-auto-push"
           checked={gitAutoPushOnCommit}
           onChange={(e) => setGitAutoPushOnCommit(e.target.checked)}
+          className="accent-[var(--ti-orange-500)]"
         />
         {t("git.settingsAutoPush", {
           defaultValue: "Auto-push on commit",
@@ -270,7 +249,7 @@ function GitAutoSyncBlock() {
         type="button"
         data-testid="st-git-reset-state"
         onClick={() => setGitMode("unknown")}
-        className="mt-3 rounded-md border border-rose-300 px-3 py-1.5 text-[12px] text-rose-700 hover:bg-rose-50"
+        className="mt-3 rounded-md border border-rose-300 px-3 py-1.5 font-mono text-[11px] text-rose-700 transition-colors hover:bg-rose-50 dark:border-rose-900/50 dark:text-rose-400 dark:hover:bg-rose-950/40"
       >
         {t("git.settingsResetState", { defaultValue: "Reset git state" })}
       </button>
@@ -279,32 +258,46 @@ function GitAutoSyncBlock() {
 }
 
 // ---------------------------------------------------------------------------
-// Meeting repo + team roster. Pulled from the legacy GeneralSettings +
-// TeamSettings tabs. Roster only renders when not Solo (Solo = no team).
+// Meeting repo. Underline-only input.
 // ---------------------------------------------------------------------------
 
 function MeetingRepoBlock({ draft, update }: Props) {
   const { t } = useTranslation();
   return (
     <section data-testid="st-sync-meetings-repo">
-      <Label htmlFor="st-meetings-repo">
+      <label
+        htmlFor="st-meetings-repo"
+        className="block text-[14px] font-medium text-stone-900 dark:text-stone-100"
+      >
         {t("settings.general.meetingsRepo", { defaultValue: "Meetings repo" })}
-      </Label>
-      <Input
+      </label>
+      <input
         id="st-meetings-repo"
         value={draft.meetings_repo}
         onChange={(e) => update("meetings_repo", e.target.value)}
         placeholder="C:\\Users\\you\\tangerine-meetings"
         data-testid="st-meetings-repo"
+        className="mt-2 w-full bg-transparent py-1.5 font-mono text-[12px] text-stone-900 placeholder-stone-400 transition-colors focus:outline-none dark:text-stone-100 dark:placeholder-stone-600"
+        style={{
+          borderBottom: "1px solid var(--ti-border-default)",
+        }}
       />
-      <p className="mt-1 text-xs text-[var(--ti-ink-500)]">
+      <p className="mt-2 font-mono text-[11px] text-stone-500 dark:text-stone-500">
         {t("settings.general.meetingsRepoHint", {
           defaultValue: "Local folder for meeting notes / transcripts.",
         })}
       </p>
+
+      <p className="mt-3 font-mono text-[11px] text-stone-400 dark:text-stone-600">
+        configs persist to ~/.tmi/config.yaml · keys to OS keychain
+      </p>
     </section>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Team roster. Each row gets stacked underline-only inputs + Remove text-button.
+// ---------------------------------------------------------------------------
 
 function TeamRosterBlock({ draft, update }: Props) {
   const { t } = useTranslation();
@@ -332,76 +325,69 @@ function TeamRosterBlock({ draft, update }: Props) {
 
   return (
     <section data-testid="st-sync-team-roster">
-      <h3 className="font-display text-base">Team roster</h3>
-      {/* v1.16 Wave 5 — labels row hidden on mobile (use input placeholders
-          to convey the field intent); desktop keeps the 4-col header. */}
-      <div className="mt-2 hidden grid-cols-[1fr_1fr_1fr_auto] gap-2 text-xs text-[var(--ti-ink-500)] sm:grid">
-        <Label>{t("settings.team.alias", { defaultValue: "Alias" })}</Label>
-        <Label>
-          {t("settings.team.displayName", { defaultValue: "Display name" })}
-        </Label>
-        <Label>
-          {t("settings.team.discordId", { defaultValue: "Discord ID" })}
-        </Label>
-        <span />
-      </div>
-      <div className="flex flex-col gap-2">
+      <h2 className="text-[14px] font-medium text-stone-900 dark:text-stone-100">
+        Team roster
+      </h2>
+      <ul className="mt-3 divide-y divide-stone-200 dark:divide-stone-800">
         {draft.team.map((m, i) => (
-          <div
+          <li
             key={i}
-            // v1.16 Wave 5 — roster row: 2-col grid on mobile (3 inputs
-            // span the first column over 3 rows, button column-2 row-1);
-            // reverts to single 4-col grid at sm:.
-            className="grid grid-cols-[1fr_auto] gap-2 sm:grid-cols-[1fr_1fr_1fr_auto]"
             data-testid={`team-row-${i}`}
+            className="grid grid-cols-[1fr_1fr_1fr_auto] items-center gap-3 py-2"
           >
-            <Input
+            <input
               value={m.alias}
               onChange={(e) => setRow(i, { alias: e.target.value })}
-              placeholder="alias (e.g. daizhe)"
+              placeholder="alias"
+              className="bg-transparent py-1 font-mono text-[12px] text-stone-900 placeholder-stone-400 focus:outline-none dark:text-stone-100"
+              style={{
+                borderBottom: "1px solid var(--ti-border-faint)",
+              }}
             />
-            <Button
-              variant="ghost"
-              size="icon"
+            <input
+              value={m.display_name}
+              onChange={(e) => setRow(i, { display_name: e.target.value })}
+              placeholder="display name"
+              className="bg-transparent py-1 text-[13px] text-stone-900 placeholder-stone-400 focus:outline-none dark:text-stone-100"
+              style={{
+                borderBottom: "1px solid var(--ti-border-faint)",
+              }}
+            />
+            <input
+              value={m.discord_id}
+              onChange={(e) => setRow(i, { discord_id: e.target.value })}
+              placeholder="discord id"
+              className="bg-transparent py-1 font-mono text-[11px] text-stone-700 placeholder-stone-400 focus:outline-none dark:text-stone-300"
+              style={{
+                borderBottom: "1px solid var(--ti-border-faint)",
+              }}
+            />
+            <button
+              type="button"
               onClick={() => removeRow(i)}
               data-testid={`team-remove-${i}`}
               aria-label="Remove row"
-              className="sm:order-last"
+              className="font-mono text-[11px] text-stone-400 transition-colors hover:text-rose-700 dark:text-stone-600 dark:hover:text-rose-400"
             >
-              <Trash2 size={16} />
-            </Button>
-            <Input
-              value={m.display_name}
-              onChange={(e) => setRow(i, { display_name: e.target.value })}
-              placeholder="display name (e.g. Daizhe)"
-              className="col-span-2 sm:col-span-1"
-            />
-            <Input
-              value={m.discord_id}
-              onChange={(e) => setRow(i, { discord_id: e.target.value })}
-              placeholder="discord id (1234567890...)"
-              className="col-span-2 sm:col-span-1"
-            />
-          </div>
+              remove
+            </button>
+          </li>
         ))}
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={addRow}
-          data-testid="team-add"
-          className="self-start"
-        >
-          <Plus size={14} />
-          {t("settings.team.addRow", { defaultValue: "Add row" })}
-        </Button>
-      </div>
+      </ul>
+      <button
+        type="button"
+        onClick={addRow}
+        data-testid="team-add"
+        className="mt-3 font-mono text-[11px] text-stone-500 transition-colors hover:text-[var(--ti-orange-500)] dark:text-stone-500 dark:hover:text-[var(--ti-orange-500)]"
+      >
+        + {t("settings.team.addRow", { defaultValue: "add row" })}
+      </button>
     </section>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Debug bundle + sample-data clear — survived the cull because they're escape
-// hatches, not LLM-related power-user knobs.
+// Debug bundle + sample data clear. Same Tauri commands; new visual.
 // ---------------------------------------------------------------------------
 
 function DebugAndSamplesBlock() {
@@ -463,70 +449,74 @@ function DebugAndSamplesBlock() {
   };
 
   return (
-    <section className="flex flex-col gap-4" data-testid="st-sync-debug">
+    <section className="flex flex-col gap-6" data-testid="st-sync-debug">
       <div>
-        <h3 className="font-display text-base">
+        <h2 className="text-[14px] font-medium text-stone-900 dark:text-stone-100">
           {t("settings.advanced.debugTitle", { defaultValue: "Debug bundle" })}
-        </h3>
-        <Button
+        </h2>
+        <button
+          type="button"
           onClick={exportBundle}
-          className="mt-2"
           data-testid="st-export-bundle"
+          className="mt-2 rounded-md border border-stone-200 bg-white px-3 py-1.5 font-mono text-[11px] text-stone-700 transition-colors hover:border-[var(--ti-orange-500)] hover:text-stone-900 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-300 dark:hover:text-stone-100"
         >
-          <Download size={14} />
           {t("settings.advanced.exportBundle", {
             defaultValue: "Export bundle",
           })}
-        </Button>
+        </button>
         {last && (
           <p
-            className="mt-1 text-xs text-[var(--ti-ink-500)]"
+            className="mt-2 font-mono text-[11px] text-stone-500 dark:text-stone-500"
             data-testid="st-export-result"
           >
-            <code className="font-mono">{last}</code>
+            {last}
           </p>
         )}
         {error && (
-          <p className="mt-1 text-xs text-[var(--ti-danger)]">{error}</p>
+          <p className="mt-2 font-mono text-[11px] text-rose-700 dark:text-rose-400">
+            {error}
+          </p>
         )}
       </div>
 
       <div data-testid="st-clear-samples-section">
-        <h3 className="font-display text-base">Sample data</h3>
+        <h2 className="text-[14px] font-medium text-stone-900 dark:text-stone-100">
+          Sample data
+        </h2>
         {sampleCount === null ? (
-          <p className="mt-1 font-mono text-[11px] text-[var(--ti-ink-500)]">
+          <p className="mt-2 font-mono text-[11px] text-stone-500 dark:text-stone-500">
             counting…
           </p>
         ) : sampleCount === 0 ? (
           <p
             data-testid="st-clear-samples-none"
-            className="mt-1 font-mono text-[11px] text-[var(--ti-ink-500)]"
+            className="mt-2 font-mono text-[11px] text-stone-500 dark:text-stone-500"
           >
-            No sample atoms on disk
+            no sample atoms on disk
             {lastClearedCount !== null && lastClearedCount > 0
-              ? ` — cleared ${lastClearedCount} file${lastClearedCount === 1 ? "" : "s"}.`
-              : "."}
+              ? ` · cleared ${lastClearedCount} file${lastClearedCount === 1 ? "" : "s"}`
+              : ""}
           </p>
         ) : (
           <p
             data-testid="st-clear-samples-count"
-            className="mt-1 font-mono text-[11px] text-[var(--ti-ink-500)]"
+            className="mt-2 font-mono text-[11px] text-stone-500 dark:text-stone-500"
           >
             {sampleCount} sample atom{sampleCount === 1 ? "" : "s"} on disk
           </p>
         )}
-        <Button
+        <button
+          type="button"
           onClick={() => void handleClearSamples()}
           disabled={clearing || sampleCount === 0}
-          className="mt-2"
           data-testid="st-clear-samples"
+          className="mt-2 rounded-md border border-stone-200 bg-white px-3 py-1.5 font-mono text-[11px] text-stone-700 transition-colors hover:border-rose-300 hover:text-rose-700 disabled:opacity-50 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-300"
         >
-          <Trash2 size={14} />
           {clearing ? "Clearing…" : "Clear sample data"}
-        </Button>
+        </button>
         {clearError && (
           <p
-            className="mt-1 text-xs text-[var(--ti-danger)]"
+            className="mt-2 font-mono text-[11px] text-rose-700 dark:text-rose-400"
             data-testid="st-clear-samples-error"
           >
             {clearError}
@@ -546,14 +536,41 @@ export function SyncSection({ draft, update }: Props) {
       <ModePicker />
       {!isSolo && (
         <>
+          <div
+            aria-hidden
+            className="h-px w-full bg-stone-200 dark:bg-stone-800"
+          />
           <GitHubRepoUrlBlock />
+          <div
+            aria-hidden
+            className="h-px w-full bg-stone-200 dark:bg-stone-800"
+          />
           <GitAutoSyncBlock />
         </>
       )}
+      <div
+        aria-hidden
+        className="h-px w-full bg-stone-200 dark:bg-stone-800"
+      />
       <PersonalVaultToggle />
+      <div
+        aria-hidden
+        className="h-px w-full bg-stone-200 dark:bg-stone-800"
+      />
       <MeetingRepoBlock draft={draft} update={update} />
-      {!isSolo && <TeamRosterBlock draft={draft} update={update} />}
-      <hr className="border-[var(--ti-border-faint)]" />
+      {!isSolo && (
+        <>
+          <div
+            aria-hidden
+            className="h-px w-full bg-stone-200 dark:bg-stone-800"
+          />
+          <TeamRosterBlock draft={draft} update={update} />
+        </>
+      )}
+      <div
+        aria-hidden
+        className="h-px w-full bg-stone-200 dark:bg-stone-800"
+      />
       <DebugAndSamplesBlock />
     </div>
   );
