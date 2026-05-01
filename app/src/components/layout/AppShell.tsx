@@ -505,7 +505,7 @@ function TopNav({ onOpenSpotlight }: { onOpenSpotlight: () => void }) {
         onClick={onOpenSpotlight}
         title="Open Spotlight (⌘K)"
         aria-label="Open Spotlight"
-        className="pointer-events-auto rounded-md border border-stone-200 bg-white/80 px-2 py-1 font-mono text-[11px] text-stone-600 shadow-sm backdrop-blur transition-colors hover:bg-stone-100 dark:border-stone-800 dark:bg-stone-900/80 dark:text-stone-400 dark:hover:bg-stone-800"
+        className="pointer-events-auto flex h-7 items-center justify-center rounded-md border border-stone-200 bg-white/90 px-2 font-mono text-[12px] text-stone-700 shadow-sm backdrop-blur transition-colors hover:bg-stone-100 dark:border-stone-800 dark:bg-stone-900/90 dark:text-stone-300 dark:hover:bg-stone-800"
       >
         ⌘K
       </button>
@@ -514,7 +514,7 @@ function TopNav({ onOpenSpotlight }: { onOpenSpotlight: () => void }) {
         to="/settings"
         title="Settings (⌘,)"
         aria-label="Settings"
-        className="pointer-events-auto rounded-md border border-stone-200 bg-white/80 p-1.5 text-stone-600 shadow-sm backdrop-blur transition-colors hover:bg-stone-100 dark:border-stone-800 dark:bg-stone-900/80 dark:text-stone-400 dark:hover:bg-stone-800"
+        className="pointer-events-auto flex h-7 w-7 items-center justify-center rounded-md border border-stone-200 bg-white/90 text-stone-700 shadow-sm backdrop-blur transition-colors hover:bg-stone-100 dark:border-stone-800 dark:bg-stone-900/90 dark:text-stone-300 dark:hover:bg-stone-800"
       >
         <svg
           width="14"
@@ -537,7 +537,7 @@ function TopNav({ onOpenSpotlight }: { onOpenSpotlight: () => void }) {
         onClick={() => void handleSignOut()}
         title="Sign out / switch account"
         aria-label="Sign out"
-        className="pointer-events-auto rounded-md border border-stone-200 bg-white/80 p-1.5 text-stone-600 shadow-sm backdrop-blur transition-colors hover:bg-stone-100 dark:border-stone-800 dark:bg-stone-900/80 dark:text-stone-400 dark:hover:bg-stone-800"
+        className="pointer-events-auto flex h-7 w-7 items-center justify-center rounded-md border border-stone-200 bg-white/90 text-stone-700 shadow-sm backdrop-blur transition-colors hover:bg-stone-100 dark:border-stone-800 dark:bg-stone-900/90 dark:text-stone-300 dark:hover:bg-stone-800"
       >
         <svg
           width="14"

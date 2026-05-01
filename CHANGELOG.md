@@ -8,6 +8,38 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
      Each version block focuses on user-visible features so this doc can
      also feed the in-app /whats-new-app route. -->
 
+## [1.21.1] — 2026-05-01 — Exit-path audit: every "click-in" gets a "click-out"
+
+CEO surfaced the gap I missed: *"主页面点进去都没有退出键，你为什么不直接看整个 app 代码逻辑符不符合人的操作需求再去改"*. v1.21.0's audit was source-walk; this one is from-the-user POV. Walked every route + every sub-surface to verify there's an obvious exit affordance.
+
+### Audit findings + fixes
+
+| Surface | Entry | Exit before v1.21.1 | Exit now |
+|---|---|---|---|
+| `/feed` Heatmap (H key) | T → H | Hidden — must know to press T | **Visible "← timeline" button** top-left of canvas |
+| `/feed` People (P key) | T → P | Hidden — must know to press T | **Visible "← timeline" button** top-left of canvas |
+| `/feed` Replay (R key) | T → R | Auto-returns + ESC | Same + visible "← timeline" button |
+| Catch-up "show all" | Click | One-way — no collapse | **"show less ↑" button** appears when expanded |
+| TopNav buttons | Always visible | T (28px) consistent, ⌘K/⚙/⏻ varying smaller sizes | All 4 buttons normalized to 28×28, opacity 80%→90%, text contrast bumped |
+| AtomBottomSheet | Click row | × + ESC + backdrop ✓ | unchanged (already had 3 exits) |
+| CaptureInput expanded | Click `+` | ESC + cancel button ✓ | unchanged |
+| Spotlight modal | Cmd+K | ESC + backdrop ✓ | unchanged |
+| `/sources/*/setup` (6 vendors) | Direct URL / Settings link | Each has `aria-label="Back"` button → /memory ✓ | unchanged |
+| `/onboarding-team`, `/join` | Deep link | Each navigates to / or /memory on completion ✓ | unchanged |
+| `/settings` and other AppShell routes | TopNav ⚙ | TopNav T → / ✓ | unchanged |
+
+### Files touched
+
+- `app/src/routes/feed.tsx` — added `<button data-testid="canvas-back-to-time">` rendered when `canvasView !== "time"`. `position: absolute top-3 left-4 z-20`, mono "← timeline" with title hint "Back to timeline (T)".
+- `app/src/components/feed/CatchupBanner.tsx` — added "show less ↑" button rendered when `showAll && count > TOP_N`.
+- `app/src/components/layout/AppShell.tsx::TopNav` — normalized button sizes (h-7 w-7 across all 4), bumped backdrop opacity 80% → 90%, bumped text contrast (stone-600 → stone-700 / stone-400 → stone-300).
+
+### Method
+
+Source-walked `App.tsx` for every route. Source-walked the canvas surface for every sub-state. For each, traced the click handler that takes the user IN, then verified an obvious click-out path exists. Anything keyboard-only (T/H/P/R cycle, ESC) gets a parallel visible button.
+
+This is the audit method I should have done before v1.21.0 — and v1.20, and v1.19. CEO's critique was correct; the previous audits were code-coverage, not user-flow.
+
 ## [1.21.0] — 2026-04-30 — Operability: catch-up / capture / ask + Settings rewrite
 
 CEO inspected v1.20 and surfaced THE big architectural problem: the redesign

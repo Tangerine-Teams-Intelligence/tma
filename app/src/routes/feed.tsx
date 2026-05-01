@@ -159,6 +159,23 @@ export default function FeedRoute() {
         {!loading && !error && events.length === 0 && <EmptyState />}
         {!loading && !error && events.length > 0 && (
           <>
+            {/* v1.21.1 — when the user is on a non-time view (heatmap /
+                people / replay), pin a visible "← back to timeline"
+                affordance to the top of the canvas. Without this, the
+                only way out was to know to press the T shortcut.
+                CEO feedback: "主页面点进去都没有退出键". */}
+            {canvasView !== "time" && (
+              <button
+                type="button"
+                data-testid="canvas-back-to-time"
+                onClick={() => setCanvasView("time")}
+                className="absolute left-4 top-3 z-20 flex items-center gap-1.5 rounded-md border border-stone-200 bg-white/90 px-2 py-1 font-mono text-[11px] text-stone-600 shadow-sm backdrop-blur transition-colors hover:bg-stone-100 dark:border-stone-800 dark:bg-stone-900/90 dark:text-stone-400 dark:hover:bg-stone-800"
+                title="Back to timeline (T)"
+              >
+                <span aria-hidden>←</span>
+                <span>timeline</span>
+              </button>
+            )}
             {canvasView === "time" && (
               <TimeDensityList
                 events={events}

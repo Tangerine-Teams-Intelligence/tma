@@ -158,6 +158,19 @@ export function CatchupBanner({ events, user, onOpenAtom }: CatchupBannerProps) 
           show all {count} ↓
         </button>
       )}
+      {/* v1.21.1 — once the user clicked "show all", give them a way to
+          collapse back to the top 3. CEO feedback: "主页面点进去都没有
+          退出键". The show-all expansion was one-way. */}
+      {showAll && count > TOP_N && (
+        <button
+          type="button"
+          data-testid="feed-catchup-collapse"
+          onClick={() => setShowAll(false)}
+          className="mt-2 w-full rounded-sm py-1 font-mono text-[11px] text-stone-500 transition-colors hover:text-[var(--ti-orange-500)] dark:text-stone-500"
+        >
+          show less ↑
+        </button>
+      )}
     </div>
   );
 }
