@@ -4967,7 +4967,7 @@ dependencies = [
 
 [[package]]
 name = "tangerine-meeting"
-version = "1.21.0"
+version = "1.21.1"
 dependencies = [
  "anyhow",
  "async-trait",
