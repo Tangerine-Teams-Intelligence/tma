@@ -8,6 +8,37 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
      Each version block focuses on user-visible features so this doc can
      also feed the in-app /whats-new-app route. -->
 
+## [1.22.0] — 2026-05-01 — Daily Memory Pages (replace time-density list)
+
+CEO: *"我还是不喜欢这个 memory 的视觉呈现"*. The v1.19→v1.21 4-col `time/actor/source/body` typography list felt like a `git log`, not memory. Memory should feel curated, visual, hierarchical.
+
+### Replaces
+
+- `TimeDensityList` (4-col grid log) — left on disk for power-user reference but no longer mounted on `/feed`. T-view now mounts `<DailyMemoryPages/>`.
+
+### Adds
+
+- `app/src/components/feed/DailyMemoryPages.tsx` — stacked day-card sections, vertical scroll. Each day:
+  - Serif `font-display text-[28px]` date headline ("Today" / "Yesterday" / "Wednesday, May 1") + mono atom-count chip.
+  - **1 hero atom** picked by the v1.17 HighlightsRow score (+10 @me, +5 other mention, +3 cross-source, +2 decision, +1 last-24h). Source-tinted card background at 15% opacity (uses `vendorFor(source).color`). Sans body, line-clamp-3.
+  - **3 highlight cards** in a 3-col grid below the hero (atoms ranked 2–4). Smaller cards with source-tinted left border.
+  - **"show N quieter atoms ↓"** affordance for the rest. Click → expand into a compact sub-list. "show less ↑" toggle when expanded.
+  - Today's hero card uses larger padding (`p-8`) so the most-recent day visually dominates.
+- `app/tests/v1_22-daily-memory-pages.test.tsx` — specs covering day grouping, hero ranking, show-more toggle, empty-day rendering, source-tint application.
+
+### Preserved
+
+- CatchupBanner at the top (v1.21).
+- CaptureInput sticky at the bottom (v1.21).
+- TopNav (v1.20).
+- back-to-time button on H/P/R views (v1.21.1).
+- AtomBottomSheet contract (click hero/highlight → opens sheet).
+
+### Known caveats
+
+- `DailyMemoryPages` is keyboard-navigable but the new card layout doesn't yet have full focus-visible parity with the old list. A11y sweep is logged for v1.22.x.
+- Mobile responsive deferred (3-col highlight grid will collapse to 1-col on narrow viewport via Tailwind's `grid-cols-3` → `grid-cols-1` at `max-md` — no explicit test).
+
 ## [1.21.1] — 2026-05-01 — Exit-path audit: every "click-in" gets a "click-out"
 
 CEO surfaced the gap I missed: *"主页面点进去都没有退出键，你为什么不直接看整个 app 代码逻辑符不符合人的操作需求再去改"*. v1.21.0's audit was source-walk; this one is from-the-user POV. Walked every route + every sub-surface to verify there's an obvious exit affordance.

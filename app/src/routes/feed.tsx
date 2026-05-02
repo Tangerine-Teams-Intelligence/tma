@@ -56,6 +56,7 @@ import { buildPeopleStats } from "@/routes/people/index";
 import { useReplayController } from "@/components/canvas/ReplayController";
 import { CatchupBanner } from "@/components/feed/CatchupBanner";
 import { CaptureInput } from "@/components/feed/CaptureInput";
+import { DailyMemoryPages } from "@/components/feed/DailyMemoryPages";
 
 export default function FeedRoute() {
   const canvasView = useStore((s) => s.ui.canvasView);
@@ -177,7 +178,7 @@ export default function FeedRoute() {
               </button>
             )}
             {canvasView === "time" && (
-              <TimeDensityList
+              <TimeView
                 events={events}
                 onOpenAtom={handleOpenAtom}
                 user={currentUser || "me"}
@@ -213,6 +214,46 @@ export default function FeedRoute() {
 }
 
 /**
+ * v1.22.0 — TimeView mounts:
+ *   • CatchupBanner at the top (the "what's new since last visit" pillar
+ *     from v1.21 stays unchanged).
+ *   • DailyMemoryPages below — the new Apple-Photos-style day cards
+ *     replacing the v1.19→v1.21 4-col time-density list.
+ *
+ * Older `TimeDensityList` is kept on disk (any future surface that wants
+ * a flat list pattern can import it; the day-card "show N quieter atoms"
+ * already reuses the same 4-col grid pattern inline). It is no longer
+ * mounted from /feed.
+ */
+function TimeView({
+  events,
+  onOpenAtom,
+  user,
+}: {
+  events: TimelineEvent[];
+  onOpenAtom: (e: TimelineEvent) => void;
+  user: string;
+}) {
+  return (
+    <div
+      data-testid="time-view"
+      data-count={events.length}
+      className="h-full w-full overflow-y-auto"
+      style={{ contentVisibility: "auto" }}
+    >
+      <div className="mx-auto max-w-3xl px-8 pt-12">
+        <CatchupBanner events={events} user={user} onOpenAtom={onOpenAtom} />
+      </div>
+      <DailyMemoryPages
+        events={events}
+        currentUser={user}
+        onOpenAtom={onOpenAtom}
+      />
+    </div>
+  );
+}
+
+/**
  * The default surface. Time-density typography list — bold day separator
  * lines, then a dense one-row-per-atom grid: time / actor / source / body.
  *
@@ -228,6 +269,11 @@ export default function FeedRoute() {
  *
  * Round 2 C: a single mono header line — "past N days · M atoms" —
  * sits above the first day separator so the page has top context.
+ *
+ * v1.22.0: NO LONGER MOUNTED from /feed. Component left on disk in case
+ * other surfaces want a flat-list pattern. Day-card "show N quieter
+ * atoms" inlines the same 4-col grid; importers can also reach for this
+ * directly.
  */
 function TimeDensityList({
   events,
