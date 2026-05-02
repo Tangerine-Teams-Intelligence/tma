@@ -8,6 +8,43 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
      Each version block focuses on user-visible features so this doc can
      also feed the in-app /whats-new-app route. -->
 
+## [1.23.0] — 2026-05-01 — Depth Canvas (planar 3D)
+
+CEO rejected v1.22's Daily Memory Pages: *"完全不行，整个 visual 根本不行，非常不行"*. After 6 redesigns the direction surfaced: *"要有一种平面 3D 的感觉"* — planar 3D / 2.5D. 2D layout that USES 3D techniques (depth shadow, layered planes, hover lift, perspective tilt) but stays a plane. Apple Vision Pro UI / Stripe homepage / Linear app aesthetic.
+
+### Z-axis layers (back to front)
+
+1. **Background gradient base** — `radial-gradient(ellipse 80% 60% at 50% 30%, rgba(255,244,234,0.85), rgba(245,245,244,1) 65%)`. Soft warm glow at upper-center fading to neutral stone. Pure CSS, stays put.
+2. **Heatmap underlayer** — semi-transparent (max 0.20 opacity) day-density bars colored by the dominant source for each day. Ambient ground, NOT primary content.
+3. **Day separators** — sticky-ish floating chips with `backdrop-blur-sm`, semi-transparent bg, subtle shadow. Sit between heatmap and atom layer.
+4. **Atom cards** — solid white backgrounds with prominent box-shadows. Hero gets the deepest shadow (`shadow-[0_12px_48px_rgba(0,0,0,0.10)]` for today's hero), highlights medium, quieter cards lightest. On hover: `translateY(-2px)` + shadow grows. Today's hero gets a near-imperceptible perspective tilt (`rotateX(0.5deg)`) that flattens on hover.
+
+### Source tinting
+
+Changed from v1.22's flat tinted-bg to a glow: `box-shadow: 0 0 40px {source-color}/0.15` plus a 1px source-tinted border. Source is *lit* not *colored*. Combined with the depth shadow each card gets a subtle aura keyed to its vendor.
+
+### Typography refresh
+
+Serif (`font-display`) only for "Today" / "Yesterday" headlines (high-attention recent days). Sans for older day labels. Mono for time / actor / source / IDs / counts. Reduces serif density.
+
+### Constraints honored
+
+- **Pure CSS** — no three.js / framer-motion / WebGL. transforms + box-shadow + backdrop-blur only.
+- **R6 honesty** — empty Today still renders the diagnostic line; caller-side empty state owns the all-empty case.
+- **Click contract** — hero / highlight / quieter rows all call `onOpenAtom(ev)` → AtomBottomSheet.
+- **bucketByDay timezone fix** from v1.22 preserved.
+- **All v1.21.1 exit-paths** preserved (back-to-time button, CatchupBanner show-less, TopNav 4 buttons, etc.).
+
+### Deferred to v1.24+
+
+- Parallax-on-scroll (heatmap moves slower than cards).
+- Mobile responsive narrow-viewport polish.
+- Atom-emerges-from-cell zoom-in (that was v1.18 H view; different aesthetic).
+
+### Tests
+
+742 vitest passed (was 733), npm build clean, cargo check clean.
+
 ## [1.22.0] — 2026-05-01 — Daily Memory Pages (replace time-density list)
 
 CEO: *"我还是不喜欢这个 memory 的视觉呈现"*. The v1.19→v1.21 4-col `time/actor/source/body` typography list felt like a `git log`, not memory. Memory should feel curated, visual, hierarchical.

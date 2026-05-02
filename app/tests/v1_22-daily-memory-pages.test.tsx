@@ -1,22 +1,20 @@
 /**
- * v1.22.0 — Daily Memory Pages specs.
+ * v1.22 → v1.23 — Depth Canvas (formerly Daily Memory Pages) specs.
  *
- * Replaces the v1.21 4-col `time-density-list` with stacked day cards.
- * Each day = one section with a hero atom + up to 3 highlight cards +
- * a collapsed "show N quieter atoms" tail. Hard constraints from the
- * v1.22 spec covered here:
+ * The data-flow contract is unchanged from v1.22 (`bucketByDay` +
+ * `rankAtomsForDay` exports preserved + same exported props on
+ * `DailyMemoryPages`), so the bucketing / ranking specs from v1.22
+ * still apply 1:1 — they exercise pure helpers.
  *
- *   1. Day card is a `<section data-testid="day-card">` per day, with
- *      `data-date="YYYY-MM-DD"` and `data-is-today` attrs.
- *   2. Day header date is serif (font-display) + atom count is mono.
- *   3. Hero atom is auto-picked using the v1.17 +10/+5/+3/+2/+1 score
- *      rule (mentions you / other mentions / cross-source / decision /
- *      last 24h). When no atom clears MIN_SCORE the most-recent wins.
- *   4. Highlight cards (up to 3 below the hero) are ranked 2-4.
- *   5. show-more / show-less toggle for atoms beyond the 4th.
- *   6. Today with 0 atoms renders an empty data-empty="true" line.
- *   7. Source-tinted hero background uses vendorFor(source).color at
- *      ~15% opacity. Confirms loud paint isn't sneaking in.
+ * Render-side changes for v1.23 (Depth Canvas):
+ *   • Source tint moved from `backgroundColor` paint to a multi-stack
+ *     `box-shadow` glow keyed to vendorFor color. Test asserts the
+ *     vendor color rgb shows up inside the inline box-shadow style and
+ *     that the hero card uses a deeper shadow than highlight cards.
+ *   • Day separator becomes a sticky chip with `backdrop-blur-sm`. Test
+ *     asserts the class shipping.
+ *   • Empty-Today no longer hides the day label; it renders the
+ *     separator + a "0 atoms" diagnostic plane.
  *
  * Pure helpers (`bucketByDay`, `rankAtomsForDay`) are exercised
  * directly so a render isn't required for ordering / bucketing claims.
@@ -152,10 +150,10 @@ describe("v1.22 rankAtomsForDay", () => {
 });
 
 // ----------------------------------------------------------------------
-// Day-card render.
+// Depth canvas render.
 // ----------------------------------------------------------------------
 
-describe("v1.22 DailyMemoryPages render", () => {
+describe("v1.23 DailyMemoryPages render (Depth Canvas)", () => {
   function renderPages(events: TimelineEvent[], user = "daizhe") {
     return render(
       <DailyMemoryPages
@@ -184,7 +182,7 @@ describe("v1.22 DailyMemoryPages render", () => {
     expect(cards[1].getAttribute("data-atom-count")).toBe("2");
   });
 
-  it("day header shows serif date + mono atom count", () => {
+  it("Today separator uses serif date + mono atom count + backdrop-blur", () => {
     const todayIso = new Date().toISOString();
     const events = [
       makeEvent({ id: "t1", ts: todayIso }),
@@ -193,6 +191,7 @@ describe("v1.22 DailyMemoryPages render", () => {
     renderPages(events);
     const date = screen.getByTestId("day-card-date");
     expect(date.className).toContain("font-display");
+    expect(date.className).toContain("backdrop-blur-sm");
     expect(date.textContent).toBe("Today");
     const count = screen.getByTestId("day-card-atom-count");
     expect(count.className).toContain("font-mono");
@@ -217,7 +216,7 @@ describe("v1.22 DailyMemoryPages render", () => {
     expect(hero.textContent).toContain("BoM");
   });
 
-  it("hero card uses source-tinted background (vendorFor color, ~15% alpha)", () => {
+  it("hero card carries a multi-stack box-shadow keyed to vendor color (depth + glow)", () => {
     const todayIso = new Date().toISOString();
     const events = [
       makeEvent({
@@ -229,15 +228,44 @@ describe("v1.22 DailyMemoryPages render", () => {
     ];
     renderPages(events);
     const hero = screen.getByTestId("day-hero-card");
-    // We feed inline `style={{ backgroundColor: '#10b98126' }}`. jsdom
-    // normalizes that to `rgba(16, 185, 129, 0.15)`. Assert against
-    // both the rgba components AND the alpha so a future "loud paint"
-    // regression (alpha == 1, full color) gets caught.
-    const slackColor = vendorFor("slack").color; // "#10b981"
+    const slackColor = vendorFor("slack").color; // "#10b981" → 16, 185, 129
     expect(slackColor).toBe("#10b981");
     const style = hero.getAttribute("style") ?? "";
-    expect(style).toMatch(/rgba\(16, 185, 129/);
-    expect(style).toMatch(/0\.15/);
+    // Glow uses the vendor rgb embedded in box-shadow.
+    expect(style).toMatch(/box-shadow/);
+    expect(style).toMatch(/16, 185, 129/);
+    // Multi-shadow stack — both a dark depth shadow AND the source glow.
+    expect(style).toMatch(/rgba\(0, 0, 0/);
+  });
+
+  it("hero shadow is deeper than highlight shadow", () => {
+    // Build 4 today atoms so we get 1 hero + 3 highlights, all on the
+    // same day so they share the same vendor color (cursor → stone-700).
+    const todayIso = new Date().toISOString();
+    const events = Array.from({ length: 4 }, (_, i) =>
+      makeEvent({
+        id: `e${i}`,
+        ts: todayIso,
+        body: i === 0 ? "Hey @daizhe — review this" : `note ${i}`,
+      }),
+    );
+    renderPages(events);
+    const hero = screen.getByTestId("day-hero-card");
+    const highlights = screen.getAllByTestId("day-highlight-card");
+    expect(highlights.length).toBe(3);
+    // Heroes use 12px y-offset (Today) or 8px (older); highlights start
+    // at 4px. Pull out the first y-offset value via regex.
+    const heroStyle = hero.getAttribute("style") ?? "";
+    const hlStyle = highlights[0].getAttribute("style") ?? "";
+    const heroYOffset = Number.parseInt(
+      heroStyle.match(/box-shadow:\s*0\s+(\d+)px/)?.[1] ?? "0",
+      10,
+    );
+    const hlYOffset = Number.parseInt(
+      hlStyle.match(/box-shadow:\s*0\s+(\d+)px/)?.[1] ?? "0",
+      10,
+    );
+    expect(heroYOffset).toBeGreaterThan(hlYOffset);
   });
 
   it("highlight cards render up to 3, ranked 2-4", () => {
@@ -322,5 +350,55 @@ describe("v1.22 DailyMemoryPages render", () => {
     const cards = screen.getAllByTestId("day-card");
     expect(cards.length).toBe(1);
     expect(cards[0].getAttribute("data-is-today")).toBe("false");
+  });
+});
+
+// ----------------------------------------------------------------------
+// v1.23 — Depth Canvas specifics: heatmap underlayer + hover transition.
+// ----------------------------------------------------------------------
+
+describe("v1.23 depth canvas layers", () => {
+  function renderPages(events: TimelineEvent[], user = "daizhe") {
+    return render(
+      <DailyMemoryPages
+        events={events}
+        currentUser={user}
+        onOpenAtom={() => {}}
+      />,
+    );
+  }
+
+  it("renders a depth-heatmap underlayer with one cell per day", () => {
+    const todayIso = new Date().toISOString();
+    const yest = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    renderPages([
+      makeEvent({ id: "t1", ts: todayIso }),
+      makeEvent({ id: "y1", ts: yest }),
+    ]);
+    const heat = screen.getByTestId("depth-heatmap");
+    expect(heat.getAttribute("data-day-count")).toBe("2");
+    const cells = screen.getAllByTestId("depth-heatmap-cell");
+    expect(cells.length).toBe(2);
+  });
+
+  it("hero card has the hero-card-depth hover class for shadow swap", () => {
+    const todayIso = new Date().toISOString();
+    renderPages([
+      makeEvent({ id: "t1", ts: todayIso, body: "Hey @daizhe — weigh in" }),
+    ]);
+    const hero = screen.getByTestId("day-hero-card");
+    expect(hero.className).toContain("hero-card-depth");
+    expect(hero.className).toContain("transition-all");
+  });
+
+  it("highlight cards carry highlight-card-depth + 200ms transition", () => {
+    const todayIso = new Date().toISOString();
+    const events = Array.from({ length: 4 }, (_, i) =>
+      makeEvent({ id: `e${i}`, ts: todayIso, body: `note ${i}` }),
+    );
+    renderPages(events);
+    const hl = screen.getAllByTestId("day-highlight-card")[0];
+    expect(hl.className).toContain("highlight-card-depth");
+    expect(hl.className).toContain("duration-200");
   });
 });

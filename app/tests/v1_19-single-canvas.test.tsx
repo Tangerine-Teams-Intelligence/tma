@@ -411,7 +411,14 @@ describe("v1.19 Round 1 — Time-density list", () => {
     });
   });
 
-  it("v1.22 — day-card date header renders in serif (font-display)", async () => {
+  it("v1.23 — day-card date header floats in a backdrop-blur chip", async () => {
+    // v1.22 asserted serif font on every day header; v1.23 (Depth Canvas)
+    // restricts the prominent serif to Today / Yesterday only — older
+    // days get a sans `font-medium` chip so the recent days stand out.
+    // SAMPLE_EVENTS sit on 2026-04-29 which is neither (against the
+    // local "now" at test-runtime), so we now assert the depth-chip
+    // styling that ALL day separators share: the floating
+    // `bg-stone-50/70 backdrop-blur-sm` shadow chip.
     vi.spyOn(views, "readTimelineRecent").mockResolvedValue({
       events: SAMPLE_EVENTS,
       notes: [],
@@ -422,8 +429,10 @@ describe("v1.19 Round 1 — Time-density list", () => {
     });
     const dates = screen.getAllByTestId("day-card-date");
     expect(dates.length).toBeGreaterThanOrEqual(1);
-    // Display font is the serif binary; assert via the className.
-    expect(dates[0].className).toContain("font-display");
+    // Depth-chip style — every day separator gets this regardless of
+    // serif vs sans typography.
+    expect(dates[0].className).toContain("backdrop-blur-sm");
+    expect(dates[0].className).toContain("rounded-full");
   });
 });
 
